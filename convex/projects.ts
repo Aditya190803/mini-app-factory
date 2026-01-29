@@ -27,6 +27,9 @@ export const saveProject = mutation({
       .first();
 
     if (existing) {
+      if (existing.userId && existing.userId !== args.userId) {
+        throw new Error("Unauthorized to edit this project");
+      }
       await ctx.db.patch(existing._id, {
         prompt: args.prompt,
         html: args.html,

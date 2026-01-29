@@ -11,6 +11,7 @@ export interface ProjectMetadata {
   html?: string;
   error?: string;
   isPublished?: boolean;
+  userId?: string;
 }
 
 export async function projectExists(name: string): Promise<boolean> {
@@ -25,6 +26,7 @@ export async function saveProject(metadata: ProjectMetadata) {
     html: metadata.html,
     status: metadata.status,
     isPublished: metadata.isPublished ?? false,
+    userId: metadata.userId,
   });
 }
 
@@ -39,5 +41,6 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
     status: project.status as any,
     html: project.html,
     isPublished: project.isPublished,
+    userId: project.userId,
   };
 }
