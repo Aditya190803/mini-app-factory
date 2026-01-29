@@ -5,7 +5,7 @@ import { stackServerApp } from '@/stack/server';
 
 const MODEL = 'gpt-5-mini';
 
-export const maxDuration = 300; // Extend to 5 minutes for generation
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 let clientInstance: CopilotClient | null = null;
@@ -31,80 +31,117 @@ async function getCopilotClient(): Promise<CopilotClient> {
   return clientPromise;
 }
 
-// Helper to run the generation workflow
+/**
+ * Creates a thread-safe SSE writer that gracefully handles stream destruction.
+ * All writes are wrapped in try-catch and the closed state is tracked atomically.
+ */
+function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
+  const encoder = new TextEncoder();
+  let closed = false;
+  
+  const write = (data: object): boolean => {
+    if (closed) return false;
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      return true;
+    } catch {
+      closed = true;
+      return false;
+    }
+  };
+  
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    try { controller.close(); } catch { /* already closed */ }
+  };
+  
+  const markClosed = () => { closed = true; };
+  const isClosed = () => closed;
+  
+  return { write, close, markClosed, isClosed };
+}
+
+/**
+ * Runs the generation workflow, saving progress to the database.
+ * The workflow continues even if the stream is closed - results are persisted.
+ */
 async function runGeneration(
   projectName: string,
   finalPrompt: string,
-  send: (data: any) => boolean,
-  checkClosed: () => boolean
-): Promise<void> {
+  signal: AbortSignal
+): Promise<{ html: string } | { error: string }> {
   const project = await getProject(projectName);
-  if (!project) throw new Error('Project not found during generation');
+  if (!project) return { error: 'Project not found during generation' };
 
-  // Update status to generating
-  project.status = 'generating';
   try {
-    await saveProject(project);
-  } catch (err) {
-    console.error('Failed to update status to generating:', err);
-  }
+    // Update status
+    project.status = 'generating';
+    await saveProject(project).catch(() => {});
 
-  if (!send({ status: 'initializing', message: 'Setting up production environment...' })) return;
-  if (checkClosed()) return;
-  await new Promise(r => setTimeout(r, 800));
+    if (signal.aborted) return { error: 'Aborted' };
 
-  if (!send({ status: 'designing', message: 'Architecting design system and components...' })) return;
-  if (checkClosed()) return;
-  
-  const client = await getCopilotClient();
-  const designSession = await client.createSession({
-    model: MODEL,
-    systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
-  });
-  
-  let designSpec = '';
-  try {
-    const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
-    designSpec = designResp?.data?.content || '';
-  } finally {
-    await designSession.destroy().catch(() => {});
-  }
-
-  if (checkClosed()) return;
-  if (!send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' })) return;
-  
-  const htmlSession = await client.createSession({
-    model: MODEL,
-    systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
-  });
-
-  let html = '';
-  try {
-    const mainPrompt = buildMainPrompt(finalPrompt);
-    const htmlResp = await htmlSession.sendAndWait({ 
-      prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
-    }, 120000);
-    const rawHtml = htmlResp?.data?.content || '';
-    html = stripCodeFence(rawHtml);
-  } finally {
-    await htmlSession.destroy().catch(() => {});
-  }
-
-  if (checkClosed()) return;
-
-  // Finalize project
-  const finalProject = await getProject(projectName);
-  if (finalProject) {
-    finalProject.html = html;
-    finalProject.status = 'completed';
+    const client = await getCopilotClient();
+    
+    // Design phase
+    const designSession = await client.createSession({
+      model: MODEL,
+      systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
+    });
+    
+    let designSpec = '';
     try {
-      await saveProject(finalProject);
-    } catch (err) {
-      console.error('Failed to save final project state:', err);
+      const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
+      designSpec = designResp?.data?.content || '';
+    } finally {
+      await designSession.destroy().catch(() => {});
     }
-  }
 
-  send({ status: 'completed', html });
+    if (signal.aborted) return { error: 'Aborted' };
+
+    // HTML generation phase
+    const htmlSession = await client.createSession({
+      model: MODEL,
+      systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
+    });
+
+    let html = '';
+    try {
+      const mainPrompt = buildMainPrompt(finalPrompt);
+      const htmlResp = await htmlSession.sendAndWait({ 
+        prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
+      }, 120000);
+      html = stripCodeFence(htmlResp?.data?.content || '');
+    } finally {
+      await htmlSession.destroy().catch(() => {});
+    }
+
+    // Always save the result to the database (even if client disconnected)
+    const finalProject = await getProject(projectName);
+    if (finalProject) {
+      finalProject.html = html;
+      finalProject.status = 'completed';
+      await saveProject(finalProject).catch(err => {
+        console.error('Failed to save completed project:', err);
+      });
+    }
+
+    return { html };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    
+    // Save error state
+    try {
+      const proj = await getProject(projectName);
+      if (proj) {
+        proj.status = 'error';
+        proj.error = errorMessage;
+        await saveProject(proj);
+      }
+    } catch { /* ignore */ }
+    
+    return { error: errorMessage };
+  }
 }
 
 export async function POST(request: Request) {
@@ -130,71 +167,60 @@ export async function POST(request: Request) {
     }
 
     const finalPrompt = prompt || project.prompt;
-
-    const encoder = new TextEncoder();
-    let isStreamClosed = false;
-    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    
+    // Use AbortController to signal cancellation to the generation workflow
+    const abortController = new AbortController();
+    
+    // Also listen to the request's abort signal (client disconnect)
+    request.signal.addEventListener('abort', () => abortController.abort());
 
     const stream = new ReadableStream({
       start(controller) {
-        // Safe send function that returns false if stream is closed
-        const send = (data: any): boolean => {
-          if (isStreamClosed) return false;
-          try {
-            const chunk = encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
-            controller.enqueue(chunk);
-            return true;
-          } catch (error) {
-            console.error('Stream write failed:', error instanceof Error ? error.message : 'Unknown');
-            isStreamClosed = true;
-            return false;
+        const sse = createSSEWriter(controller);
+        let heartbeat: ReturnType<typeof setInterval> | null = null;
+        
+        // Start heartbeat immediately
+        heartbeat = setInterval(() => {
+          if (!sse.write({ status: 'ping' })) {
+            if (heartbeat) clearInterval(heartbeat);
+            abortController.abort();
           }
-        };
+        }, 8000);
 
-        const checkClosed = () => isStreamClosed;
+        // Send initial status
+        sse.write({ status: 'initializing', message: 'Setting up production environment...' });
 
-        // Heartbeat to prevent gateway timeouts
-        heartbeatInterval = setInterval(() => {
-          if (!send({ status: 'ping' })) {
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
+        // Run the generation
+        (async () => {
+          await new Promise(r => setTimeout(r, 600));
+          if (sse.isClosed()) return;
+          
+          sse.write({ status: 'designing', message: 'Architecting design system...' });
+          
+          const result = await runGeneration(projectName, finalPrompt, abortController.signal);
+          
+          if (sse.isClosed()) return;
+          
+          if ('error' in result && result.error !== 'Aborted') {
+            sse.write({ status: 'error', error: result.error });
+          } else if ('html' in result) {
+            sse.write({ status: 'fabricating', message: 'Finalizing...' });
+            await new Promise(r => setTimeout(r, 300));
+            sse.write({ status: 'completed', html: result.html });
           }
-        }, 10000);
-
-        // Run generation in the background
-        runGeneration(projectName, finalPrompt, send, checkClosed)
-          .catch(async (error) => {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error('Generation Error:', errorMessage);
-            
-            if (!isStreamClosed) {
-              try {
-                const proj = await getProject(projectName);
-                if (proj) {
-                  proj.status = 'error';
-                  proj.error = errorMessage;
-                  await saveProject(proj);
-                }
-              } catch (pErr) {
-                console.error('Failed to save error status:', pErr);
-              }
-              send({ status: 'error', error: errorMessage });
+        })()
+          .catch((err) => {
+            if (!sse.isClosed()) {
+              sse.write({ status: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
             }
           })
           .finally(() => {
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            if (!isStreamClosed) {
-              isStreamClosed = true;
-              try {
-                controller.close();
-              } catch {
-                // Stream already closed
-              }
-            }
+            if (heartbeat) clearInterval(heartbeat);
+            sse.close();
           });
       },
       cancel() {
-        isStreamClosed = true;
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        abortController.abort();
       }
     });
 
@@ -202,8 +228,6 @@ export async function POST(request: Request) {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
       },

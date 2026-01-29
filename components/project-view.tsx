@@ -33,16 +33,48 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     startGeneration();
   }, [project.status]);
 
+  // Poll for project status as a fallback when stream fails
+  async function pollForCompletion(): Promise<boolean> {
+    for (let i = 0; i < 60; i++) { // Poll for up to 5 minutes
+      await new Promise(r => setTimeout(r, 5000));
+      try {
+        const res = await fetch(`/api/project/${projectName}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'completed' && data.html) {
+            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+            return true;
+          } else if (data.status === 'error') {
+            setError(data.error || 'Generation failed');
+            return true;
+          }
+        }
+      } catch {
+        // Continue polling
+      }
+    }
+    return false;
+  }
+
   async function startGeneration() {
     hasStarted.current = true;
     setError(null);
 
+    let streamFailed = false;
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, prompt: project.prompt }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -53,74 +85,90 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       if (!reader) throw new Error('No readable stream');
 
       const decoder = new TextDecoder();
-      let buffer = ''; // Buffer for handling partial SSE messages
+      let buffer = '';
       
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        
-        // Process complete SSE messages (they end with \n\n)
-        const messages = buffer.split('\n\n');
-        // Keep the last potentially incomplete message in the buffer
-        buffer = messages.pop() || '';
-
-        for (const message of messages) {
-          const line = message.trim();
-          if (!line || !line.startsWith('data: ')) continue;
+          buffer += decoder.decode(value, { stream: true });
           
-          try {
-            const data = JSON.parse(line.slice(6));
-            
-            // Skip ping heartbeats
-            if (data.status === 'ping') continue;
-            
-            if (data.status === 'error') {
-              setError(data.error);
-              reader.cancel();
-              return;
-            }
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || '';
 
-            if (data.status === 'completed') {
-              setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
-              setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-              return;
-            }
+          for (const message of messages) {
+            const line = message.trim();
+            if (!line || !line.startsWith('data: ')) continue;
+            
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.status === 'ping') continue;
+              
+              if (data.status === 'error') {
+                setError(data.error);
+                reader.cancel().catch(() => {});
+                return;
+              }
 
-            // Update steps based on status
-            setSteps(prev => prev.map((step, idx) => {
-              if (step.id === data.status) {
-                setCurrentStepIndex(idx);
-                return { ...step, status: 'loading' };
+              if (data.status === 'completed') {
+                setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+                setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+                return;
               }
-              if (idx < prev.findIndex(s => s.id === data.status)) {
-                return { ...step, status: 'completed' };
-              }
-              return step;
-            }));
-          } catch (parseError) {
-            console.warn('Failed to parse SSE message:', line);
+
+              setSteps(prev => prev.map((step, idx) => {
+                if (step.id === data.status) {
+                  setCurrentStepIndex(idx);
+                  return { ...step, status: 'loading' };
+                }
+                if (idx < prev.findIndex(s => s.id === data.status)) {
+                  return { ...step, status: 'completed' };
+                }
+                return step;
+              }));
+            } catch {
+              // Skip malformed messages
+            }
           }
         }
+      } catch (readError) {
+        // Stream read failed - fall back to polling
+        console.warn('Stream interrupted, falling back to polling...');
+        streamFailed = true;
       }
       
-      // Process any remaining buffer content
+      // Process remaining buffer
       if (buffer.trim() && buffer.startsWith('data: ')) {
         try {
           const data = JSON.parse(buffer.slice(6));
           if (data.status === 'completed') {
             setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+            return;
           } else if (data.status === 'error') {
             setError(data.error);
+            return;
           }
-        } catch {
-          // Ignore incomplete final message
-        }
+        } catch { /* ignore */ }
       }
     } catch (err: any) {
-      setError(err.message || 'Connection failed');
+      if (err.name === 'AbortError') {
+        streamFailed = true;
+      } else {
+        console.error('Generation fetch error:', err);
+        streamFailed = true;
+      }
+    }
+
+    // If stream failed or ended without completion, poll the API
+    if (streamFailed) {
+      setSteps(prev => prev.map((s, i) => i <= 1 ? { ...s, status: 'completed' } : { ...s, status: 'loading' }));
+      const completed = await pollForCompletion();
+      if (!completed) {
+        setError('Generation timed out. Please try again.');
+      }
     }
   }
 
