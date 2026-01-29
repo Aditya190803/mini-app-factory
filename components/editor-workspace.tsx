@@ -7,6 +7,16 @@ import { motion } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -22,6 +32,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
+  const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
 
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
@@ -135,15 +147,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  const runPolish = async () => {
-    const desc = window.prompt('Describe how to polish this site (images, typography, animations, mobile responsiveness)');
-    if (!desc) return;
+  const runPolish = () => {
+    setIsPolishDialogOpen(true);
+  };
+
+  const onPolishSubmit = async () => {
+    setIsPolishDialogOpen(false);
     setIsTransforming(true);
     try {
       const resp = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: editableHtml, polishDescription: desc }),
+        body: JSON.stringify({ html: editableHtml, polishDescription }),
       });
       if (!resp.ok) throw new Error('Polish failed');
       const data = await resp.json();
@@ -414,6 +429,39 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </div>
         </aside>
       </div>
+
+      <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">Polish Site</DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Describe how to polish this site (images, typography, animations, mobile responsiveness).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Textarea
+              value={polishDescription}
+              onChange={(e) => setPolishDescription(e.target.value)}
+              className="min-h-[100px] text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+            />
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsPolishDialogOpen(false)}
+              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={onPolishSubmit}
+              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+            >
+              Apply Polish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
