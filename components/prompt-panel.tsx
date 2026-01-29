@@ -6,17 +6,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 
 interface PromptPanelProps {
-  onGenerate: (prompt: string) => Promise<void>;
+  onGenerate: (prompt: string, model?: string) => Promise<void>;
   isLoading: boolean;
   error?: string;
 }
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
+  const [model, setModel] = useState('gpt-5-mini');
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
-    await onGenerate(prompt);
+    await onGenerate(prompt, model);
   };
 
   const isTokenMissing = error?.includes('GITHUB_TOKEN');
@@ -87,6 +88,13 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             }}
             disabled={isLoading}
           />
+
+          <div className="mt-3 flex items-center gap-3">
+            <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
+              <option value="gpt-5-mini">gpt-5-mini</option>
+            </select>
+          </div>
         </div>
 
         <button
@@ -160,7 +168,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: 'var(--primary)' }}
           ></div>
-          <span>GITHUB COPILOT • GPT-4 MINI</span>
+          <span>GITHUB COPILOT • {model.toUpperCase()}</span>
         </div>
       </div>
     </div>

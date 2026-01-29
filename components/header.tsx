@@ -35,18 +35,6 @@ export default function Header() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span 
-            className="text-xs font-mono px-3 py-1.5 uppercase font-semibold border"
-            style={{
-              color: 'var(--primary)',
-              borderColor: 'var(--primary)',
-              backgroundColor: 'rgba(245, 158, 11, 0.05)',
-            }}
-          >
-            BETA
-          </span>
-        </div>
       </div>
     </header>
   );
