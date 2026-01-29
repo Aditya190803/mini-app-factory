@@ -1,123 +1,103 @@
-import { z } from 'zod';
+import { CopilotClient } from '@github/copilot-sdk';
+import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
+import { getProject, saveProject } from '@/lib/projects';
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_COPILOT_API = 'https://api.github.com/copilot_internal/v2/completions';
+const MODEL = 'gpt-5-mini';
 
-const designSpecSchema = z.object({
-  design_spec: z.string(),
-});
+let clientInstance: CopilotClient | null = null;
 
-const websiteSchema = z.object({
-  html: z.string().describe('Complete, production-ready HTML with embedded Tailwind CSS. Must include proper semantic HTML structure, responsive design, and modern styling.'),
-});
-
-async function callGitHubCopilot(messages: Array<{ role: string; content: string }>): Promise<string> {
-  if (!GITHUB_TOKEN) {
-    throw new Error('GITHUB_TOKEN environment variable is not set');
+async function getCopilotClient(): Promise<CopilotClient> {
+  if (!clientInstance) {
+    clientInstance = new CopilotClient();
+    await clientInstance.start();
   }
-
-  const response = await fetch(GITHUB_COPILOT_API, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GITHUB_TOKEN}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mini-App-Factory',
-      'X-GitHub-Media-Type': 'github.v3',
-    },
-    body: JSON.stringify({
-      messages,
-      model: 'gpt-4-mini',
-      temperature: 0.7,
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`GitHub Copilot API error: ${response.status} - ${error}`);
-  }
-
-  const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-  return data.choices[0]?.message?.content || '';
-}
-
-async function conceptualizeWebsite(prompt: string): Promise<string> {
-  const systemMessage = `You are an expert web design architect. Given a user's request, create a detailed design specification that includes:
-- Layout structure (header, hero, sections, footer)
-- Typography hierarchy
-- Color scheme
-- Key UI components and their interactions
-- Responsive breakpoints
-- Content organization
-- Special effects or animations needed
-
-Be specific and detailed so that an HTML generation AI can create an accurate implementation.`;
-
-  const response = await callGitHubCopilot([
-    { role: 'system', content: systemMessage },
-    { role: 'user', content: prompt },
-  ]);
-
-  return response;
-}
-
-async function generateHTML(prompt: string, designSpec: string): Promise<string> {
-  const systemMessage = `You are an expert HTML/CSS/JavaScript developer. Generate a complete, production-ready HTML file that:
-1. Uses Tailwind CSS v4 (via CDN: https://cdn.tailwindcss.com)
-2. Is fully responsive (mobile-first design)
-3. Includes semantic HTML elements
-4. Has proper accessibility attributes
-5. Uses modern CSS patterns and animations
-6. Is self-contained (no external dependencies except Tailwind)
-7. Uses generic placeholder images where needed
-8. Includes basic interactivity with vanilla JavaScript where appropriate
-
-Return ONLY the HTML code, nothing else. The HTML should be complete and ready to save as an .html file.`;
-
-  const userPrompt = `Design Specification:\n${designSpec}\n\nOriginal Request:\n${prompt}`;
-
-  const response = await callGitHubCopilot([
-    { role: 'system', content: systemMessage },
-    { role: 'user', content: userPrompt },
-  ]);
-
-  return response;
+  return clientInstance;
 }
 
 export async function POST(request: Request) {
   try {
-    const { prompt } = await request.json();
+    const { prompt, projectName } = await request.json();
 
-    if (!prompt || prompt.trim().length === 0) {
-      return Response.json({ error: 'Prompt is required' }, { status: 400 });
+    if (!projectName) {
+      return Response.json({ error: 'Project name is required' }, { status: 400 });
     }
 
-    if (!GITHUB_TOKEN) {
-      return Response.json(
-        { error: 'GITHUB_TOKEN environment variable is not set. Please add your GitHub Personal Access Token in the Vars section.' },
-        { status: 500 }
-      );
+    const project = await getProject(projectName);
+    if (!project) {
+      return Response.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    console.log('[v0] Generating website for prompt:', prompt);
+    const finalPrompt = prompt || project.prompt;
 
-    // Pass 1: Conceptualize
-    console.log('[v0] Starting conceptualization phase...');
-    const designSpec = await conceptualizeWebsite(prompt);
-    console.log('[v0] Design specification created');
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (data: any) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
 
-    // Pass 2: Generate
-    console.log('[v0] Starting HTML generation phase...');
-    const html = await generateHTML(prompt, designSpec);
-    console.log('[v0] HTML generation complete');
+        try {
+          // Update status to generating
+          project.status = 'generating';
+          await saveProject(project);
 
-    return Response.json({ html });
+          send({ status: 'initializing', message: 'Setting up production environment...' });
+          await new Promise(r => setTimeout(r, 800));
+
+          send({ status: 'designing', message: 'Architecting design system and components...' });
+          const client = await getCopilotClient();
+          
+          const designSession = await client.createSession({
+            model: MODEL,
+            systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
+          });
+          
+          const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
+          const designSpec = designResp?.data?.content || '';
+          await designSession.destroy();
+
+          send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' });
+          
+          const htmlSession = await client.createSession({
+            model: MODEL,
+            systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
+          });
+
+          const mainPrompt = buildMainPrompt(finalPrompt);
+          const htmlResp = await htmlSession.sendAndWait({ 
+            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
+          }, 120000);
+          const rawHtml = htmlResp?.data?.content || '';
+          const html = stripCodeFence(rawHtml);
+          await htmlSession.destroy();
+
+          // Finalize project
+          project.html = html;
+          project.status = 'completed';
+          await saveProject(project);
+
+          send({ status: 'completed', html });
+          controller.close();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          project.status = 'error';
+          project.error = errorMessage;
+          await saveProject(project);
+          send({ status: 'error', error: errorMessage });
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to generate website';
-    console.error('[v0] Generation error:', error);
-    return Response.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return Response.json({ error: 'Failed to initialize generation' }, { status: 500 });
   }
 }

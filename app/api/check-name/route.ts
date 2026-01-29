@@ -1,0 +1,33 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { projectExists, saveProject } from '@/lib/projects';
+
+export async function POST(req: NextRequest) {
+  const { name, prompt } = await req.json();
+
+  if (!name || name.trim().length === 0) {
+    return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+  }
+
+  const normalizedName = name.trim().toLowerCase();
+  
+  // Validation for project name (alphanumeric and dashes)
+  if (!/^[a-z0-9-]+$/.test(normalizedName)) {
+    return NextResponse.json({ error: 'Project name can only contain letters, numbers, and dashes' }, { status: 400 });
+  }
+
+  if (await projectExists(normalizedName)) {
+    return NextResponse.json({ error: 'Project name is already taken' }, { status: 409 });
+  }
+
+  // "Reserve" the name by creating a pending project
+  if (prompt) {
+    await saveProject({
+      name: normalizedName,
+      prompt,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+    });
+  }
+
+  return NextResponse.json({ success: true, name: normalizedName });
+}
