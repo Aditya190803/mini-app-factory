@@ -31,6 +31,82 @@ async function getCopilotClient(): Promise<CopilotClient> {
   return clientPromise;
 }
 
+// Helper to run the generation workflow
+async function runGeneration(
+  projectName: string,
+  finalPrompt: string,
+  send: (data: any) => boolean,
+  checkClosed: () => boolean
+): Promise<void> {
+  const project = await getProject(projectName);
+  if (!project) throw new Error('Project not found during generation');
+
+  // Update status to generating
+  project.status = 'generating';
+  try {
+    await saveProject(project);
+  } catch (err) {
+    console.error('Failed to update status to generating:', err);
+  }
+
+  if (!send({ status: 'initializing', message: 'Setting up production environment...' })) return;
+  if (checkClosed()) return;
+  await new Promise(r => setTimeout(r, 800));
+
+  if (!send({ status: 'designing', message: 'Architecting design system and components...' })) return;
+  if (checkClosed()) return;
+  
+  const client = await getCopilotClient();
+  const designSession = await client.createSession({
+    model: MODEL,
+    systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
+  });
+  
+  let designSpec = '';
+  try {
+    const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
+    designSpec = designResp?.data?.content || '';
+  } finally {
+    await designSession.destroy().catch(() => {});
+  }
+
+  if (checkClosed()) return;
+  if (!send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' })) return;
+  
+  const htmlSession = await client.createSession({
+    model: MODEL,
+    systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
+  });
+
+  let html = '';
+  try {
+    const mainPrompt = buildMainPrompt(finalPrompt);
+    const htmlResp = await htmlSession.sendAndWait({ 
+      prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
+    }, 120000);
+    const rawHtml = htmlResp?.data?.content || '';
+    html = stripCodeFence(rawHtml);
+  } finally {
+    await htmlSession.destroy().catch(() => {});
+  }
+
+  if (checkClosed()) return;
+
+  // Finalize project
+  const finalProject = await getProject(projectName);
+  if (finalProject) {
+    finalProject.html = html;
+    finalProject.status = 'completed';
+    try {
+      await saveProject(finalProject);
+    } catch (err) {
+      console.error('Failed to save final project state:', err);
+    }
+  }
+
+  send({ status: 'completed', html });
+}
+
 export async function POST(request: Request) {
   try {
     const { prompt, projectName } = await request.json();
@@ -57,117 +133,68 @@ export async function POST(request: Request) {
 
     const encoder = new TextEncoder();
     let isStreamClosed = false;
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
     const stream = new ReadableStream({
-      async start(controller) {
-        // Safe send function to avoid "write after end" crashes
-        const send = (data: any) => {
-          if (isStreamClosed) return;
+      start(controller) {
+        // Safe send function that returns false if stream is closed
+        const send = (data: any): boolean => {
+          if (isStreamClosed) return false;
           try {
             const chunk = encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
             controller.enqueue(chunk);
+            return true;
           } catch (error) {
-            // This is where the "stream was destroyed" error is typically caught
-            console.error('Stream write failed, closing:', error instanceof Error ? error.message : 'Unknown');
+            console.error('Stream write failed:', error instanceof Error ? error.message : 'Unknown');
             isStreamClosed = true;
+            return false;
           }
         };
 
-        // Heartbeat to prevent generic gateway timeouts (Vercel, Nginx, Cloudflare)
-        const heartbeat = setInterval(() => {
-          send({ status: 'ping' });
-        }, 15000);
+        const checkClosed = () => isStreamClosed;
 
-        try {
-          // Update status to generating
-          project.status = 'generating';
-          try {
-            await saveProject(project);
-          } catch (err) {
-            console.error('Failed to update status to generating:', err);
+        // Heartbeat to prevent gateway timeouts
+        heartbeatInterval = setInterval(() => {
+          if (!send({ status: 'ping' })) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
           }
+        }, 10000);
 
-          send({ status: 'initializing', message: 'Setting up production environment...' });
-          if (isStreamClosed) return;
-          await new Promise(r => setTimeout(r, 800));
-
-          send({ status: 'designing', message: 'Architecting design system and components...' });
-          if (isStreamClosed) return;
-          
-          const client = await getCopilotClient();
-          const designSession = await client.createSession({
-            model: MODEL,
-            systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
-          });
-          
-          let designSpec = '';
-          try {
-            const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
-            designSpec = designResp?.data?.content || '';
-          } finally {
-            await designSession.destroy();
-          }
-
-          if (isStreamClosed) return;
-          send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' });
-          
-          const htmlSession = await client.createSession({
-            model: MODEL,
-            systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
-          });
-
-          let html = '';
-          try {
-            const mainPrompt = buildMainPrompt(finalPrompt);
-            const htmlResp = await htmlSession.sendAndWait({ 
-              prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
-            }, 120000);
-            const rawHtml = htmlResp?.data?.content || '';
-            html = stripCodeFence(rawHtml);
-          } finally {
-            await htmlSession.destroy();
-          }
-
-          if (isStreamClosed) return;
-
-          // Finalize project
-          project.html = html;
-          project.status = 'completed';
-          try {
-            await saveProject(project);
-          } catch (err) {
-            console.error('Failed to save final project state:', err);
-          }
-
-          send({ status: 'completed', html });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Generation Error Workflow:', errorMessage);
-          
-          if (!isStreamClosed) {
-            project.status = 'error';
-            project.error = errorMessage;
-            try {
-              await saveProject(project);
-            } catch (pErr) {
-              console.error('Failed to save error status:', pErr);
+        // Run generation in the background
+        runGeneration(projectName, finalPrompt, send, checkClosed)
+          .catch(async (error) => {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('Generation Error:', errorMessage);
+            
+            if (!isStreamClosed) {
+              try {
+                const proj = await getProject(projectName);
+                if (proj) {
+                  proj.status = 'error';
+                  proj.error = errorMessage;
+                  await saveProject(proj);
+                }
+              } catch (pErr) {
+                console.error('Failed to save error status:', pErr);
+              }
+              send({ status: 'error', error: errorMessage });
             }
-            send({ status: 'error', error: errorMessage });
-          }
-        } finally {
-          clearInterval(heartbeat);
-          if (!isStreamClosed) {
-            isStreamClosed = true;
-            try {
-              controller.close();
-            } catch (err) {
-              // Ignore errors during close on an already destroyed stream
+          })
+          .finally(() => {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            if (!isStreamClosed) {
+              isStreamClosed = true;
+              try {
+                controller.close();
+              } catch {
+                // Stream already closed
+              }
             }
-          }
-        }
+          });
       },
       cancel() {
         isStreamClosed = true;
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
       }
     });
 

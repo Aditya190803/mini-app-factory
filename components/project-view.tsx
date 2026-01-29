@@ -44,26 +44,41 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         body: JSON.stringify({ projectName, prompt: project.prompt }),
       });
 
-      if (!response.ok) throw new Error('Failed to start generation');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to start generation');
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No readable stream');
 
       const decoder = new TextDecoder();
+      let buffer = ''; // Buffer for handling partial SSE messages
       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n\n');
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete SSE messages (they end with \n\n)
+        const messages = buffer.split('\n\n');
+        // Keep the last potentially incomplete message in the buffer
+        buffer = messages.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
+        for (const message of messages) {
+          const line = message.trim();
+          if (!line || !line.startsWith('data: ')) continue;
+          
+          try {
             const data = JSON.parse(line.slice(6));
+            
+            // Skip ping heartbeats
+            if (data.status === 'ping') continue;
             
             if (data.status === 'error') {
               setError(data.error);
+              reader.cancel();
               return;
             }
 
@@ -84,11 +99,28 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               }
               return step;
             }));
+          } catch (parseError) {
+            console.warn('Failed to parse SSE message:', line);
           }
         }
       }
+      
+      // Process any remaining buffer content
+      if (buffer.trim() && buffer.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(buffer.slice(6));
+          if (data.status === 'completed') {
+            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+          } else if (data.status === 'error') {
+            setError(data.error);
+          }
+        } catch {
+          // Ignore incomplete final message
+        }
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Connection failed');
     }
   }
 
