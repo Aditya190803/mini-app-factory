@@ -5,13 +5,26 @@ import { getProject, saveProject } from '@/lib/projects';
 const MODEL = 'gpt-5-mini';
 
 let clientInstance: CopilotClient | null = null;
+let clientPromise: Promise<CopilotClient> | null = null;
 
 async function getCopilotClient(): Promise<CopilotClient> {
-  if (!clientInstance) {
-    clientInstance = new CopilotClient();
-    await clientInstance.start();
+  if (clientInstance) return clientInstance;
+  
+  if (!clientPromise) {
+    clientPromise = (async () => {
+      try {
+        const client = new CopilotClient();
+        await client.start();
+        clientInstance = client;
+        return client;
+      } catch (error) {
+        clientPromise = null;
+        throw error;
+      }
+    })();
   }
-  return clientInstance;
+  
+  return clientPromise;
 }
 
 export async function POST(request: Request) {
@@ -30,10 +43,18 @@ export async function POST(request: Request) {
     const finalPrompt = prompt || project.prompt;
 
     const encoder = new TextEncoder();
+    let isStreamClosed = false;
+
     const stream = new ReadableStream({
       async start(controller) {
         const send = (data: any) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          if (isStreamClosed) return;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch (error) {
+            console.error('Stream enqueue error:', error);
+            isStreamClosed = true;
+          }
         };
 
         try {
@@ -42,9 +63,11 @@ export async function POST(request: Request) {
           await saveProject(project);
 
           send({ status: 'initializing', message: 'Setting up production environment...' });
+          if (isStreamClosed) return;
           await new Promise(r => setTimeout(r, 800));
 
           send({ status: 'designing', message: 'Architecting design system and components...' });
+          if (isStreamClosed) return;
           const client = await getCopilotClient();
           
           const designSession = await client.createSession({
@@ -56,6 +79,7 @@ export async function POST(request: Request) {
           const designSpec = designResp?.data?.content || '';
           await designSession.destroy();
 
+          if (isStreamClosed) return;
           send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' });
           
           const htmlSession = await client.createSession({
@@ -71,21 +95,35 @@ export async function POST(request: Request) {
           const html = stripCodeFence(rawHtml);
           await htmlSession.destroy();
 
+          if (isStreamClosed) return;
           // Finalize project
           project.html = html;
           project.status = 'completed';
           await saveProject(project);
 
           send({ status: 'completed', html });
-          controller.close();
+          if (!isStreamClosed) {
+            controller.close();
+            isStreamClosed = true;
+          }
         } catch (error) {
+          if (isStreamClosed) return;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error('Generation Error:', errorMessage);
+          
           project.status = 'error';
           project.error = errorMessage;
           await saveProject(project);
+          
           send({ status: 'error', error: errorMessage });
-          controller.close();
+          if (!isStreamClosed) {
+            controller.close();
+            isStreamClosed = true;
+          }
         }
+      },
+      cancel() {
+        isStreamClosed = true;
       }
     });
 

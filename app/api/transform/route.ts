@@ -5,13 +5,26 @@ import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
 const MODEL = 'gpt-5-mini';
 
 let clientInstance: CopilotClient | null = null;
+let clientPromise: Promise<CopilotClient> | null = null;
 
 async function getCopilotClient(): Promise<CopilotClient> {
-  if (!clientInstance) {
-    clientInstance = new CopilotClient();
-    await clientInstance.start();
+  if (clientInstance) return clientInstance;
+  
+  if (!clientPromise) {
+    clientPromise = (async () => {
+      try {
+        const client = new CopilotClient();
+        await client.start();
+        clientInstance = client;
+        return client;
+      } catch (error) {
+        clientPromise = null;
+        throw error;
+      }
+    })();
   }
-  return clientInstance;
+  
+  return clientPromise;
 }
 
 async function sendCopilotMessage(systemPrompt: string, userPrompt: string): Promise<string> {
