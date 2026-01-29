@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, saveProject } from '@/lib/projects';
+import { stackServerApp } from '@/stack/server';
 
 export async function POST(req: NextRequest) {
   const { name, prompt } = await req.json();
 
   if (!name || name.trim().length === 0) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+  }
+
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
   const normalizedName = name.trim().toLowerCase();
@@ -26,6 +32,7 @@ export async function POST(req: NextRequest) {
       prompt,
       createdAt: new Date().toISOString(),
       status: 'pending',
+      userId: user.id,
     });
   }
 

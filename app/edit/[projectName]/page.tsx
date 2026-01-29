@@ -1,6 +1,7 @@
 import { getProject } from '@/lib/projects';
 import ProjectView from '@/components/project-view';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { stackServerApp } from '@/stack/server';
 
 interface PageProps {
   params: {
@@ -14,6 +15,16 @@ export default async function ProjectPage({ params }: PageProps) {
 
   if (!project) {
     notFound();
+  }
+
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    redirect('/handler/sign-in');
+  }
+
+  if (project.userId && project.userId !== user.id) {
+    // If it's someone else's project, don't let them edit
+    notFound(); 
   }
 
   return (

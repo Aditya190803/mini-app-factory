@@ -23,6 +23,11 @@ export default function Home() {
   const handleStart = async () => {
     if (!prompt.trim() || !projectName.trim() || isChecking) return;
     
+    if (!user) {
+      router.push('/handler/sign-in');
+      return;
+    }
+
     setIsChecking(true);
     setError('');
     
