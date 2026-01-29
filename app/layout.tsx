@@ -1,7 +1,11 @@
 import React from "react"
+import { StackProvider, StackTheme } from "@stackframe/stack";
+import { stackClientApp } from "../stack/client";
+import { ConvexClientProvider } from "@/components/convex-client-provider";
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import './fonts.css'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -38,8 +42,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        {children}
-        <Analytics />
+        <StackProvider app={stackClientApp}>
+          <StackTheme>
+            <ConvexClientProvider>
+              {children}
+              <Analytics />
+            </ConvexClientProvider>
+          </StackTheme>
+        </StackProvider>
       </body>
     </html>
   )
