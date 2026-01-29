@@ -1,4 +1,4 @@
-# Mini App Factory
+ # Mini App Factory
 
 A powerful AI-powered web application that generates production-ready static websites from natural language descriptions. Simply describe what you want to build, and the AI will create a complete, responsive HTML website for you.
 
@@ -10,6 +10,7 @@ A powerful AI-powered web application that generates production-ready static web
   - **Generate**: AI builds production-ready HTML with Tailwind CSS
 - **Live Preview**: See your generated website in real-time
 - **Code View**: Inspect the generated HTML code
+- **Polish Pass**: Run a full polish from the code view to refine images, typography, animations, and mobile layout via the LLM
 - **Download & Deploy**: Export as HTML file or deploy directly
 - **Responsive Design**: All generated websites work perfectly on mobile, tablet, and desktop
 - **Modern UI**: Built with Tailwind CSS v4 and shadcn/ui components
@@ -17,7 +18,7 @@ A powerful AI-powered web application that generates production-ready static web
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router
-- **AI**: Vercel AI SDK v6 with OpenAI GPT-4 Mini
+- **AI**: GitHub Copilot SDK with `gpt-5-mini` — requires `GITHUB_TOKEN` environment variable
 - **Styling**: Tailwind CSS v4 with custom dark theme
 - **Components**: shadcn/ui
 - **Language**: TypeScript
@@ -27,7 +28,6 @@ A powerful AI-powered web application that generates production-ready static web
 ### Prerequisites
 
 - Node.js 18+ and npm
-- OpenAI API key (via Vercel AI Gateway)
 
 ### Installation
 
@@ -35,12 +35,16 @@ A powerful AI-powered web application that generates production-ready static web
 2. Install dependencies:
    ```bash
    npm install
+   # OR (recommended) use pnpm
+   pnpm install
    ```
 
 3. Set up environment variables in your Vercel project or local `.env.local`:
    ```
-   OPENAI_API_KEY=your_api_key_here
+   GITHUB_TOKEN=your_github_personal_access_token
    ```
+
+4. Note: This project now requires `jszip` for ZIP downloads. Running `pnpm install` or `npm install` will pick it up from `package.json`.
 
 ### Development
 
@@ -51,6 +55,14 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the application.
+
+### Testing
+
+Run unit tests (Vitest):
+
+```bash
+npm test
+```
 
 ## How It Works
 
