@@ -4,6 +4,9 @@ import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
 
 const MODEL = 'gpt-5-mini';
 
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 let clientInstance: CopilotClient | null = null;
 let clientPromise: Promise<CopilotClient> | null = null;
 

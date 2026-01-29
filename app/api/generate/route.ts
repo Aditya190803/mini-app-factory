@@ -1,8 +1,12 @@
 import { CopilotClient } from '@github/copilot-sdk';
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
 import { getProject, saveProject } from '@/lib/projects';
+import { stackServerApp } from '@/stack/server';
 
 const MODEL = 'gpt-5-mini';
+
+export const maxDuration = 300; // Extend to 5 minutes for generation
+export const dynamic = 'force-dynamic';
 
 let clientInstance: CopilotClient | null = null;
 let clientPromise: Promise<CopilotClient> | null = null;
@@ -35,9 +39,18 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Project name is required' }, { status: 400 });
     }
 
+    const user = await stackServerApp.getUser();
+    if (!user) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const project = await getProject(projectName);
     if (!project) {
       return Response.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    if (project.userId && project.userId !== user.id) {
+      return Response.json({ error: 'Unauthorized to edit this project' }, { status: 403 });
     }
 
     const finalPrompt = prompt || project.prompt;
@@ -50,7 +63,8 @@ export async function POST(request: Request) {
         const send = (data: any) => {
           if (isStreamClosed) return;
           try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+            const chunk = encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+            controller.enqueue(chunk);
           } catch (error) {
             console.error('Stream enqueue error:', error);
             isStreamClosed = true;
@@ -68,8 +82,8 @@ export async function POST(request: Request) {
 
           send({ status: 'designing', message: 'Architecting design system and components...' });
           if (isStreamClosed) return;
-          const client = await getCopilotClient();
           
+          const client = await getCopilotClient();
           const designSession = await client.createSession({
             model: MODEL,
             systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
@@ -96,29 +110,35 @@ export async function POST(request: Request) {
           await htmlSession.destroy();
 
           if (isStreamClosed) return;
+
           // Finalize project
           project.html = html;
           project.status = 'completed';
           await saveProject(project);
 
           send({ status: 'completed', html });
-          if (!isStreamClosed) {
-            controller.close();
-            isStreamClosed = true;
-          }
         } catch (error) {
-          if (isStreamClosed) return;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           console.error('Generation Error:', errorMessage);
           
-          project.status = 'error';
-          project.error = errorMessage;
-          await saveProject(project);
-          
-          send({ status: 'error', error: errorMessage });
           if (!isStreamClosed) {
-            controller.close();
+            project.status = 'error';
+            project.error = errorMessage;
+            try {
+              await saveProject(project);
+            } catch (pErr) {
+              console.error('Failed to save error status:', pErr);
+            }
+            send({ status: 'error', error: errorMessage });
+          }
+        } finally {
+          if (!isStreamClosed) {
             isStreamClosed = true;
+            try {
+              controller.close();
+            } catch (err) {
+              console.error('Error closing controller:', err);
+            }
           }
         }
       },
@@ -130,8 +150,9 @@ export async function POST(request: Request) {
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     });
 
