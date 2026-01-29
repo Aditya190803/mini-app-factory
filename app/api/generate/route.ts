@@ -60,21 +60,32 @@ export async function POST(request: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // Safe send function to avoid "write after end" crashes
         const send = (data: any) => {
           if (isStreamClosed) return;
           try {
             const chunk = encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
             controller.enqueue(chunk);
           } catch (error) {
-            console.error('Stream enqueue error:', error);
+            // This is where the "stream was destroyed" error is typically caught
+            console.error('Stream write failed, closing:', error instanceof Error ? error.message : 'Unknown');
             isStreamClosed = true;
           }
         };
 
+        // Heartbeat to prevent generic gateway timeouts (Vercel, Nginx, Cloudflare)
+        const heartbeat = setInterval(() => {
+          send({ status: 'ping' });
+        }, 15000);
+
         try {
           // Update status to generating
           project.status = 'generating';
-          await saveProject(project);
+          try {
+            await saveProject(project);
+          } catch (err) {
+            console.error('Failed to update status to generating:', err);
+          }
 
           send({ status: 'initializing', message: 'Setting up production environment...' });
           if (isStreamClosed) return;
@@ -89,9 +100,13 @@ export async function POST(request: Request) {
             systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
           });
           
-          const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
-          const designSpec = designResp?.data?.content || '';
-          await designSession.destroy();
+          let designSpec = '';
+          try {
+            const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
+            designSpec = designResp?.data?.content || '';
+          } finally {
+            await designSession.destroy();
+          }
 
           if (isStreamClosed) return;
           send({ status: 'fabricating', message: 'Fabricating production-ready HTML/Tailwind code...' });
@@ -101,25 +116,33 @@ export async function POST(request: Request) {
             systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
           });
 
-          const mainPrompt = buildMainPrompt(finalPrompt);
-          const htmlResp = await htmlSession.sendAndWait({ 
-            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
-          }, 120000);
-          const rawHtml = htmlResp?.data?.content || '';
-          const html = stripCodeFence(rawHtml);
-          await htmlSession.destroy();
+          let html = '';
+          try {
+            const mainPrompt = buildMainPrompt(finalPrompt);
+            const htmlResp = await htmlSession.sendAndWait({ 
+              prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
+            }, 120000);
+            const rawHtml = htmlResp?.data?.content || '';
+            html = stripCodeFence(rawHtml);
+          } finally {
+            await htmlSession.destroy();
+          }
 
           if (isStreamClosed) return;
 
           // Finalize project
           project.html = html;
           project.status = 'completed';
-          await saveProject(project);
+          try {
+            await saveProject(project);
+          } catch (err) {
+            console.error('Failed to save final project state:', err);
+          }
 
           send({ status: 'completed', html });
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Generation Error:', errorMessage);
+          console.error('Generation Error Workflow:', errorMessage);
           
           if (!isStreamClosed) {
             project.status = 'error';
@@ -132,12 +155,13 @@ export async function POST(request: Request) {
             send({ status: 'error', error: errorMessage });
           }
         } finally {
+          clearInterval(heartbeat);
           if (!isStreamClosed) {
             isStreamClosed = true;
             try {
               controller.close();
             } catch (err) {
-              console.error('Error closing controller:', err);
+              // Ignore errors during close on an already destroyed stream
             }
           }
         }
@@ -150,7 +174,9 @@ export async function POST(request: Request) {
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
+        'Cache-Control': 'no-cache, no-transform, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
       },
