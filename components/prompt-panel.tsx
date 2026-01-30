@@ -20,6 +20,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
   };
 
   const isTokenMissing = error?.includes('GITHUB_TOKEN');
+  const isOpenRouterIssue = /OpenRouter|OPENROUTER|OPENROUTER_API_KEY/i.test(error || '');
 
   const examplePrompts = [
     'A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA',
@@ -62,6 +63,24 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
                   <li>Create a Personal Access Token (classic)</li>
                   <li>Click "Vars" in the left sidebar</li>
                   <li>Add <code style={{ color: 'var(--primary)' }} className="font-mono">GITHUB_TOKEN</code> with your token value</li>
+                </ol>
+              </div>
+            )}
+
+            {isOpenRouterIssue && (
+              <div 
+                className="text-xs p-3 border mt-3 space-y-2"
+                style={{
+                  backgroundColor: 'rgba(245, 158, 11, 0.03)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--secondary-text)',
+                }}
+              >
+                <p className="font-mono font-semibold">OPENROUTER SETUP:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">OPENROUTER_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Restart your dev server after adding the variable</li>
+                  <li>If the issue persists, ensure your server can reach <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--secondary)' }}>openrouter.ai</a></li>
                 </ol>
               </div>
             )}
@@ -167,7 +186,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: 'var(--primary)' }}
           ></div>
-          <span>GITHUB COPILOT • {model.toUpperCase()}</span>
+          <span>OpenRouter • {model.toUpperCase()}</span>
         </div>
       </div>
     </div>
