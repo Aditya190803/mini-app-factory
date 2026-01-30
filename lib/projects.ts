@@ -38,7 +38,7 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
     name: project.projectName,
     prompt: project.prompt,
     createdAt: new Date(project.createdAt).toISOString(),
-    status: project.status as any,
+    status: project.status as ProjectMetadata['status'],
     html: project.html,
     isPublished: project.isPublished,
     userId: project.userId,

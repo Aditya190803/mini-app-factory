@@ -266,6 +266,6 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    return Response.json({ error: 'Failed to initialize generation' }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : 'Failed to initialize generation' }, { status: 500 });
   }
 }

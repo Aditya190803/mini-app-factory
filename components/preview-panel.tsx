@@ -93,7 +93,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
         } else {
           alert('Invalid file format');
         }
-      } catch (err) {
+      } catch {
         alert('Failed to import');
       }
     };
@@ -417,22 +417,3 @@ function IframePreview({ html }: { html: string }) {
   );
 }
 
-function CodeView({ html }: { html: string }) {
-  return (
-    <div 
-      className="w-full h-full overflow-auto p-6"
-      style={{
-        backgroundColor: 'var(--background-overlay)',
-      }}
-    >
-      <pre 
-        className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed"
-        style={{
-          color: 'var(--secondary-text)',
-        }}
-      >
-        <code>{html}</code>
-      </pre>
-    </div>
-  );
-}

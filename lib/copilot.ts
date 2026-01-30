@@ -20,7 +20,8 @@ export async function getCopilotClient(options?: { logLevel?: 'none' | 'error' |
 
         // If method exists (depends on SDK version), check auth status and log it.
         try {
-          const getAuthStatusFn = (client as any).getAuthStatus;
+          const maybeAuthClient = client as unknown as { getAuthStatus?: () => Promise<{ isAuthenticated?: boolean; statusMessage?: string }> };
+          const getAuthStatusFn = maybeAuthClient.getAuthStatus;
           const authStatus = typeof getAuthStatusFn === 'function' ? await getAuthStatusFn.call(client) : undefined;
           if (authStatus && !authStatus.isAuthenticated) {
             throw new Error(`Copilot authentication failed: ${authStatus.statusMessage || 'No authentication available'}`);

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import EditorWorkspace from '@/components/editor-workspace';
 import { ProjectMetadata } from '@/lib/projects';
 
@@ -23,7 +23,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     { id: 'designing', label: 'Developing design aesthetic', status: 'pending' },
     { id: 'fabricating', label: 'Fabricating production code', status: 'pending' },
   ]);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [_currentStepIndex, setCurrentStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
@@ -133,7 +133,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             }
           }
         }
-      } catch (readError) {
+      } catch {
         // Stream read failed - fall back to polling
         console.warn('Stream interrupted, falling back to polling...');
         streamFailed = true;
@@ -153,8 +153,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           }
         } catch { /* ignore */ }
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'name' in err && (err as { name?: string }).name === 'AbortError') {
         streamFailed = true;
       } else {
         console.error('Generation fetch error:', err);
