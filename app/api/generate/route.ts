@@ -1,35 +1,12 @@
-import { CopilotClient } from '@github/copilot-sdk';
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
 import { getProject, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
+import { getCopilotClient } from '@/lib/copilot';
 
 const MODEL = 'gpt-5-mini';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
-
-let clientInstance: CopilotClient | null = null;
-let clientPromise: Promise<CopilotClient> | null = null;
-
-async function getCopilotClient(): Promise<CopilotClient> {
-  if (clientInstance) return clientInstance;
-  
-  if (!clientPromise) {
-    clientPromise = (async () => {
-      try {
-        const client = new CopilotClient();
-        await client.start();
-        clientInstance = client;
-        return client;
-      } catch (error) {
-        clientPromise = null;
-        throw error;
-      }
-    })();
-  }
-  
-  return clientPromise;
-}
 
 /**
  * Creates a thread-safe SSE writer that gracefully handles stream destruction.
@@ -38,14 +15,14 @@ async function getCopilotClient(): Promise<CopilotClient> {
 function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>, signal?: AbortSignal) {
   const encoder = new TextEncoder();
   let closed = false;
-  
+
   const write = (data: object): boolean => {
     // Check if specifically closed or if the signal is aborted
     if (closed || signal?.aborted) {
       if (!closed) closed = true;
       return false;
     }
-    
+
     try {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       return true;
@@ -54,7 +31,7 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
       return false;
     }
   };
-  
+
   const close = () => {
     if (closed) return;
     closed = true;
@@ -64,10 +41,10 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
       // Stream might already be closed, errored, or cancelled
     }
   };
-  
+
   const markClosed = () => { closed = true; };
   const isClosed = () => closed || !!signal?.aborted;
-  
+
   return { write, close, markClosed, isClosed };
 }
 
@@ -75,7 +52,7 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
  * Runs the generation workflow, saving progress to the database.
  * The workflow continues even if the stream is closed - results are persisted.
  */
-async function runGeneration(
+export async function runGeneration(
   projectName: string,
   finalPrompt: string,
   signal: AbortSignal
@@ -86,24 +63,38 @@ async function runGeneration(
   try {
     // Update status
     project.status = 'generating';
-    await saveProject(project).catch(() => {});
+    await saveProject(project).catch(() => { });
 
     if (signal.aborted) return { error: 'Aborted' };
 
     const client = await getCopilotClient();
-    
+
     // Design phase
     const designSession = await client.createSession({
       model: MODEL,
       systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
     });
-    
+
     let designSpec = '';
     try {
-      const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
-      designSpec = designResp?.data?.content || '';
+      // Listen for session errors that might occur during send
+      let sessionError: Error | null = null;
+      const unsubscribe = designSession.on((event) => {
+        if (event.type === 'session.error') {
+          sessionError = new Error(event.data.message);
+          console.error('[Copilot] Design session error:', event.data.message);
+        }
+      });
+
+      try {
+        const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
+        if (sessionError) throw sessionError;
+        designSpec = designResp?.data?.content || '';
+      } finally {
+        unsubscribe();
+      }
     } finally {
-      await designSession.destroy().catch(() => {});
+      await designSession.destroy().catch(() => { });
     }
 
     if (signal.aborted) return { error: 'Aborted' };
@@ -116,13 +107,27 @@ async function runGeneration(
 
     let html = '';
     try {
-      const mainPrompt = buildMainPrompt(finalPrompt);
-      const htmlResp = await htmlSession.sendAndWait({ 
-        prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}` 
-      }, 120000);
-      html = stripCodeFence(htmlResp?.data?.content || '');
+      // Listen for session errors that might occur during send
+      let sessionError: Error | null = null;
+      const unsubscribe = htmlSession.on((event) => {
+        if (event.type === 'session.error') {
+          sessionError = new Error(event.data.message);
+          console.error('[Copilot] HTML session error:', event.data.message);
+        }
+      });
+
+      try {
+        const mainPrompt = buildMainPrompt(finalPrompt);
+        const htmlResp = await htmlSession.sendAndWait({
+          prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
+        }, 120000);
+        if (sessionError) throw sessionError;
+        html = stripCodeFence(htmlResp?.data?.content || '');
+      } finally {
+        unsubscribe();
+      }
     } finally {
-      await htmlSession.destroy().catch(() => {});
+      await htmlSession.destroy().catch(() => { });
     }
 
     // Always save the result to the database (even if client disconnected)
@@ -138,7 +143,7 @@ async function runGeneration(
     return { html };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    
+
     // Save error state
     try {
       const proj = await getProject(projectName);
@@ -148,7 +153,7 @@ async function runGeneration(
         await saveProject(proj);
       }
     } catch { /* ignore */ }
-    
+
     return { error: errorMessage };
   }
 }
@@ -176,20 +181,20 @@ export async function POST(request: Request) {
     }
 
     const finalPrompt = prompt || project.prompt;
-    
+
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();
-    
+
     // Also listen to the request's abort signal (client disconnect)
     request.signal.addEventListener('abort', () => abortController.abort());
 
     let sse: ReturnType<typeof createSSEWriter>;
-    
+
     const stream = new ReadableStream({
       start(controller) {
         sse = createSSEWriter(controller, abortController.signal);
         let heartbeat: ReturnType<typeof setInterval> | null = null;
-        
+
         // Start heartbeat immediately
         heartbeat = setInterval(() => {
           if (sse.isClosed()) {
@@ -214,16 +219,16 @@ export async function POST(request: Request) {
         (async () => {
           await new Promise(r => setTimeout(r, 600));
           if (sse.isClosed()) return;
-          
+
           if (!sse.write({ status: 'designing', message: 'Architecting design system...' })) {
             return;
           }
-          
+
           const result = await runGeneration(projectName, finalPrompt, abortController.signal);
-          
+
           // Check stream state before any writes
           if (sse.isClosed()) return;
-          
+
           if ('error' in result && result.error !== 'Aborted') {
             sse.write({ status: 'error', error: result.error });
           } else if ('html' in result) {

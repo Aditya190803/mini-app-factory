@@ -1,36 +1,13 @@
-import { CopilotClient } from '@github/copilot-sdk';
 import { z } from 'zod';
 import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
+import { getCopilotClient } from '@/lib/copilot';
 
 const MODEL = 'gpt-5-mini';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-let clientInstance: CopilotClient | null = null;
-let clientPromise: Promise<CopilotClient> | null = null;
-
-async function getCopilotClient(): Promise<CopilotClient> {
-  if (clientInstance) return clientInstance;
-  
-  if (!clientPromise) {
-    clientPromise = (async () => {
-      try {
-        const client = new CopilotClient();
-        await client.start();
-        clientInstance = client;
-        return client;
-      } catch (error) {
-        clientPromise = null;
-        throw error;
-      }
-    })();
-  }
-  
-  return clientPromise;
-}
-
-async function sendCopilotMessage(systemPrompt: string, userPrompt: string): Promise<string> {
+export async function sendCopilotMessage(systemPrompt: string, userPrompt: string): Promise<string> {
   const client = await getCopilotClient();
   const session = await client.createSession({
     model: MODEL,
