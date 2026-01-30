@@ -181,6 +181,11 @@ export async function POST(request: Request) {
         
         // Start heartbeat immediately
         heartbeat = setInterval(() => {
+          if (sse.isClosed()) {
+            if (heartbeat) clearInterval(heartbeat);
+            abortController.abort();
+            return;
+          }
           if (!sse.write({ status: 'ping' })) {
             if (heartbeat) clearInterval(heartbeat);
             abortController.abort();
@@ -188,25 +193,35 @@ export async function POST(request: Request) {
         }, 8000);
 
         // Send initial status
-        sse.write({ status: 'initializing', message: 'Setting up production environment...' });
+        if (!sse.write({ status: 'initializing', message: 'Setting up production environment...' })) {
+          if (heartbeat) clearInterval(heartbeat);
+          abortController.abort();
+          return;
+        }
 
         // Run the generation
         (async () => {
           await new Promise(r => setTimeout(r, 600));
           if (sse.isClosed()) return;
           
-          sse.write({ status: 'designing', message: 'Architecting design system...' });
+          if (!sse.write({ status: 'designing', message: 'Architecting design system...' })) {
+            return;
+          }
           
           const result = await runGeneration(projectName, finalPrompt, abortController.signal);
           
+          // Check stream state before any writes
           if (sse.isClosed()) return;
           
           if ('error' in result && result.error !== 'Aborted') {
             sse.write({ status: 'error', error: result.error });
           } else if ('html' in result) {
-            sse.write({ status: 'fabricating', message: 'Finalizing...' });
+            // Double-check stream state before each write
+            if (!sse.write({ status: 'fabricating', message: 'Finalizing...' })) return;
             await new Promise(r => setTimeout(r, 300));
-            sse.write({ status: 'completed', html: result.html });
+            if (!sse.isClosed()) {
+              sse.write({ status: 'completed', html: result.html });
+            }
           }
         })()
           .catch((err) => {
