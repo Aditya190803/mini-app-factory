@@ -42,13 +42,18 @@ export default function Home() {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Name check failed');
       }
-      
+
       const data = await response.json();
+      // Navigate to the edit page and do NOT clear the loading flag here.
+      // Clearing `isChecking` immediately causes the button text to revert
+      // briefly before the client navigation completes. Let the navigation
+      // unmount this component instead.
       router.push(`/edit/${data.name}`);
+      return;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);
-    } finally {
+      // Only clear the loading flag on error so the UI reflects failure.
       setIsChecking(false);
     }
   };
