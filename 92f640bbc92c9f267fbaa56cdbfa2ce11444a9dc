@@ -1,0 +1,25 @@
+vitest.config.ts
+  54c7e4ce8fb3d4ba 1-13
+app/api/generate/route.ts
+  54c7e4ce8fb3d4ba 184-188,196-200,207-209,213,219-220,222,224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.40",
+  "base_commit_sha": "92f640bbc92c9f267fbaa56cdbfa2ce11444a9dc",
+  "prompts": {
+    "54c7e4ce8fb3d4ba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_3f27e2c64ffezjF9UjIlht41fw",
+        "model": "opencode/big-pickle"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 4,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
