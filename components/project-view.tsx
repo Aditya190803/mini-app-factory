@@ -107,7 +107,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               if (data.status === 'ping') continue;
               
               if (data.status === 'error') {
-                setError(data.error);
+                setError(data.error || 'Generation failed');
                 reader.cancel().catch(() => {});
                 return;
               }
@@ -128,14 +128,17 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
                 }
                 return step;
               }));
-            } catch {
-              // Skip malformed messages
+            } catch (e) {
+              // Skip malformed messages but log for debugging
+              console.debug('Malformed stream message:', e);
             }
           }
         }
-      } catch {
+      } catch (e) {
         // Stream read failed - fall back to polling
-        console.warn('Stream interrupted, falling back to polling...');
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.warn('Stream interrupted, falling back to polling...', errMsg);
+        setError(`Stream interrupted: ${errMsg}`);
         streamFailed = true;
       }
       
@@ -156,9 +159,11 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null && 'name' in err && (err as { name?: string }).name === 'AbortError') {
         streamFailed = true;
+        setError('Generation aborted (timeout)');
       } else {
+        const msg = err instanceof Error ? err.message : String(err);
         console.error('Generation fetch error:', err);
-        streamFailed = true;
+        setError(`Network error: ${msg}`);
       }
     }
 
@@ -254,10 +259,11 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             animate={{ opacity: 1 }}
             className="mt-8 p-4 border border-red-500/50 bg-red-500/10 text-red-500 text-sm font-mono text-center"
           >
-            ERROR: {error}
+            <div className="font-mono font-bold mb-2">ERROR</div>
+            <div className="whitespace-pre-wrap">{error}</div>
             <button 
               onClick={() => { hasStarted.current = false; startGeneration(); }}
-              className="block mx-auto mt-2 underline"
+              className="block mx-auto mt-3 underline"
             >
               Retry
             </button>
@@ -267,7 +273,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         <div className="mt-12 pt-8 border-t border-border flex justify-between items-center text-[10px] font-mono text-muted-text uppercase tracking-widest">
           <div>Autonomous Construction</div>
           <div className="flex gap-4">
-            <span>Model: GPT-5-MINI</span>
+            <span>Model: OpenRouter ({process.env.NEXT_PUBLIC_OPENROUTER_MODEL || 'moonshotai/kimi-k2:free'})</span>
             <span>Ver: 1.0.4</span>
           </div>
         </div>

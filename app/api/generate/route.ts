@@ -1,9 +1,9 @@
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
 import { getProject, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
-import { getCopilotClient } from '@/lib/copilot';
+import { getAIClient } from '@/lib/ai-client';
 
-const MODEL = 'gpt-5-mini';
+const MODEL = process.env.OPENROUTER_MODEL || 'moonshotai/kimi-k2:free';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -67,7 +67,7 @@ export async function runGeneration(
 
     if (signal.aborted) return { error: 'Aborted' };
 
-    const client = await getCopilotClient();
+    const client = await getAIClient();
 
     // Design phase
     const designSession = await client.createSession({
@@ -82,7 +82,7 @@ export async function runGeneration(
       const unsubscribe = designSession.on((event) => {
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
-          console.error('[Copilot] Design session error:', event.data.message);
+          console.error('[AI] Design session error:', event.data.message);
         }
       });
 
@@ -112,7 +112,7 @@ export async function runGeneration(
       const unsubscribe = htmlSession.on((event) => {
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
-          console.error('[Copilot] HTML session error:', event.data.message);
+          console.error('[AI] HTML session error:', event.data.message);
         }
       });
 

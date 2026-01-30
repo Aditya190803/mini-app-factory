@@ -18,7 +18,7 @@ A powerful AI-powered web application that generates production-ready static web
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router
-- **AI**: GitHub Copilot SDK with `gpt-5-mini` — requires `GITHUB_TOKEN` environment variable
+- **AI**: OpenRouter (model: `moonshotai/kimi-k2:free`) — requires `OPENROUTER_API_KEY` environment variable
 - **Styling**: Tailwind CSS v4 with custom dark theme
 - **Components**: shadcn/ui
 - **Language**: TypeScript
@@ -41,7 +41,7 @@ A powerful AI-powered web application that generates production-ready static web
 
 3. Set up environment variables in your Vercel project or local `.env.local`:
    ```
-   GITHUB_TOKEN=your_github_personal_access_token
+   OPENROUTER_API_KEY=your_openrouter_api_key
    ```
 
 4. Note: This project now requires `jszip` for ZIP downloads. Running `pnpm install` or `npm install` will pick it up from `package.json`.

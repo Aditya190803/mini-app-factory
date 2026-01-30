@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useUser } from "@stackframe/stack";
+import AIStatusBadge from '@/components/ai-status-badge';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -342,12 +343,15 @@ export default function Home() {
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--muted-text)' }}>
-            <div 
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: 'var(--success)' }}
-            />
-            <span>GITHUB COPILOT SDK</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--muted-text)' }}>
+              <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--success)' }} />
+              <span>OpenRouter AI</span>
+            </div>
+
+            <div>
+              <AIStatusBadge />
+            </div>
           </div>
           <p 
             className="text-xs font-mono"

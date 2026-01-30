@@ -133,15 +133,39 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: editableHtml, prompt: transformPrompt }),
       });
+
+      // Network-level failure (fetch throws) will be caught in catch block below.
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Transform failed');
+        // Try to get any useful error payload from the server
+        let text = '';
+        try {
+          const json = await response.json();
+          text = json?.error || JSON.stringify(json);
+        } catch (e) {
+          try {
+            text = await response.text();
+          } catch {
+            text = response.statusText;
+          }
+        }
+        let msg = `Transform failed: ${response.status} ${text}`;
+        // If server returns 503 and our AI backend message, offer specific remediation steps
+        if (response.status === 503 && /(?:OpenRouter|AI)/i.test(text)) {
+          msg = `${msg}. To fix locally: ensure you have an OpenRouter API key set (OPENROUTER_API_KEY) in your environment or that your server can reach the OpenRouter service. Then restart your dev server.`;
+        }
+
+        console.error(msg);
+        alert(msg);
+        return;
       }
+
       const data = await response.json();
       setEditableHtml(data.html);
       setTransformPrompt('');
     } catch (err) {
-      console.error('Transform error', err);
+      // This typically indicates a network problem (server unavailable / connection reset)
+      console.error('Transform network error', err);
+      alert('Unable to reach the transform service. Check your dev server and OpenRouter configuration (OPENROUTER_API_KEY).');
     } finally {
       setIsTransforming(false);
     }
