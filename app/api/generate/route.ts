@@ -35,12 +35,17 @@ async function getCopilotClient(): Promise<CopilotClient> {
  * Creates a thread-safe SSE writer that gracefully handles stream destruction.
  * All writes are wrapped in try-catch and the closed state is tracked atomically.
  */
-function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
+function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>, signal?: AbortSignal) {
   const encoder = new TextEncoder();
   let closed = false;
   
   const write = (data: object): boolean => {
-    if (closed) return false;
+    // Check if specifically closed or if the signal is aborted
+    if (closed || signal?.aborted) {
+      if (!closed) closed = true;
+      return false;
+    }
+    
     try {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       return true;
@@ -53,11 +58,15 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
   const close = () => {
     if (closed) return;
     closed = true;
-    try { controller.close(); } catch { /* already closed */ }
+    try {
+      controller.close();
+    } catch {
+      // Stream might already be closed, errored, or cancelled
+    }
   };
   
   const markClosed = () => { closed = true; };
-  const isClosed = () => closed;
+  const isClosed = () => closed || !!signal?.aborted;
   
   return { write, close, markClosed, isClosed };
 }
@@ -174,9 +183,11 @@ export async function POST(request: Request) {
     // Also listen to the request's abort signal (client disconnect)
     request.signal.addEventListener('abort', () => abortController.abort());
 
+    let sse: ReturnType<typeof createSSEWriter>;
+    
     const stream = new ReadableStream({
       start(controller) {
-        const sse = createSSEWriter(controller);
+        sse = createSSEWriter(controller, abortController.signal);
         let heartbeat: ReturnType<typeof setInterval> | null = null;
         
         // Start heartbeat immediately
@@ -236,6 +247,7 @@ export async function POST(request: Request) {
       },
       cancel() {
         abortController.abort();
+        if (sse) sse.markClosed();
       }
     });
 

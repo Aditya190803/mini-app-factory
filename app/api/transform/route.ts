@@ -41,7 +41,7 @@ async function sendCopilotMessage(systemPrompt: string, userPrompt: string): Pro
     const response = await session.sendAndWait({ prompt: userPrompt }, 120000);
     return response?.data?.content || '';
   } finally {
-    await session.destroy();
+    await session.destroy().catch(() => {});
   }
 }
 
