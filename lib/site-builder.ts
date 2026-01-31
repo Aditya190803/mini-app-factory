@@ -53,7 +53,7 @@ export function createJob(jobId: string, description: string): BuildJob {
   return job;
 }
 
-const MODEL = process.env.OPENROUTER_MODEL || 'moonshotai/kimi-k2:free';
+const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
 
 export function buildMainPrompt(description: string): string {
   return `Create a complete, production-ready HTML landing page for: ${description}
@@ -250,7 +250,7 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
 }
 
-export async function runAISession(prompt: string, outputDir: string, job?: BuildJob, timeout = 300000): Promise<{ success: boolean; output: string }>{
+export async function runAISession(prompt: string, outputDir: string, job?: BuildJob, timeout = 300000): Promise<{ success: boolean; output: string }> {
   const client = await getAIClient();
   const session = await client.createSession({ model: MODEL });
   try {
@@ -283,7 +283,7 @@ export async function runAISession(prompt: string, outputDir: string, job?: Buil
   } catch (err: any) {
     return { success: false, output: String(err?.message || err) };
   } finally {
-    await session.destroy().catch(() => {});
+    await session.destroy().catch(() => { });
   }
 }
 

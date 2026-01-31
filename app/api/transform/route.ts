@@ -2,20 +2,17 @@ import { z } from 'zod';
 import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
 import { getAIClient } from '@/lib/ai-client';
 
-const MODEL = process.env.OPENROUTER_MODEL || 'moonshotai/kimi-k2:free';
-
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 // Health check so clients can verify the endpoint is available without invoking the AI backend
 export async function GET() {
   return Response.json({ ok: true });
-} 
+}
 
 export async function sendAIMessage(systemPrompt: string, userPrompt: string): Promise<string> {
   const client = await getAIClient();
   const session = await client.createSession({
-    model: MODEL,
     systemMessage: { content: systemPrompt },
   });
 
@@ -23,7 +20,7 @@ export async function sendAIMessage(systemPrompt: string, userPrompt: string): P
     const response = await session.sendAndWait({ prompt: userPrompt }, 120000);
     return response?.data?.content || '';
   } finally {
-    await session.destroy().catch(() => {});
+    await session.destroy().catch(() => { });
   }
 }
 

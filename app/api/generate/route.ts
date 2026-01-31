@@ -3,7 +3,7 @@ import { getProject, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { getAIClient } from '@/lib/ai-client';
 
-const MODEL = process.env.OPENROUTER_MODEL || 'moonshotai/kimi-k2:free';
+const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -46,6 +46,29 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
   const isClosed = () => closed || !!signal?.aborted;
 
   return { write, close, markClosed, isClosed };
+}
+
+function sanitizeErrorMessage(raw: unknown): string {
+  try {
+    const rawMsg = typeof raw === 'string' ? raw : raw && typeof (raw as any).message === 'string' ? (raw as any).message : String(raw);
+    const m = rawMsg.toLowerCase();
+
+    if (m.includes('cerebras_api_key') || m.includes('cerebras api key') || m.includes('cerebras_api_key'.toLowerCase())) {
+      return 'Missing CEREBRAS_API_KEY. To enable AI features, set CEREBRAS_API_KEY in your environment or deployment variables and restart the server.';
+    }
+
+    if (m.includes('cerebras') || m.includes('provider returned') || m.includes('rate-limited') || m.includes('glm') || m.includes('openinference')) {
+      return 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Add your CEREBRAS_API_KEY, switch providers, or try again shortly.';
+    }
+
+    if (/timeout|timed out/.test(m)) return 'AI request timed out. Try again.';
+    if (/network|enotfound|eai_again|econnrefused|econnreset/.test(m)) return 'Network error contacting AI provider. Ensure server can reach the provider and try again.';
+
+    // Default to the raw string but keep it concise
+    return rawMsg.length > 800 ? rawMsg.slice(0, 800) + '…' : rawMsg;
+  } catch (_) {
+    return 'Unknown error contacting AI provider';
+  }
 }
 
 /**
@@ -142,9 +165,12 @@ export async function runGeneration(
 
     return { html };
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    const original = err instanceof Error ? err.message : String(err);
+    const errorMessage = sanitizeErrorMessage(original);
 
-    // Save error state
+    // Log original for debugging, save sanitized to project state
+    console.error('[Generation] error for', projectName, ':', original);
+
     try {
       const proj = await getProject(projectName);
       if (proj) {
@@ -241,8 +267,10 @@ export async function POST(request: Request) {
           }
         })()
           .catch((err) => {
+            const sanitized = sanitizeErrorMessage(err instanceof Error ? err.message : err);
+            console.error('Generation workflow error:', err);
             if (!sse.isClosed()) {
-              sse.write({ status: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
+              sse.write({ status: 'error', error: sanitized });
             }
           })
           .finally(() => {
@@ -266,6 +294,8 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Failed to initialize generation' }, { status: 500 });
+    const msg = sanitizeErrorMessage(error instanceof Error ? error.message : error);
+    console.error('Failed to initialize generation:', error);
+    return Response.json({ error: msg }, { status: 500 });
   }
 }
