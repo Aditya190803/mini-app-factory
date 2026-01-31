@@ -85,3 +85,23 @@ export const getUserProjects = query({
       .collect();
   },
 });
+
+export const deleteProject = mutation({
+  args: {
+    projectName: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
+      .first();
+
+    if (!project) throw new Error("Project not found");
+    if (project.userId !== args.userId) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.delete(project._id);
+  },
+});

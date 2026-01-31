@@ -1,14 +1,17 @@
 'use client';
 
 import { useUser } from "@stackframe/stack";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function DashboardPage() {
   const user = useUser();
   const router = useRouter();
   const projects = useQuery(api.projects.getUserProjects, { userId: user?.id ?? "" });
+  const deleteProject = useMutation(api.projects.deleteProject);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   if (!user) {
     return (
@@ -31,6 +34,21 @@ export default function DashboardPage() {
     );
   }
 
+  const handleDelete = async (projectName: string) => {
+    if (!user) return;
+    if (confirm(`Are you sure you want to delete "${projectName}"?`)) {
+      setIsDeleting(projectName);
+      try {
+        await deleteProject({ projectName, userId: user.id });
+      } catch (error) {
+        console.error("Failed to delete project:", error);
+        alert("Failed to delete project. Please try again.");
+      } finally {
+        setIsDeleting(null);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-5xl mx-auto px-6 py-10">
@@ -50,11 +68,23 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(projects ?? []).map((project) => (
             <div key={project._id} className="border p-4" style={{ borderColor: 'var(--border)' }}>
-              <div className="text-sm font-mono" style={{ color: 'var(--foreground)' }}>
-                {project.projectName}
-              </div>
-              <div className="text-[10px] mt-1" style={{ color: 'var(--muted-text)' }}>
-                {new Date(project.createdAt).toLocaleDateString()}
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="text-sm font-mono" style={{ color: 'var(--foreground)' }}>
+                    {project.projectName}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ color: 'var(--muted-text)' }}>
+                    {new Date(project.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDelete(project.projectName)}
+                  disabled={isDeleting === project.projectName}
+                  className="text-[10px] font-mono uppercase opacity-50 hover:opacity-100 transition-opacity"
+                  style={{ color: 'var(--error, #ff4444)' }}
+                >
+                  {isDeleting === project.projectName ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
               <div className="mt-3 flex gap-2">
                 <button
