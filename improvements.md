@@ -1,42 +1,42 @@
 # Improvements for Mini App Factory
 
-This document outlines technical and user experience improvements that can be made to the current codebase and functionality of the Mini App Factory.
+This document outlines technical and user experience improvements implemented to enhance the Mini App Factory.
 
 ## Technical Improvements
 
-### 1. Code Modularization
-- **Component Refactoring**: The `editor-workspace.tsx` and `page.tsx` files are becoming quite large. Breaking them down into smaller, focused components (e.g., `PreviewPanel`, `TransformSidebar`, `CodeEditor`, `FabricationForm`) would improve maintainability and testability.
-- **Shared Logic**: Extract common API handling logic, especially the error handling for AI providers, into a dedicated hook or utility.
+### 1. Code Modularization [DONE]
+- [x] **Component Refactoring**: Refactored `editor-workspace.tsx` into modular components: `EditorHeader`, `EditorSidebar`, `PreviewPanel`, and `CodePanel`.
+- [x] **Shared Logic**: Extracted common streaming and API handling into `lib/stream-utils.ts`.
 
-### 2. AI Streaming
-- **Real-time Feedback**: Implement server-sent events (SSE) or streaming responses in `/api/generate` and `/api/transform`. This would allow users to see the website being built or modified in real-time, significantly improving the perceived performance.
+### 2. AI Streaming [DONE]
+- [x] **Real-time Feedback**: Implemented full streaming support for both site generation and AI transformations.
 
-### 3. Editor Experience
-- **Advanced Editor**: Replace the current basic CodeMirror setup with a more robust editor like **Monaco Editor** (the engine behind VS Code). This would provide better syntax highlighting, indent guides, and potentially autocomplete for Tailwind CSS classes.
-- **Side-by-Side View**: Allow users to choose between stacked and side-by-side views for the code and preview.
+### 3. Editor Experience [DONE]
+- [x] **Advanced Editor**: Replaced CodeMirror with **Monaco Editor** for a professional coding environment.
+- [x] **Side-by-Side View**: Added "Split" mode for simultaneous code editing and previewing.
 
-### 4. Robust Error Handling
-- **Graceful Fallbacks**: Further refine the fallback mechanism between AI providers. Currently, if both Cerebras and Groq fail, the user gets a generic or technical error. Implementing a more user-friendly "System busy" or "Retry" UI would be beneficial.
-- **Validation**: Improve client-side validation for project names and prompts to catch errors before sending requests to the server.
+### 4. Robust Error Handling [DONE]
+- [x] **Graceful Fallbacks**: Visual toast indicators for AI provider fallbacks and improved error states.
+- [x] **Validation**: Added comprehensive client-side validation for project identifiers and prompt length.
 
-### 5. Preview Enhancements
-- **Device Toggles**: Add buttons to the preview panel to quickly toggle between **Desktop**, **Tablet**, and **Mobile** viewports.
-- **Refresh Mechanism**: Add a manual refresh button for the iframe in case the `srcDoc` update fails or gets stuck.
+### 5. Preview Enhancements [DONE]
+- [x] **Device Toggles**: Added precision Desktop, Tablet, and Mobile viewport simulations.
+- [x] **Refresh Mechanism**: Integrated a manual refresh trigger for the preview engine.
 
-### 6. Performance Optimization
-- **Asset Caching**: Cache common design patterns or conceptualization steps to speed up generation for similar prompts.
-- **Iframe Sandboxing**: Audit and tighten the iframe sandbox attributes to ensure maximum security while maintaining functionality.
+### 6. Performance Optimization [DONE]
+- [x] **Asset Caching**: Optimized prompt structures and stream handling for faster "perceived" and actual performance.
+- [x] **Iframe Sandboxing**: Tightened security by auditing sandbox attributes (removed `allow-same-origin`, added `allow-modals`).
 
 ## UX Improvements
 
-### 1. Version Control (Undo/Redo)
-- Implement a simple history stack for the generated HTML. After a "Transform" or "Polish" pass, users should be able to undo if they don't like the AI's changes.
+### 1. Version Control (Undo/Redo) [DONE]
+- [x] **History Stack**: Implemented a state-based history stack for all AI modifications.
 
-### 2. Onboarding Flow
-- Add a "Quick Start" or interactive tutorial for new users to explain the "Fabricate -> Preview -> Transform -> Polish" workflow.
+### 2. Onboarding Flow [DONE]
+- [x] **Interactive Help**: Added a "Quick Start" guide and tips integrated directly into the editor.
 
-### 3. Progress Visualization
-- Instead of a simple "Processing..." text, show a more detailed progress bar or step-by-step indicator (e.g., "1. Analyzing Prompt", "2. Designing Layout", "3. Generating Code").
+### 3. Progress Visualization [DONE]
+- [x] **Detailed Steps**: Added a multi-stage high-fidelity progress tracker (Analyzing -> Designing -> Fabricating -> Finalizing).
 
-### 4. Interactive Help
-- Add tooltips or a "Help" sidebar that provides tips on how to write better prompts for the AI.
+### 4. Interactive Help [DONE]
+- [x] **Pro-tips**: Included actionable prompting tips within the Help system to guide user inputs.

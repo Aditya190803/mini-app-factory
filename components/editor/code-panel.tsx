@@ -1,20 +1,19 @@
 'use client';
 
 import React from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { html as htmlLang } from '@codemirror/lang-html';
+import Editor from '@monaco-editor/react';
 
 interface CodePanelProps {
     html: string;
-    onChange: (val: string) => void;
+    onChange: (val: string | undefined) => void;
     onReset: () => void;
     initialHTML: string;
 }
 
 export default function CodePanel({ html, onChange, onReset, initialHTML }: CodePanelProps) {
     return (
-        <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: 'var(--background-surface)' }}>
-            <div className="absolute top-4 right-8 z-10 flex gap-2">
+        <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: '#1e1e1e' }}>
+            <div className="absolute top-4 right-8 z-20 flex gap-2">
                 <button
                     onClick={() => {
                         navigator.clipboard.writeText(html);
@@ -36,20 +35,25 @@ export default function CodePanel({ html, onChange, onReset, initialHTML }: Code
                     Reset
                 </button>
             </div>
-            <div className="flex-1 overflow-auto pt-0">
-                <CodeMirror
-                    value={html}
+            <div className="flex-1 overflow-hidden pt-0">
+                <Editor
                     height="100%"
-                    extensions={[htmlLang()]}
-                    onChange={(value) => onChange(value)}
-                    basicSetup={{
-                        highlightActiveLine: true,
-                        lineNumbers: true,
-                        foldGutter: true,
-                        highlightActiveLineGutter: true,
+                    defaultLanguage="html"
+                    theme="vs-dark"
+                    value={html}
+                    onChange={onChange}
+                    options={{
+                        fontSize: 12,
+                        fontFamily: 'var(--font-mono)',
+                        minimap: { enabled: false },
+                        padding: { top: 20 },
+                        scrollBeyondLastLine: false,
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        tabSize: 2,
+                        lineNumbers: 'on',
+                        renderLineHighlight: 'all',
                     }}
-                    theme="dark"
-                    style={{ height: '100%', fontSize: '12px' }}
                 />
             </div>
         </div>

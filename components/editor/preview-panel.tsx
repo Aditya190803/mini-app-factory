@@ -69,7 +69,7 @@ export default function PreviewPanel({ previewHtml }: PreviewPanelProps) {
                         key={refreshKey}
                         srcDoc={previewHtml}
                         className="w-full h-full border-0"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
                         title="Website Preview"
                     />
                 </div>

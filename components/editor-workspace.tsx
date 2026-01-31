@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { stripCodeFence } from '@/lib/utils';
+import { readStream } from '@/lib/stream-utils';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
@@ -177,20 +178,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         throw new Error(data.error || 'Transform failed');
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No readable stream');
-
       let streamedHtml = '';
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
+      await readStream(response, (chunk) => {
         streamedHtml += chunk;
         setEditableHtml(streamedHtml);
-      }
+      });
 
       const finalHtml = stripCodeFence(streamedHtml);
       setEditableHtml(finalHtml);
@@ -215,20 +207,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       });
       if (!resp.ok) throw new Error('Polish failed');
 
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error('No readable stream');
-
       let streamedHtml = '';
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
+      await readStream(resp, (chunk) => {
         streamedHtml += chunk;
         setEditableHtml(streamedHtml);
-      }
+      });
 
       const finalHtml = stripCodeFence(streamedHtml);
       setEditableHtml(finalHtml);
@@ -269,10 +252,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  const handleEditorChange = (value: string) => {
-    setEditableHtml(value);
-    // We don't add to history on every keystroke to avoid cluttering the stack
-    // Maybe we could add a debounced version if needed
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      setEditableHtml(value);
+    }
   };
 
   return (

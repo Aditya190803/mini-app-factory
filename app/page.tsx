@@ -22,7 +22,30 @@ export default function Home() {
   }, []);
 
   const handleStart = async () => {
-    if (!prompt.trim() || !projectName.trim() || isChecking) return;
+    setError('');
+
+    // Simple validation
+    if (!projectName.trim()) {
+      setError('Project identifier is required.');
+      return;
+    }
+
+    if (projectName.length < 3) {
+      setError('Project identifier must be at least 3 characters.');
+      return;
+    }
+
+    if (!prompt.trim()) {
+      setError('Please enter your project specifications.');
+      return;
+    }
+
+    if (prompt.length < 10) {
+      setError('Your prompt is a bit too short. Please provide more detail (at least 10 characters).');
+      return;
+    }
+
+    if (isChecking) return;
 
     if (!user) {
       router.push('/handler/sign-in');
@@ -30,31 +53,25 @@ export default function Home() {
     }
 
     setIsChecking(true);
-    setError('');
 
     try {
       const response = await fetch('/api/check-name', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName, prompt }),
+        body: JSON.stringify({ name: projectName.trim(), prompt: prompt.trim() }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Name check failed');
       }
 
       const data = await response.json();
-      // Navigate to the edit page and do NOT clear the loading flag here.
-      // Clearing `isChecking` immediately causes the button text to revert
-      // briefly before the client navigation completes. Let the navigation
-      // unmount this component instead.
       router.push(`/edit/${data.name}`);
       return;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);
-      // Only clear the loading flag on error so the UI reflects failure.
       setIsChecking(false);
     }
   };

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import EditorWorkspace from '@/components/editor-workspace';
 import { ProjectMetadata } from '@/lib/projects';
 import { toast } from 'sonner';
+import { readStream } from '@/lib/stream-utils';
 
 interface ProjectViewProps {
   projectName: string;
@@ -79,98 +80,14 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to start generation');
-      }
+      await readStream(
+        response,
+        () => { }, // No raw chunk handling
+        (data) => {
+          if (data.status === 'ping') return;
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No readable stream');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          const messages = buffer.split('\n\n');
-          buffer = messages.pop() || '';
-
-          for (const message of messages) {
-            const line = message.trim();
-            if (!line || !line.startsWith('data: ')) continue;
-
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.status === 'ping') continue;
-
-              if (data.status === 'error') {
-                setError(data.error || 'Generation failed');
-                // Mark the currently active step as error to stop spinners
-                setSteps(prev => prev.map((s, idx) => {
-                  if (idx < _currentStepIndex) return { ...s, status: 'completed' };
-                  if (idx === _currentStepIndex) return { ...s, status: 'error' };
-                  return { ...s, status: 'pending' };
-                }));
-                reader.cancel().catch(() => { });
-                return;
-              }
-
-              if (data.status === 'fallback') {
-                toast.warning('Provider issue detected', {
-                  description: data.message || 'Main model failed, switching to fallback...',
-                  duration: 5000,
-                });
-                continue;
-              }
-
-              if (data.status === 'completed') {
-                setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
-                setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-                return;
-              }
-
-              setSteps(prev => prev.map((step, idx) => {
-                if (step.id === data.status) {
-                  setCurrentStepIndex(idx);
-                  return { ...step, status: 'loading' };
-                }
-                if (idx < prev.findIndex(s => s.id === data.status)) {
-                  return { ...step, status: 'completed' };
-                }
-                return step;
-              }));
-            } catch (e) {
-              // Skip malformed messages but log for debugging
-              console.debug('Malformed stream message:', e);
-            }
-          }
-        }
-      } catch (e) {
-        // Stream read failed - fall back to polling
-        const errMsg = e instanceof Error ? e.message : String(e);
-        console.warn('Stream interrupted, falling back to polling...', errMsg);
-        // Mark current step as errored so UI stops showing a spinner
-        setSteps(prev => prev.map((s, idx) => idx === _currentStepIndex ? { ...s, status: 'error' } : s));
-        setError(`Stream interrupted: ${errMsg}`);
-        streamFailed = true;
-      }
-
-      // Process remaining buffer
-      if (buffer.trim() && buffer.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(buffer.slice(6));
-          if (data.status === 'completed') {
-            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
-            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-            return;
-          } else if (data.status === 'error') {
-            setError(data.error);
+          if (data.status === 'error') {
+            setError(data.error || 'Generation failed');
             setSteps(prev => prev.map((s, idx) => {
               if (idx < _currentStepIndex) return { ...s, status: 'completed' };
               if (idx === _currentStepIndex) return { ...s, status: 'error' };
@@ -178,24 +95,48 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             }));
             return;
           }
-        } catch { /* ignore */ }
-      }
-    } catch (err: unknown) {
-      if (typeof err === 'object' && err !== null && 'name' in err && (err as { name?: string }).name === 'AbortError') {
-        streamFailed = true;
-        setError('Generation aborted (timeout)');
-      } else {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error('Generation fetch error:', err);
-        setError(`Network error: ${msg}`);
-      }
+
+          if (data.status === 'fallback') {
+            toast.warning('Provider issue detected', {
+              description: data.message || 'Main model failed, switching to fallback...',
+              duration: 5000,
+            });
+            return;
+          }
+
+          if (data.status === 'completed') {
+            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
+            return;
+          }
+
+          setSteps(prev => prev.map((step, idx) => {
+            if (step.id === data.status) {
+              setCurrentStepIndex(idx);
+              return { ...step, status: 'loading' };
+            }
+            if (idx < prev.findIndex(s => s.id === data.status)) {
+              return { ...step, status: 'completed' };
+            }
+            return step;
+          }));
+        }
+      );
+    } catch (e) {
+      const isAbort = typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError';
+      const msg = e instanceof Error ? e.message : String(e);
+
+      console.warn('Generation stream failed:', msg);
+      setError(isAbort ? 'Generation timed out (5m limit).' : `Stream interrupted: ${msg}`);
+      streamFailed = true;
     }
 
     // If stream failed or ended without completion, poll the API
-    if (streamFailed) {
-      setSteps(prev => prev.map((s, i) => i <= 1 ? { ...s, status: 'completed' } : { ...s, status: 'loading' }));
+    if (streamFailed || project.status !== 'completed') {
+      // Small delay before starting polling
+      await new Promise(r => setTimeout(r, 2000));
       const completed = await pollForCompletion();
-      if (!completed) {
+      if (!completed && !error) {
         setError('Generation timed out. Please try again.');
       }
     }
