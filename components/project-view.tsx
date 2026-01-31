@@ -29,7 +29,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
   useEffect(() => {
     if (project.status === 'completed' || hasStarted.current) return;
-    
+
     startGeneration();
   }, [project.status]);
 
@@ -66,7 +66,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
-      
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,29 +86,35 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
       const decoder = new TextDecoder();
       let buffer = '';
-      
+
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          
+
           const messages = buffer.split('\n\n');
           buffer = messages.pop() || '';
 
           for (const message of messages) {
             const line = message.trim();
             if (!line || !line.startsWith('data: ')) continue;
-            
+
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               if (data.status === 'ping') continue;
-              
+
               if (data.status === 'error') {
                 setError(data.error || 'Generation failed');
-                reader.cancel().catch(() => {});
+                // Mark the currently active step as error to stop spinners
+                setSteps(prev => prev.map((s, idx) => {
+                  if (idx < _currentStepIndex) return { ...s, status: 'completed' };
+                  if (idx === _currentStepIndex) return { ...s, status: 'error' };
+                  return { ...s, status: 'pending' };
+                }));
+                reader.cancel().catch(() => { });
                 return;
               }
 
@@ -138,10 +144,12 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         // Stream read failed - fall back to polling
         const errMsg = e instanceof Error ? e.message : String(e);
         console.warn('Stream interrupted, falling back to polling...', errMsg);
+        // Mark current step as errored so UI stops showing a spinner
+        setSteps(prev => prev.map((s, idx) => idx === _currentStepIndex ? { ...s, status: 'error' } : s));
         setError(`Stream interrupted: ${errMsg}`);
         streamFailed = true;
       }
-      
+
       // Process remaining buffer
       if (buffer.trim() && buffer.startsWith('data: ')) {
         try {
@@ -151,9 +159,14 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
             return;
           } else if (data.status === 'error') {
-            setError(data.error);
-            return;
-          }
+              setError(data.error);
+              setSteps(prev => prev.map((s, idx) => {
+                if (idx < _currentStepIndex) return { ...s, status: 'completed' };
+                if (idx === _currentStepIndex) return { ...s, status: 'error' };
+                return { ...s, status: 'pending' };
+              }));
+              return;
+            }
         } catch { /* ignore */ }
       }
     } catch (err: unknown) {
@@ -179,11 +192,11 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
   if (project.status === 'completed' && project.html) {
     return (
-      <EditorWorkspace 
-        initialHTML={project.html} 
-        initialPrompt={project.prompt} 
+      <EditorWorkspace
+        initialHTML={project.html}
+        initialPrompt={project.prompt}
         projectName={projectName}
-        onBack={() => window.location.href = '/'} 
+        onBack={() => window.location.href = '/'}
       />
     );
   }
@@ -214,11 +227,10 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
-              className={`p-6 border flex items-center justify-between transition-colors ${
-                step.status === 'loading' ? 'border-primary bg-primary/5 shadow-neon' : 
-                step.status === 'completed' ? 'border-secondary-text/20 bg-transparent opacity-50' : 
-                'border-border bg-transparent opacity-30'
-              }`}
+              className={`p-6 border flex items-center justify-between transition-colors ${step.status === 'loading' ? 'border-primary bg-primary/5 shadow-neon' :
+                  step.status === 'completed' ? 'border-secondary-text/20 bg-transparent opacity-50' :
+                    'border-border bg-transparent opacity-30'
+                }`}
             >
               <div className="flex items-center gap-4">
                 <div className="font-mono text-xs opacity-40">0{index + 1}</div>
@@ -227,7 +239,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
                     {step.label}
                   </div>
                   {step.status === 'loading' && (
-                    <motion.div 
+                    <motion.div
                       className="text-xs text-secondary-text/60 mt-1"
                       animate={{ opacity: [0.4, 1, 0.4] }}
                       transition={{ duration: 1.5, repeat: Infinity }}
@@ -261,7 +273,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           >
             <div className="font-mono font-bold mb-2">ERROR</div>
             <div className="whitespace-pre-wrap">{error}</div>
-            <button 
+            <button
               onClick={() => { hasStarted.current = false; startGeneration(); }}
               className="block mx-auto mt-3 underline"
             >
@@ -272,10 +284,6 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
         <div className="mt-12 pt-8 border-t border-border flex justify-between items-center text-[10px] font-mono text-muted-text uppercase tracking-widest">
           <div>Autonomous Construction</div>
-          <div className="flex gap-4">
-            <span>Model: OpenRouter ({process.env.NEXT_PUBLIC_OPENROUTER_MODEL || 'moonshotai/kimi-k2:free'})</span>
-            <span>Ver: 1.0.4</span>
-          </div>
         </div>
       </div>
     </div>

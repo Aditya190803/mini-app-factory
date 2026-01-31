@@ -150,8 +150,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         }
         let msg = `Transform failed: ${response.status} ${text}`;
         // If server returns 503 and our AI backend message, offer specific remediation steps
-        if (response.status === 503 && /(?:OpenRouter|AI)/i.test(text)) {
-          msg = `${msg}. To fix locally: ensure you have an OpenRouter API key set (OPENROUTER_API_KEY) in your environment or that your server can reach the OpenRouter service. Then restart your dev server.`;
+        if (response.status === 503 && /(?:Cerebras|AI)/i.test(text)) {
+          msg = `${msg}. To fix locally: ensure you have a Cerebras API key set (CEREBRAS_API_KEY) in your environment or that your server can reach the Cerebras service. Then restart your dev server.`;
         }
 
         console.error(msg);
@@ -165,7 +165,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     } catch (err) {
       // This typically indicates a network problem (server unavailable / connection reset)
       console.error('Transform network error', err);
-      alert('Unable to reach the transform service. Check your dev server and OpenRouter configuration (OPENROUTER_API_KEY).');
+      alert('Unable to reach the transform service. Check your dev server and Cerebras configuration (CEREBRAS_API_KEY).');
     } finally {
       setIsTransforming(false);
     }
@@ -256,23 +256,21 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
               <button
                 onClick={() => setActiveTab('preview')}
-                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${
-                  activeTab === 'preview' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                }`}
+                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'preview' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
+                  }`}
               >
                 Preview
               </button>
               <button
                 onClick={() => setActiveTab('code')}
-                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${
-                  activeTab === 'code' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                }`}
+                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'code' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
+                  }`}
               >
                 Code
               </button>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-mono text-[var(--muted-text)] uppercase tracking-widest hidden sm:block">
               Fabricating:
@@ -306,7 +304,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               disabled={isPublishing}
               className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono uppercase font-black bg-[var(--primary)] text-black hover:bg-white transition-all disabled:opacity-50"
             >
-              {isPublishing && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>}
+              {isPublishing && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
               {isPublishing ? 'Publishing' : 'Publish'}
             </button>
           </div>
@@ -337,7 +335,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   }}
                   className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all flex items-center gap-1.5"
                 >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
                   Copy
                 </button>
                 <button
@@ -348,7 +346,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   }}
                   className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--error)] hover:border-[var(--error)] transition-all flex items-center gap-1.5"
                 >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
                   Reset
                 </button>
               </div>

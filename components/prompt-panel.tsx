@@ -12,15 +12,14 @@ interface PromptPanelProps {
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('gpt-5-mini');
+  const [model, setModel] = useState('moonshotai/kimi-k2-instruct-0905');
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
     await onGenerate(prompt, model);
   };
 
-  const isTokenMissing = error?.includes('GITHUB_TOKEN');
-  const isOpenRouterIssue = /OpenRouter|OPENROUTER|OPENROUTER_API_KEY/i.test(error || '');
+  const isCerebrasIssue = /Cerebras|CEREBRAS|CEREBRAS_API_KEY/i.test(error || '');
 
   const examplePrompts = [
     'A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA',
@@ -29,7 +28,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
   ];
 
   return (
-    <div 
+    <div
       className="w-full md:w-1/2 border-r flex flex-col"
       style={{
         backgroundColor: 'var(--background)',
@@ -38,7 +37,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
     >
       <div className="flex-1 overflow-y-auto p-8 space-y-6">
         {error && (
-          <div 
+          <div
             className="p-4 border text-sm space-y-3"
             style={{
               backgroundColor: 'rgba(239, 68, 68, 0.05)',
@@ -48,8 +47,8 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           >
             <div className="font-mono font-semibold text-xs uppercase">Configuration Error</div>
             <p className="text-xs leading-relaxed">{error}</p>
-            {isTokenMissing && (
-              <div 
+            {isCerebrasIssue && (
+              <div
                 className="text-xs p-3 border mt-3 space-y-2"
                 style={{
                   backgroundColor: 'rgba(245, 158, 11, 0.03)',
@@ -57,38 +56,19 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
                   color: 'var(--secondary-text)',
                 }}
               >
-                <p className="font-mono font-semibold">SETUP INSTRUCTIONS:</p>
+                <p className="font-mono font-semibold">CEREBRAS SETUP:</p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Go to <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--secondary)' }}>github.com/settings/tokens/new</a></li>
-                  <li>Create a Personal Access Token (classic)</li>
-                  <li>Click "Vars" in the left sidebar</li>
-                  <li>Add <code style={{ color: 'var(--primary)' }} className="font-mono">GITHUB_TOKEN</code> with your token value</li>
-                </ol>
-              </div>
-            )}
-
-            {isOpenRouterIssue && (
-              <div 
-                className="text-xs p-3 border mt-3 space-y-2"
-                style={{
-                  backgroundColor: 'rgba(245, 158, 11, 0.03)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--secondary-text)',
-                }}
-              >
-                <p className="font-mono font-semibold">OPENROUTER SETUP:</p>
-                <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">OPENROUTER_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">CEREBRAS_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Get your key from the Cerebras Cloud Console</li>
                   <li>Restart your dev server after adding the variable</li>
-                  <li>If the issue persists, ensure your server can reach <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--secondary)' }}>openrouter.ai</a></li>
                 </ol>
               </div>
             )}
           </div>
         )}
-        
+
         <div>
-          <label 
+          <label
             className="block text-xs font-mono uppercase font-semibold mb-3 tracking-widest"
             style={{ color: 'var(--secondary-text)' }}
           >
@@ -110,7 +90,8 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="gpt-5-mini">gpt-5-mini</option>
+              <option value="zai-glm-4.7">GLM 4.7 (Cerebras)</option>
+              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2</option>
             </select>
           </div>
         </div>
@@ -138,7 +119,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
         </button>
 
         <div>
-          <h3 
+          <h3
             className="text-xs font-mono uppercase font-black tracking-widest mb-4"
             style={{ color: 'var(--secondary-text)' }}
           >
@@ -174,7 +155,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
         </div>
       </div>
 
-      <div 
+      <div
         className="border-t px-8 py-4 backdrop-blur-sm"
         style={{
           borderColor: 'var(--border)',
@@ -182,11 +163,11 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
         }}
       >
         <div className="flex items-center gap-3 text-xs font-mono" style={{ color: 'var(--secondary-text)' }}>
-          <div 
+          <div
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: 'var(--primary)' }}
           ></div>
-          <span>OpenRouter • {model.toUpperCase()}</span>
+          <span>Cerebras • {model.toUpperCase()}</span>
         </div>
       </div>
     </div>
