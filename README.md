@@ -18,7 +18,9 @@ A powerful AI-powered web application that generates production-ready static web
 ## Tech Stack
 
 - **Framework**: Next.js 16 with App Router
-- **AI**: OpenRouter (model: `moonshotai/kimi-k2:free`) — requires `OPENROUTER_API_KEY` environment variable
+- **AI Providers**:
+  - **Primary**: Cerebras SDK with `zai-glm-4.7` (requires `CEREBRAS_API_KEY`)
+  - **Fallback**: Groq with `moonshotai/kimi-k2-instruct-0905` (requires `GROQ_API_KEY`)
 - **Styling**: Tailwind CSS v4 with custom dark theme
 - **Components**: shadcn/ui
 - **Language**: TypeScript
@@ -34,15 +36,20 @@ A powerful AI-powered web application that generates production-ready static web
 1. Clone the repository
 2. Install dependencies:
    ```bash
-   npm install
-   # OR (recommended) use pnpm
-   pnpm install
+   bun install
    ```
 
-3. Set up environment variables in your Vercel project or local `.env.local`:
+3. Set up your AI providers in `.env.local`:
+   
+   ```bash
+   # Required: Cerebras API Key (Primary Provider - zai-glm-4.7)
+   CEREBRAS_API_KEY=your_cerebras_api_key
+   
+   # Required: Groq API Key (Fallback Provider - Moonshot Kimi K2)
+   GROQ_API_KEY=your_groq_api_key
    ```
-   OPENROUTER_API_KEY=your_openrouter_api_key
-   ```
+   
+   See [AI_SETUP.md](AI_SETUP.md) for detailed configuration instructions.
 
 4. Note: This project now requires `jszip` for ZIP downloads. Running `pnpm install` or `npm install` will pick it up from `package.json`.
 
