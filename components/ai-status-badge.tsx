@@ -42,13 +42,13 @@ export default function AIStatusBadge() {
     };
   }, []);
 
-  const color = status === 'ok' ? 'bg-green-500' : status === 'checking' ? 'bg-yellow-400' : 'bg-red-500';
+  const color = status === 'ok' ? 'bg-[var(--success)]' : status === 'checking' ? 'bg-[var(--warning)]' : 'bg-[var(--error)]';
   const label = status === 'ok' ? 'AI: Online' : status === 'checking' ? 'AI: Checking' : 'AI: Unavailable';
 
   return (
     <div className="flex items-center gap-2 text-xs font-mono">
       <span className={`w-2 h-2 rounded-full ${color}`} aria-hidden />
-      <span title={message} className="text-[10px]">{label}</span>
+      <span title={message} className="text-[10px] text-[var(--muted-text)]">{label}</span>
     </div>
   );
 }

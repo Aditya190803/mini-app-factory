@@ -23,7 +23,7 @@ export default function Home() {
 
   const handleStart = async () => {
     if (!prompt.trim() || !projectName.trim() || isChecking) return;
-    
+
     if (!user) {
       router.push('/handler/sign-in');
       return;
@@ -31,7 +31,7 @@ export default function Home() {
 
     setIsChecking(true);
     setError('');
-    
+
     try {
       const response = await fetch('/api/check-name', {
         method: 'POST',
@@ -73,49 +73,49 @@ export default function Home() {
   ];
 
   return (
-    <div 
+    <div
       className="min-h-screen flex flex-col"
       style={{ backgroundColor: 'var(--background)' }}
     >
       {/* Ambient Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div 
+        <div
           className="absolute -top-1/2 -left-1/2 w-full h-full rounded-full blur-3xl opacity-5"
           style={{ backgroundColor: 'var(--primary)' }}
         />
-        <div 
+        <div
           className="absolute -bottom-1/2 -right-1/2 w-full h-full rounded-full blur-3xl opacity-5"
           style={{ backgroundColor: 'var(--secondary)' }}
         />
       </div>
 
       {/* Header */}
-      <header 
+      <header
         className="relative z-10 border-b backdrop-blur-md"
-        style={{ 
+        style={{
           backgroundColor: 'rgba(10, 10, 10, 0.8)',
-          borderColor: 'var(--border)' 
+          borderColor: 'var(--border)'
         }}
       >
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div 
+            <div
               className="w-8 h-8 flex items-center justify-center font-black text-sm"
-              style={{ 
-                backgroundColor: 'var(--primary)', 
-                color: 'var(--primary-foreground)' 
+              style={{
+                backgroundColor: 'var(--primary)',
+                color: 'var(--primary-foreground)'
               }}
             >
               ⚙
             </div>
             <div>
-              <h1 
+              <h1
                 className="text-sm font-display font-black uppercase tracking-[0.2em]"
                 style={{ color: 'var(--foreground)' }}
               >
                 Mini App Factory
               </h1>
-              <p 
+              <p
                 className="text-[10px] font-mono uppercase tracking-[0.1em]"
                 style={{ color: 'var(--muted-text)' }}
               >
@@ -125,29 +125,29 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-6">
 
-             {user ? (
-               <div className="flex items-center gap-4">
-                 <button 
+            {user ? (
+              <div className="flex items-center gap-4">
+                <button
                   onClick={() => router.push('/dashboard')}
                   className="text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] hover:text-white"
-                 >
-                   Dashboard
-                 </button>
-                 <button 
+                >
+                  Dashboard
+                </button>
+                <button
                   onClick={() => user.signOut()}
                   className="px-3 py-1 text-[10px] font-mono border border-[var(--border)] uppercase"
-                 >
-                   Sign Out
-                 </button>
-               </div>
-             ) : (
-               <button 
-                 onClick={() => router.push('/handler/sign-in')}
-                 className="px-3 py-1 text-[10px] font-mono border border-[var(--border)] uppercase hover:border-[var(--primary)] text-[var(--primary)]"
-               >
-                 Sign In
-               </button>
-             )}
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => router.push('/handler/sign-in')}
+                className="px-3 py-1 text-[10px] font-mono border border-[var(--border)] uppercase hover:border-[var(--primary)] text-[var(--primary)]"
+              >
+                Sign In
+              </button>
+            )}
 
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
-        <motion.div 
+        <motion.div
           className="w-full max-w-3xl"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -163,7 +163,7 @@ export default function Home() {
         >
           {/* Hero */}
           <div className="text-center mb-10">
-            <motion.h2 
+            <motion.h2
               className="text-4xl md:text-5xl font-display font-black uppercase tracking-tight mb-4"
               style={{ color: 'var(--foreground)' }}
               initial={{ opacity: 0, y: 10 }}
@@ -173,22 +173,22 @@ export default function Home() {
               Fabricate Your
               <span style={{ color: 'var(--primary)' }}> Vision</span>
             </motion.h2>
-            <motion.p 
+            <motion.p
               className="text-base max-w-lg mx-auto leading-relaxed"
               style={{ color: 'var(--secondary-text)' }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              Describe what you want to build. Our AI will generate a production-ready 
+              Describe what you want to build. Our AI will generate a production-ready
               static website in seconds.
             </motion.p>
           </div>
 
           {/* Prompt Input Card */}
-          <motion.div 
+          <motion.div
             className="border backdrop-blur-sm"
-            style={{ 
+            style={{
               backgroundColor: 'var(--background-surface)',
               borderColor: 'var(--border)',
             }}
@@ -199,9 +199,9 @@ export default function Home() {
             {/* Error Display */}
             <AnimatePresence>
               {error && (
-                <motion.div 
+                <motion.div
                   className="p-4 border-b"
-                  style={{ 
+                  style={{
                     backgroundColor: 'rgba(239, 68, 68, 0.05)',
                     borderColor: 'var(--error)',
                   }}
@@ -222,6 +222,7 @@ export default function Home() {
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                  onKeyDown={handleKeyDown}
                   placeholder="project-001"
                   className="w-full bg-transparent border-b outline-none text-lg font-mono font-bold py-2 placeholder:opacity-10"
                   style={{ borderBottomColor: 'var(--border)', color: 'var(--foreground)' }}
@@ -245,24 +246,24 @@ export default function Home() {
             </div>
 
             {/* Footer */}
-            <div 
+            <div
               className="flex items-center justify-between px-8 py-6 border-t"
               style={{ borderColor: 'var(--border)' }}
             >
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-1 rounded-full bg-[var(--primary)] animate-pulse" />
-                  <span 
+                  <span
                     className="text-[10px] font-mono uppercase tracking-widest"
                     style={{ color: 'var(--muted-text)' }}
                   >
-                    Engine: GPT-5-Mini
+                    Engine: <span className="text-[var(--primary)] font-bold">Cerebras + Groq</span>
                   </span>
                 </div>
-                
-                <span 
-                  className="text-[10px] font-mono uppercase hidden md:inline opacity-30"
-                  style={{ color: 'var(--muted-text)' }}
+
+                <span
+                  className="text-[10px] font-mono uppercase hidden md:inline opacity-60"
+                  style={{ color: 'var(--secondary-text)' }}
                 >
                   [Ctrl + Enter] to start fabrication
                 </span>
@@ -290,13 +291,13 @@ export default function Home() {
           </motion.div>
 
           {/* Example Prompts */}
-          <motion.div 
+          <motion.div
             className="mt-10"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <h3 
+            <h3
               className="text-xs font-mono uppercase font-semibold tracking-widest mb-4 text-center"
               style={{ color: 'var(--secondary-text)' }}
             >
@@ -312,18 +313,18 @@ export default function Home() {
                     backgroundColor: 'var(--background-surface)',
                     borderColor: 'var(--border)',
                   }}
-                  whileHover={{ 
+                  whileHover={{
                     y: -2,
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <span 
+                    <span
                       className="text-sm font-black mt-0.5 transition-colors"
                       style={{ color: 'var(--primary)' }}
                     >
                       →
                     </span>
-                    <span 
+                    <span
                       className="text-sm leading-relaxed transition-colors"
                       style={{ color: 'var(--secondary-text)' }}
                     >
@@ -338,7 +339,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer 
+      <footer
         className="relative z-10 border-t py-6"
         style={{ borderColor: 'var(--border)' }}
       >
@@ -346,18 +347,18 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-xs font-mono" style={{ color: 'var(--muted-text)' }}>
               <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--success)' }} />
-              <span>OpenRouter AI</span>
+              <span>Cerebras AI</span>
             </div>
 
             <div>
               <AIStatusBadge />
             </div>
           </div>
-          <p 
+          <p
             className="text-xs font-mono"
             style={{ color: 'var(--muted-text)' }}
           >
-             Production Ready
+            Production Ready
           </p>
         </div>
       </footer>
