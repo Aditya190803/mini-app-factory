@@ -408,6 +408,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 <li>Be specific about colors, layout, and functionality.</li>
                 <li>Ask for "Glassmorphism", "Dark Mode", or "Neo-brutalism" for modern styles.</li>
                 <li>Mention libraries like "Framer Motion" or "Tailwind" for better results.</li>
+                <li>Use <span className="text-[var(--secondary-text)]">Ctrl+Enter</span> to quickly apply AI transformations.</li>
               </ul>
             </div>
           </div>

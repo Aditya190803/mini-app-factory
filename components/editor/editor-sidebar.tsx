@@ -17,6 +17,15 @@ export default function EditorSidebar({
     runPolish,
     isTransforming
 }: EditorSidebarProps) {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (!isTransforming && transformPrompt.trim()) {
+                runTransform();
+            }
+        }
+    };
+
     return (
         <aside
             className="w-80 border-l flex flex-col overflow-hidden shrink-0"
@@ -36,7 +45,8 @@ export default function EditorSidebar({
                 <textarea
                     value={transformPrompt}
                     onChange={(e) => setTransformPrompt(e.target.value)}
-                    placeholder="Describe changes... (e.g., 'Make the hero purple and add a signup modal')"
+                    onKeyDown={handleKeyDown}
+                    placeholder="Describe changes... (e.g., 'Make the hero purple and add a signup modal') [Ctrl+Enter to apply]"
                     className="w-full h-32 resize-none text-xs p-3 border bg-[var(--background)] focus:outline-none focus:border-[var(--primary)] transition-colors font-mono leading-relaxed"
                     style={{
                         borderColor: 'var(--border)',

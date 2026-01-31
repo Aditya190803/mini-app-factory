@@ -23,15 +23,5 @@ This document outlines ambitious new features and directions for the Mini App Fa
 - Enable shared projects where multiple users can work on the same site fabrication.
 - Real-time cursor presence and collaborative AI prompting.
 
-### 6. AI-Powered SEO & Accessibility
-- Automatically generate optimized meta tags, JSON-LD structured data, and Open Graph images.
-- Ensure all generated sites follow WCAG accessibility guidelines with proper semantic HTML and ARIA labels.
-
-### 7. Visual CSS Editor
-- A hybrid mode where users can use a visual sidebar to tweak colors, fonts, and spacing (like a "light" version of Webflow) which then updates the code.
-
-### 8. Design-to-Code (Figma/Screenshot)
+### 6. Design-to-Code (Figma/Screenshot)
 - Allow users to upload a screenshot or a Figma link. Use a Vision model (like GPT-4o or Gemini Flash) to analyze the design and fabricate the matching HTML/Tailwind code.
-
-## Long-term Vision
-The goal is to transform Mini App Factory into a **Living Web Engine**—where websites are not static files, but dynamic entities that can be continuously evolved through natural language conversation.
