@@ -30,6 +30,8 @@ const transformSchema = z.object({
   polishDescription: z.string().optional(),
 });
 
+const encoder = new TextEncoder();
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -40,15 +42,7 @@ export async function POST(request: Request) {
 
     const { html, prompt, polishDescription } = parsed.data;
 
-    // Ensure AI client is usable at runtime — attempt to start/obtain it and return a helpful 503 if it fails.
-    try {
-      await getAIClient();
-    } catch (err) {
-      console.error('AI client startup failed:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      return Response.json({ error: `AI backend unavailable: ${msg}` }, { status: 503 });
-    }
-
+    const client = await getAIClient();
     const systemMessage = `You are an expert web developer. You will be given a complete HTML file and a user's modification request. Return ONLY the full updated HTML file (no commentary, no extra text). Preserve any important semantics and accessibility. Make minimal changes to satisfy the request and ensure the result is a complete, valid HTML file. If images are needed, use placeholder images.`;
 
     let userMessage: string;
@@ -59,10 +53,36 @@ export async function POST(request: Request) {
       userMessage = `Current HTML:\n\n${html}\n\nModification Request:\n\n${prompt || ''}`;
     }
 
-    const rawHtml = await sendAIMessage(systemMessage, userMessage);
-    const newHtml = stripCodeFence(rawHtml);
+    const session = await client.createSession({
+      systemMessage: { content: systemMessage },
+    });
 
-    return Response.json({ html: newHtml });
+    const textStream = await session.stream({ prompt: userMessage });
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of textStream) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+        } catch (err) {
+          console.error('Stream error:', err);
+        } finally {
+          controller.close();
+          await session.destroy().catch(() => { });
+        }
+      },
+      cancel() {
+        session.destroy().catch(() => { });
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+      },
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to transform site';
     console.error('Transform error:', error);

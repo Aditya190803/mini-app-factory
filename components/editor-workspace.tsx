@@ -1,8 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { html as htmlLang } from '@codemirror/lang-html';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
@@ -17,6 +15,12 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { stripCodeFence } from '@/lib/utils';
+
+import EditorHeader from './editor/editor-header';
+import EditorSidebar from './editor/editor-sidebar';
+import PreviewPanel from './editor/preview-panel';
+import CodePanel from './editor/code-panel';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -26,19 +30,58 @@ interface EditorWorkspaceProps {
 }
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [editableHtml, setEditableHtml] = useState(initialHTML);
   const [transformPrompt, setTransformPrompt] = useState('');
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
+
+  // History State
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
   const publishProject = useMutation(api.projects.publishProject);
   const projectData = useQuery(api.projects.getProject, { projectName });
+
+  // Initialize history
+  useEffect(() => {
+    if (initialHTML && history.length === 0) {
+      setHistory([initialHTML]);
+      setHistoryIndex(0);
+      setEditableHtml(initialHTML);
+    }
+  }, [initialHTML, history.length]);
+
+  const addToHistory = useCallback((html: string) => {
+    setHistory(prev => {
+      const next = prev.slice(0, historyIndex + 1);
+      next.push(html);
+      return next;
+    });
+    setHistoryIndex(prev => prev + 1);
+  }, [historyIndex]);
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      const prevHtml = history[historyIndex - 1];
+      setHistoryIndex(historyIndex - 1);
+      setEditableHtml(prevHtml);
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextHtml = history[historyIndex + 1];
+      setHistoryIndex(historyIndex + 1);
+      setEditableHtml(nextHtml);
+    }
+  };
 
   // Auto-save to Convex
   useEffect(() => {
@@ -99,11 +142,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return `${script}${editableHtml}`;
   }, [editableHtml]);
 
-  // Sync when initial HTML changes
-  useEffect(() => {
-    setEditableHtml(initialHTML);
-  }, [initialHTML]);
-
   const downloadZip = async () => {
     try {
       const JSZip = (await import('jszip')).default;
@@ -134,45 +172,36 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         body: JSON.stringify({ html: editableHtml, prompt: transformPrompt }),
       });
 
-      // Network-level failure (fetch throws) will be caught in catch block below.
       if (!response.ok) {
-        // Try to get any useful error payload from the server
-        let text = '';
-        try {
-          const json = await response.json();
-          text = json?.error || JSON.stringify(json);
-        } catch (e) {
-          try {
-            text = await response.text();
-          } catch {
-            text = response.statusText;
-          }
-        }
-        let msg = `Transform failed: ${response.status} ${text}`;
-        // If server returns 503 and our AI backend message, offer specific remediation steps
-        if (response.status === 503 && /(?:Cerebras|AI)/i.test(text)) {
-          msg = `${msg}. To fix locally: ensure you have a Cerebras API key set (CEREBRAS_API_KEY) in your environment or that your server can reach the Cerebras service. Then restart your dev server.`;
-        }
-
-        console.error(msg);
-        alert(msg);
-        return;
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Transform failed');
       }
 
-      const data = await response.json();
-      setEditableHtml(data.html);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No readable stream');
+
+      let streamedHtml = '';
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        streamedHtml += chunk;
+        setEditableHtml(streamedHtml);
+      }
+
+      const finalHtml = stripCodeFence(streamedHtml);
+      setEditableHtml(finalHtml);
+      addToHistory(finalHtml);
       setTransformPrompt('');
     } catch (err) {
-      // This typically indicates a network problem (server unavailable / connection reset)
-      console.error('Transform network error', err);
-      alert('Unable to reach the transform service. Check your dev server and Cerebras configuration (CEREBRAS_API_KEY).');
+      console.error('Transform error', err);
+      alert(err instanceof Error ? err.message : 'Transform failed');
     } finally {
       setIsTransforming(false);
     }
-  };
-
-  const runPolish = () => {
-    setIsPolishDialogOpen(true);
   };
 
   const onPolishSubmit = async () => {
@@ -185,8 +214,25 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         body: JSON.stringify({ html: editableHtml, polishDescription }),
       });
       if (!resp.ok) throw new Error('Polish failed');
-      const data = await resp.json();
-      setEditableHtml(data.html);
+
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error('No readable stream');
+
+      let streamedHtml = '';
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        streamedHtml += chunk;
+        setEditableHtml(streamedHtml);
+      }
+
+      const finalHtml = stripCodeFence(streamedHtml);
+      setEditableHtml(finalHtml);
+      addToHistory(finalHtml);
     } catch (err) {
       console.error(err);
     } finally {
@@ -202,7 +248,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
     setIsPublishing(true);
     try {
-      // First save the latest version
       await saveProject({
         projectName,
         prompt: initialPrompt,
@@ -211,13 +256,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         userId: user.id,
         isPublished: true,
       });
-
-      // Then explicitly publish
       await publishProject({
         projectName,
         userId: user.id,
       });
-
       window.open(`/results/${projectName}`, '_blank');
     } catch (err) {
       console.error('Publish failed', err);
@@ -225,6 +267,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     } finally {
       setIsPublishing(false);
     }
+  };
+
+  const handleEditorChange = (value: string) => {
+    setEditableHtml(value);
+    // We don't add to history on every keystroke to avoid cluttering the stack
+    // Maybe we could add a debounced version if needed
   };
 
   return (
@@ -235,221 +283,67 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Header */}
-      <header
-        className="shrink-0 border-b flex flex-col"
-        style={{
-          backgroundColor: 'var(--background)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        {/* Top bar: Navigation & Tabs */}
-        <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-6">
-            <button
-              onClick={onBack}
-              className="text-xs font-mono uppercase font-bold tracking-widest hover:text-[var(--primary)] transition-colors"
-              style={{ color: 'var(--secondary-text)' }}
-            >
-              ← Back
-            </button>
-            <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
-              <button
-                onClick={() => setActiveTab('preview')}
-                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'preview' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                  }`}
-              >
-                Preview
-              </button>
-              <button
-                onClick={() => setActiveTab('code')}
-                className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'code' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                  }`}
-              >
-                Code
-              </button>
-            </div>
-          </div>
+      <EditorHeader
+        projectName={projectName}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onBack={onBack}
+        saveStatus={saveStatus}
+        onExport={downloadZip}
+        onPublish={handlePublish}
+        isPublishing={isPublishing}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        onUndo={undo}
+        onRedo={redo}
+        onHelp={() => setIsHelpDialogOpen(true)}
+      />
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-[var(--muted-text)] uppercase tracking-widest hidden sm:block">
-              Fabricating:
-            </span>
-            <span className="text-[10px] font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>
-              {projectName}
-            </span>
-          </div>
-        </div>
-
-        {/* Action bar: Status & Controls */}
-        <div className="flex items-center justify-end px-4 py-2 bg-[var(--background-surface)] gap-4">
-          <div className="flex-1 flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' : 'bg-[var(--primary)]'}`} />
-              <span className="text-[9px] font-mono uppercase text-[var(--muted-text)]">
-                {saveStatus === 'saving' ? 'Syncing to cloud...' : saveStatus === 'saved' ? 'All changes saved' : 'System Online'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={downloadZip}
-              className="px-4 py-1.5 text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] border border-[var(--border)] hover:border-[var(--primary)] hover:text-[var(--primary)] transition-all"
-            >
-              Export ZIP
-            </button>
-            <button
-              onClick={handlePublish}
-              disabled={isPublishing}
-              className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono uppercase font-black bg-[var(--primary)] text-black hover:bg-white transition-all disabled:opacity-50"
-            >
-              {isPublishing && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
-              {isPublishing ? 'Publishing' : 'Publish'}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Editor Area */}
-        <div className="flex-1 overflow-auto">
+        <main className="flex-1 flex overflow-hidden">
           {activeTab === 'preview' && (
-            <div className="w-full h-full bg-white">
-              <iframe
-                srcDoc={previewHtml}
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                title="Website Preview"
-              />
-            </div>
+            <PreviewPanel previewHtml={previewHtml} />
           )}
 
           {activeTab === 'code' && (
-            <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: 'var(--background-surface)' }}>
-              <div className="absolute top-4 right-8 z-10 flex gap-2">
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(editableHtml);
+            <CodePanel
+              html={editableHtml}
+              onChange={handleEditorChange}
+              onReset={() => {
+                setEditableHtml(initialHTML);
+                addToHistory(initialHTML);
+              }}
+              initialHTML={initialHTML}
+            />
+          )}
+
+          {activeTab === 'split' && (
+            <div className="flex-1 flex">
+              <div className="flex-1 border-r border-[var(--border)] overflow-hidden">
+                <CodePanel
+                  html={editableHtml}
+                  onChange={handleEditorChange}
+                  onReset={() => {
+                    setEditableHtml(initialHTML);
+                    addToHistory(initialHTML);
                   }}
-                  className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all flex items-center gap-1.5"
-                >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
-                  Copy
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm('Reset to initial version? All manual changes will be lost.')) {
-                      setEditableHtml(initialHTML);
-                    }
-                  }}
-                  className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--error)] hover:border-[var(--error)] transition-all flex items-center gap-1.5"
-                >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
-                  Reset
-                </button>
-              </div>
-              <div className="flex-1 overflow-auto pt-0">
-                <CodeMirror
-                  value={editableHtml}
-                  height="100%"
-                  extensions={[htmlLang()]}
-                  onChange={(value) => setEditableHtml(value)}
-                  basicSetup={{
-                    highlightActiveLine: true,
-                    lineNumbers: true,
-                    foldGutter: true,
-                    highlightActiveLineGutter: true,
-                  }}
-                  theme="dark"
-                  style={{ height: '100%', fontSize: '12px' }}
+                  initialHTML={initialHTML}
                 />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <PreviewPanel previewHtml={previewHtml} />
               </div>
             </div>
           )}
-        </div>
+        </main>
 
-        {/* Sidebar */}
-        <aside
-          className="w-80 border-l flex flex-col overflow-hidden shrink-0"
-          style={{
-            backgroundColor: 'var(--background-surface)',
-            borderColor: 'var(--border)',
-          }}
-        >
-          {/* Transform Section */}
-          <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-            <h3
-              className="text-[10px] font-mono uppercase font-black tracking-[0.2em] mb-4"
-              style={{ color: 'var(--secondary-text)' }}
-            >
-              Transform with AI
-            </h3>
-            <textarea
-              value={transformPrompt}
-              onChange={(e) => setTransformPrompt(e.target.value)}
-              placeholder="Describe changes... (e.g., 'Make the hero purple and add a signup modal')"
-              className="w-full h-32 resize-none text-xs p-3 border bg-[var(--background)] focus:outline-none focus:border-[var(--primary)] transition-colors font-mono leading-relaxed"
-              style={{
-                borderColor: 'var(--border)',
-                color: 'var(--foreground)',
-              }}
-            />
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={runTransform}
-                disabled={isTransforming || !transformPrompt.trim()}
-                className="flex-1 px-3 py-2 text-[10px] font-mono uppercase font-black flex items-center justify-center gap-2 transition-all"
-                style={{
-                  backgroundColor:
-                    isTransforming || !transformPrompt.trim() ? 'var(--background)' : 'var(--primary)',
-                  color:
-                    isTransforming || !transformPrompt.trim()
-                      ? 'var(--muted-text)'
-                      : 'var(--primary-foreground)',
-                  borderColor:
-                    isTransforming || !transformPrompt.trim() ? 'var(--border)' : 'var(--primary)',
-                  borderWidth: '1px',
-                  cursor: isTransforming || !transformPrompt.trim() ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {isTransforming ? (
-                  <>
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Apply
-                  </>
-                ) : (
-                  'Apply'
-                )}
-              </button>
-              <button
-                onClick={runPolish}
-                disabled={isTransforming}
-                className="px-4 py-2 text-[10px] font-mono uppercase font-black border border-[var(--border)] hover:border-white transition-all"
-                style={{
-                  color: 'var(--foreground)',
-                }}
-              >
-                Polish
-              </button>
-            </div>
-          </div>
-        </aside>
+        <EditorSidebar
+          transformPrompt={transformPrompt}
+          setTransformPrompt={setTransformPrompt}
+          runTransform={runTransform}
+          runPolish={() => setIsPolishDialogOpen(true)}
+          isTransforming={isTransforming}
+        />
       </div>
 
       <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
@@ -480,6 +374,49 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
             >
               Apply Polish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight flex items-center gap-2">
+              <svg className="w-4 h-4 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
+              Quick Start & Tips
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Master the Mini App Factory workflow.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4 font-mono">
+            <div className="space-y-2">
+              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Workflow</h4>
+              <p className="text-[11px] leading-relaxed">
+                <span className="text-[var(--secondary-text)]">1. FABRICATE:</span> Describe your idea and let the AI build the initial structure.
+                <br />
+                <span className="text-[var(--secondary-text)]">2. PREVIEW:</span> Switch between Desktop, Tablet, and Mobile views.
+                <br />
+                <span className="text-[var(--secondary-text)]">3. TRANSFORM:</span> Use the sidebar to ask for specific changes (e.g., "Add a contact form").
+                <br />
+                <span className="text-[var(--secondary-text)]">4. POLISH:</span> Use the Polish tool for finishing touches like animations and responsiveness.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Prompting Tips</h4>
+              <ul className="text-[11px] space-y-1 list-disc pl-4 text-[var(--muted-text)]">
+                <li>Be specific about colors, layout, and functionality.</li>
+                <li>Ask for "Glassmorphism", "Dark Mode", or "Neo-brutalism" for modern styles.</li>
+                <li>Mention libraries like "Framer Motion" or "Tailwind" for better results.</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => setIsHelpDialogOpen(false)}
+              className="w-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+            >
+              Got it
             </Button>
           </DialogFooter>
         </DialogContent>

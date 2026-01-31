@@ -251,6 +251,11 @@ export async function POST(request: Request) {
           await new Promise(r => setTimeout(r, 600));
           if (sse.isClosed()) return;
 
+          if (!sse.write({ status: 'analyzing', message: 'Analyzing visual requirements...' })) {
+            return;
+          }
+          await new Promise(r => setTimeout(r, 400));
+
           if (!sse.write({ status: 'designing', message: 'Architecting design system...' })) {
             return;
           }
@@ -273,7 +278,9 @@ export async function POST(request: Request) {
             sse.write({ status: 'error', error: result.error });
           } else if ('html' in result) {
             // Double-check stream state before each write
-            if (!sse.write({ status: 'fabricating', message: 'Finalizing...' })) return;
+            if (!sse.write({ status: 'fabricating', message: 'Fabricating production code...' })) return;
+            await new Promise(r => setTimeout(r, 300));
+            if (!sse.write({ status: 'finalizing', message: 'Polishing and optimizing...' })) return;
             await new Promise(r => setTimeout(r, 300));
             if (!sse.isClosed()) {
               sse.write({ status: 'completed', html: result.html });

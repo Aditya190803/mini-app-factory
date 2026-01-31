@@ -3,7 +3,7 @@
 // Fallback: moonshotai/kimi-k2-instruct-0905 via Groq
 
 import { createGroq } from '@ai-sdk/groq';
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 
 export type SessionEvent = { type: string; data: any };
 
@@ -14,6 +14,7 @@ export interface AIClient {
 
 export interface AIClientSession {
   sendAndWait: (opts: { prompt: string }, timeout?: number) => Promise<{ data: { content: string } }>;
+  stream: (opts: { prompt: string }) => Promise<AsyncIterable<string>>;
   on: (cb: (e: SessionEvent) => void) => () => void;
   destroy: () => Promise<void>;
 }
@@ -100,6 +101,32 @@ function createCerebrasClient(): AIClient {
           }
         },
 
+        async stream({ prompt }: { prompt: string }) {
+          const controller = new AbortController();
+          controllers.add(controller);
+
+          try {
+            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+            if (systemMessage?.content) {
+              messages.push({ role: 'system', content: systemMessage.content });
+            }
+            messages.push({ role: 'user', content: prompt });
+
+            const result = await streamText({
+              model: provider(modelName),
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              abortSignal: controller.signal,
+            });
+
+            return result.textStream;
+          } catch (err: any) {
+            let m = err instanceof Error ? err.message : String(err);
+            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
+            throw new Error(m);
+          }
+        },
+
         async destroy() {
           controllers.forEach(c => c.abort());
           controllers.clear();
@@ -174,6 +201,32 @@ function createGroqClient(): AIClient {
           } finally {
             clearTimeout(timeoutId);
             controllers.delete(controller);
+          }
+        },
+
+        async stream({ prompt }: { prompt: string }) {
+          const controller = new AbortController();
+          controllers.add(controller);
+
+          try {
+            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+            if (systemMessage?.content) {
+              messages.push({ role: 'system', content: systemMessage.content });
+            }
+            messages.push({ role: 'user', content: prompt });
+
+            const result = await streamText({
+              model: groq(modelName),
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              abortSignal: controller.signal,
+            });
+
+            return result.textStream;
+          } catch (err: any) {
+            let m = err instanceof Error ? err.message : String(err);
+            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
+            throw new Error(m);
           }
         },
 
@@ -255,6 +308,37 @@ export async function getAIClient(): Promise<AIClient> {
             fallbackSession = await groqClient.createSession(opts);
             attachSession(fallbackSession);
             return await fallbackSession.sendAndWait(sendOpts, timeout);
+          } else {
+            throw new Error('No AI providers available');
+          }
+        },
+
+        async stream(sendOpts) {
+          if (fallbackSession) {
+            return await fallbackSession.stream(sendOpts);
+          }
+
+          if (primarySession) {
+            try {
+              return await primarySession.stream(sendOpts);
+            } catch (err: any) {
+              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback for stream:', err.message);
+
+              listeners.forEach(l => l({
+                type: 'provider.fallback',
+                data: { message: 'Main model failed, switching to fallback for stream...', error: err.message }
+              }));
+
+              if (!groqClient) throw err;
+
+              fallbackSession = await groqClient.createSession(opts);
+              attachSession(fallbackSession);
+              return await fallbackSession.stream(sendOpts);
+            }
+          } else if (groqClient) {
+            fallbackSession = await groqClient.createSession(opts);
+            attachSession(fallbackSession);
+            return await fallbackSession.stream(sendOpts);
           } else {
             throw new Error('No AI providers available');
           }

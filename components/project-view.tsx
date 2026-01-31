@@ -20,9 +20,11 @@ type Step = {
 export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
   const [project, setProject] = useState<ProjectMetadata>(initialProject);
   const [steps, setSteps] = useState<Step[]>([
-    { id: 'initializing', label: 'Initializing project structure', status: 'pending' },
-    { id: 'designing', label: 'Developing design aesthetic', status: 'pending' },
+    { id: 'initializing', label: 'Setting up project engine', status: 'pending' },
+    { id: 'analyzing', label: 'Analyzing visual requirements', status: 'pending' },
+    { id: 'designing', label: 'Architecting design system', status: 'pending' },
     { id: 'fabricating', label: 'Fabricating production code', status: 'pending' },
+    { id: 'finalizing', label: 'Polishing and optimizing', status: 'pending' },
   ]);
   const [_currentStepIndex, setCurrentStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
