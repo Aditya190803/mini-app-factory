@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.40",
+  "base_commit_sha": "892f1ed9cd0bdac42ed0aacfb8a9a393799b876f",
+  "prompts": {
+    "863c6870727b5246": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "82af3793-22a7-4fc8-9128-14900dfa7722",
+        "model": "copilot/gpt-5-mini"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 55,
+      "total_deletions": 7,
+      "accepted_lines": 44,
+      "overriden_lines": 4
+    }
+  }
+}
