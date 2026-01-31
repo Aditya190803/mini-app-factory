@@ -10,6 +10,8 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/cerebras": "^2.0.27",
+    "@ai-sdk/groq": "^3.0.19",
     "@ai-sdk/react": "^3.0.0",
     "@codemirror/lang-html": "^6.4.11",
     "@emotion/is-prop-valid": "latest",
@@ -82,6 +84,7 @@
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
+    "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "^5",
     "vitest": "^1.3.0"

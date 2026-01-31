@@ -1,10 +1,15 @@
-// OpenRouter-backed AI client.
-// Mirrors the minimal session API used across the app.
+// AI client with Cerebras as primary, Groq + Moonshot AI as fallback
+// Primary: zai-glm-4.7 via Cerebras SDK
+// Fallback: moonshotai/kimi-k2-instruct-0905 via Groq
+
+import { createGroq } from '@ai-sdk/groq';
+import { generateText } from 'ai';
 
 export type SessionEvent = { type: string; data: any };
 
 export interface AIClient {
   createSession: (opts?: { model?: string; systemMessage?: { content: string } }) => Promise<AIClientSession>;
+  stop?: () => Promise<void>;
 }
 
 export interface AIClientSession {
@@ -17,41 +22,33 @@ let singletonClient: AIClient | null = null;
 
 /**
  * Ensures .env.local is loaded even if the runner didn't load it.
- * This is helpful for certain dev environments or simple Node scripts.
  */
 function loadEnv() {
   try {
     require('dotenv').config({ path: '.env.local' });
   } catch (e) {
-    // dotenv might not be available in all contexts, or .env.local might be missing
+    // dotenv might not be available in all contexts
   }
 }
 
-
 /**
- * Return a singleton AI client that forwards requests to OpenRouter chat completions.
- * Requires OPENROUTER_API_KEY in the environment.
+ * Create Cerebras client as primary
  */
-export async function getAIClient(): Promise<AIClient> {
-  if (singletonClient) return singletonClient;
-
-  // Ensure .env.local is considered
-  loadEnv();
-
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error('OPENROUTER_API_KEY is not set. Add it to your environment or .env.local and restart the dev server if necessary.');
-
-  const baseUrl = process.env.OPENROUTER_API_URL || 'https://openrouter.ai/api/v1/chat/completions';
-
-  // Common user mistake: pointing the API URL at the OpenRouter status page
-  if (/status\.openrouter/i.test(baseUrl)) {
-    throw new Error('OPENROUTER_API_URL points to the OpenRouter status page. Set OPENROUTER_API_URL to https://openrouter.ai/api/v1/chat/completions or remove it to use the default.');
+function createCerebrasClient(): AIClient {
+  const { createCerebras } = require('@ai-sdk/cerebras');
+  const key = process.env.CEREBRAS_API_KEY;
+  if (!key) {
+    throw new Error('CEREBRAS_API_KEY is not set. Add it to your environment or .env.local');
   }
 
-  singletonClient = {
+  const provider = createCerebras({ apiKey: key });
+  const primaryModel = process.env.CEREBRAS_MODEL || 'gpt-oss-120b'; // Prefer env or sensible default
+
+  return {
     createSession: async ({ model, systemMessage } = {}) => {
-      const modelName = model || process.env.OPENROUTER_MODEL || 'moonshotai/kimi-k2:free';
+      const modelName = model || primaryModel;
       const listeners: Array<(e: SessionEvent) => void> = [];
+      const controllers: Set<AbortController> = new Set();
 
       return {
         on(cb: (e: SessionEvent) => void) {
@@ -63,81 +60,172 @@ export async function getAIClient(): Promise<AIClient> {
         },
 
         async sendAndWait({ prompt }: { prompt: string }, timeout = 120000) {
+          const controller = new AbortController();
+          controllers.add(controller);
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+
           try {
-            const body = {
-              model: modelName,
-              messages: [] as Array<{ role: string; content: string }>,
-            } as any;
+            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
 
-            if (systemMessage?.content) body.messages.push({ role: 'system', content: systemMessage.content });
-            body.messages.push({ role: 'user', content: prompt });
+            if (systemMessage?.content) {
+              messages.push({ role: 'system', content: systemMessage.content });
+            }
+            messages.push({ role: 'user', content: prompt });
 
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeout);
-
-            const resp = await fetch(baseUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${key}`,
-              },
-              body: JSON.stringify(body),
-              signal: controller.signal,
+            const result = await generateText({
+              model: provider(modelName),
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              abortSignal: controller.signal,
             });
-            clearTimeout(id);
 
-            if (!resp.ok) {
-              // Try to provide a helpful error for common failure modes
-              const txt = await resp.text().catch(() => '');
-              let errMsg = `OpenRouter error: ${resp.status} ${txt}`;
-              if (resp.status === 401 || resp.status === 403) {
-                errMsg = `OpenRouter authentication failed (status ${resp.status}). Check your OPENROUTER_API_KEY.`;
-              } else if (resp.status === 503) {
-                errMsg = `OpenRouter service unavailable (503). The OpenRouter service may be down or unreachable from this environment.`;
-              }
-
-              listeners.forEach((l) => l({ type: 'session.error', data: { message: errMsg } }));
-              throw new Error(errMsg);
-            }
-
-            const json = await resp.json();
-            // Try multiple response shapes
-            let content = '';
-            if (json.choices && json.choices[0]) {
-              if (json.choices[0].message?.content) content = json.choices[0].message.content;
-              else if (typeof json.choices[0].text === 'string') content = json.choices[0].text;
-            } else if (json.output?.[0]?.content?.[0]?.text) {
-              content = json.output[0].content[0].text;
-            } else if (typeof json.text === 'string') {
-              content = json.text;
-            }
-
+            const content = result.text || '';
             listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
-
             return { data: { content } };
           } catch (err: any) {
-            // Normalize common network/timeout errors into actionable messages
             let m = err instanceof Error ? err.message : String(err);
 
-            if (err?.name === 'AbortError' || /timed out|timeout/i.test(m)) {
-              m = 'Request to OpenRouter timed out. The operation took too long.';
+            if (err.name === 'AbortError' || /timed out|timeout/i.test(m)) {
+              m = 'Request to Cerebras timed out.';
             } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
-              m = 'Network error contacting OpenRouter. Ensure OPENROUTER_API_KEY is set and the server can reach https://openrouter.ai';
+              m = 'Network error contacting Cerebras.';
+            } else if (/401|403|authentication|unauthorized/i.test(m)) {
+              m = `Cerebras authentication failed. Check CEREBRAS_API_KEY.`;
             }
 
             listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
             throw new Error(m);
+          } finally {
+            clearTimeout(timeoutId);
+            controllers.delete(controller);
           }
         },
 
         async destroy() {
-          // no-op
+          controllers.forEach(c => c.abort());
+          controllers.clear();
         },
       };
     },
   };
+}
 
-  return singletonClient;
+/**
+ * Create Groq client for Moonshot AI model as fallback
+ */
+function createGroqClient(): AIClient {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) {
+    throw new Error('GROQ_API_KEY is not set. Add it to your environment or .env.local');
+  }
+
+  const groq = createGroq({ apiKey: key });
+  const fallbackModel = 'qwen/qwen3-32b'; // Fallback model
+
+  return {
+    createSession: async ({ model, systemMessage } = {}) => {
+      const modelName = model || fallbackModel;
+      const listeners: Array<(e: SessionEvent) => void> = [];
+      const controllers: Set<AbortController> = new Set();
+
+      return {
+        on(cb: (e: SessionEvent) => void) {
+          listeners.push(cb);
+          return () => {
+            const idx = listeners.indexOf(cb);
+            if (idx !== -1) listeners.splice(idx, 1);
+          };
+        },
+
+        async sendAndWait({ prompt }: { prompt: string }, timeout = 120000) {
+          const controller = new AbortController();
+          controllers.add(controller);
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+          try {
+            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+            if (systemMessage?.content) {
+              messages.push({ role: 'system', content: systemMessage.content });
+            }
+            messages.push({ role: 'user', content: prompt });
+
+            const result = await generateText({
+              model: groq(modelName),
+              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              abortSignal: controller.signal,
+            });
+
+            const content = result.text || '';
+            listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
+            return { data: { content } };
+          } catch (err: any) {
+            let m = err instanceof Error ? err.message : String(err);
+
+            if (err.name === 'AbortError' || /timed out|timeout/i.test(m)) {
+              m = 'Request to Groq timed out.';
+            } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
+              m = 'Network error contacting Groq.';
+            } else if (/401|403|authentication|unauthorized/i.test(m)) {
+              m = `Groq authentication failed. Check GROQ_API_KEY.`;
+            }
+
+            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
+            throw new Error(m);
+          } finally {
+            clearTimeout(timeoutId);
+            controllers.delete(controller);
+          }
+        },
+
+        async destroy() {
+          controllers.forEach(c => c.abort());
+          controllers.clear();
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Get or create the singleton AI client with Cerebras primary, Groq+Moonshot fallback
+ */
+export async function getAIClient(): Promise<AIClient> {
+  if (singletonClient) return singletonClient;
+
+  loadEnv();
+
+  // Try Cerebras first
+  try {
+    const cerebrasKey = process.env.CEREBRAS_API_KEY;
+    if (cerebrasKey) {
+      console.log('[AI Client] Using Cerebras for zai-glm-4.7');
+      singletonClient = createCerebrasClient();
+
+      // Test the connection
+      try {
+        const session = await singletonClient.createSession();
+        await session.sendAndWait({ prompt: 'test' }, 5000);
+        await session.destroy();
+        console.log('[AI Client] Cerebras connection successful');
+        return singletonClient;
+      } catch (err: any) {
+        console.warn('[AI Client] Cerebras connection test failed:', err.message);
+        singletonClient = null;
+      }
+    }
+  } catch (err: any) {
+    console.warn('[AI Client] Failed to initialize Cerebras:', err.message);
+  }
+
+
+  // Fall back to Groq
+  console.log('[AI Client] Falling back to Groq with moonshotai/kimi-k2-instruct-0905');
+  try {
+    singletonClient = createGroqClient();
+    return singletonClient;
+  } catch (err: any) {
+    throw new Error(`Failed to initialize any AI provider. Cerebras and Groq both failed. Error: ${err.message}`);
+  }
 }
 
 /**
@@ -148,7 +236,7 @@ export async function withSession<T>(client: AIClient, fn: (session: AIClientSes
   try {
     return await fn(session);
   } finally {
-    await session.destroy().catch(() => {});
+    await session.destroy().catch(() => { });
   }
 }
 
@@ -164,4 +252,14 @@ export async function waitForEvent(session: { on: (cb: (e: SessionEvent) => void
       }
     });
   });
+}
+
+/**
+ * Gracefully shutdown the AI client
+ */
+export async function shutdownAIClient() {
+  if (singletonClient && 'stop' in singletonClient && singletonClient.stop) {
+    await singletonClient.stop();
+  }
+  singletonClient = null;
 }

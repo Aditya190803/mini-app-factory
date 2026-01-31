@@ -1,14 +1,14 @@
 import { describe, test, expect } from 'vitest';
 import { getAIClient } from '@/lib/ai-client';
 
-describe('openrouter client', () => {
-  test('getAIClient throws when OPENROUTER_API_KEY is missing', async () => {
-    const old = process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
+describe('cerebras client', () => {
+  test('getAIClient throws when CEREBRAS_API_KEY is missing', async () => {
+    const old = process.env.CEREBRAS_API_KEY;
+    delete process.env.CEREBRAS_API_KEY;
     try {
-      await expect(getAIClient()).rejects.toThrow(/OPENROUTER_API_KEY/);
+      await expect(getAIClient()).rejects.toThrow(/any AI provider/);
     } finally {
-      if (old !== undefined) process.env.OPENROUTER_API_KEY = old;
+      if (old !== undefined) process.env.CEREBRAS_API_KEY = old;
     }
   });
 });
