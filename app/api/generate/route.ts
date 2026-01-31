@@ -78,7 +78,8 @@ function sanitizeErrorMessage(raw: unknown): string {
 export async function runGeneration(
   projectName: string,
   finalPrompt: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onEvent?: (event: { type: string; data: any }) => void
 ): Promise<{ html: string } | { error: string }> {
   const project = await getProject(projectName);
   if (!project) return { error: 'Project not found during generation' };
@@ -106,6 +107,8 @@ export async function runGeneration(
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
           console.error('[AI] Design session error:', event.data.message);
+        } else if (event.type === 'provider.fallback') {
+          onEvent?.(event);
         }
       });
 
@@ -136,6 +139,8 @@ export async function runGeneration(
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
           console.error('[AI] HTML session error:', event.data.message);
+        } else if (event.type === 'provider.fallback') {
+          onEvent?.(event);
         }
       });
 
@@ -250,7 +255,16 @@ export async function POST(request: Request) {
             return;
           }
 
-          const result = await runGeneration(projectName, finalPrompt, abortController.signal);
+          const result = await runGeneration(
+            projectName,
+            finalPrompt,
+            abortController.signal,
+            (event) => {
+              if (event.type === 'provider.fallback') {
+                sse.write({ status: 'fallback', message: event.data.message });
+              }
+            }
+          );
 
           // Check stream state before any writes
           if (sse.isClosed()) return;

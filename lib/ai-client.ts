@@ -187,45 +187,90 @@ function createGroqClient(): AIClient {
 }
 
 /**
- * Get or create the singleton AI client with Cerebras primary, Groq+Moonshot fallback
+ * Get the AI client that handles Cerebras as primary and Groq as fallback
  */
 export async function getAIClient(): Promise<AIClient> {
   if (singletonClient) return singletonClient;
 
   loadEnv();
 
-  // Try Cerebras first
-  try {
-    const cerebrasKey = process.env.CEREBRAS_API_KEY;
-    if (cerebrasKey) {
-      console.log('[AI Client] Using Cerebras for zai-glm-4.7');
-      singletonClient = createCerebrasClient();
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
 
-      // Test the connection
-      try {
-        const session = await singletonClient.createSession();
-        await session.sendAndWait({ prompt: 'test' }, 5000);
-        await session.destroy();
-        console.log('[AI Client] Cerebras connection successful');
-        return singletonClient;
-      } catch (err: any) {
-        console.warn('[AI Client] Cerebras connection test failed:', err.message);
-        singletonClient = null;
-      }
+  if (!cerebrasKey && !groqKey) {
+    throw new Error('Neither CEREBRAS_API_KEY nor GROQ_API_KEY is set.');
+  }
+
+  const cerebrasClient = cerebrasKey ? createCerebrasClient() : null;
+  const groqClient = groqKey ? createGroqClient() : null;
+
+  singletonClient = {
+    createSession: async (opts) => {
+      let primarySession = cerebrasClient ? await cerebrasClient.createSession(opts) : null;
+      let fallbackSession: AIClientSession | null = null;
+      const listeners: Array<(e: SessionEvent) => void> = [];
+
+      // Helper to attach a session to our listener pool
+      const attachSession = (s: AIClientSession) => {
+        s.on((event) => {
+          // Avoid duplicate processing if needed, but here we just propagate
+          listeners.forEach((l) => l(event));
+        });
+      };
+
+      if (primarySession) attachSession(primarySession);
+
+      const session: AIClientSession = {
+        on(cb) {
+          listeners.push(cb);
+          return () => {
+            const idx = listeners.indexOf(cb);
+            if (idx !== -1) listeners.splice(idx, 1);
+          };
+        },
+
+        async sendAndWait(sendOpts, timeout) {
+          if (fallbackSession) {
+            return await fallbackSession.sendAndWait(sendOpts, timeout);
+          }
+
+          if (primarySession) {
+            try {
+              return await primarySession.sendAndWait(sendOpts, timeout);
+            } catch (err: any) {
+              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback:', err.message);
+
+              listeners.forEach(l => l({
+                type: 'provider.fallback',
+                data: { message: 'Main model failed, switching to fallback...', error: err.message }
+              }));
+
+              if (!groqClient) throw err;
+
+              fallbackSession = await groqClient.createSession(opts);
+              attachSession(fallbackSession);
+              return await fallbackSession.sendAndWait(sendOpts, timeout);
+            }
+          } else if (groqClient) {
+            fallbackSession = await groqClient.createSession(opts);
+            attachSession(fallbackSession);
+            return await fallbackSession.sendAndWait(sendOpts, timeout);
+          } else {
+            throw new Error('No AI providers available');
+          }
+        },
+
+        async destroy() {
+          await primarySession?.destroy();
+          await fallbackSession?.destroy();
+        }
+      };
+
+      return session;
     }
-  } catch (err: any) {
-    console.warn('[AI Client] Failed to initialize Cerebras:', err.message);
-  }
+  };
 
-
-  // Fall back to Groq
-  console.log('[AI Client] Falling back to Groq with moonshotai/kimi-k2-instruct-0905');
-  try {
-    singletonClient = createGroqClient();
-    return singletonClient;
-  } catch (err: any) {
-    throw new Error(`Failed to initialize any AI provider. Cerebras and Groq both failed. Error: ${err.message}`);
-  }
+  return singletonClient;
 }
 
 /**

@@ -5,6 +5,7 @@ import { ConvexClientProvider } from "@/components/convex-client-provider";
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { Toaster } from 'sonner'
 import './fonts.css'
 import './globals.css'
 
@@ -31,6 +32,7 @@ export default function RootLayout({
           <StackTheme>
             <ConvexClientProvider>
               {children}
+              <Toaster position="bottom-right" theme="dark" />
               <Analytics />
             </ConvexClientProvider>
           </StackTheme>

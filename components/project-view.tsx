@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import EditorWorkspace from '@/components/editor-workspace';
 import { ProjectMetadata } from '@/lib/projects';
+import { toast } from 'sonner';
 
 interface ProjectViewProps {
   projectName: string;
@@ -118,6 +119,14 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
                 return;
               }
 
+              if (data.status === 'fallback') {
+                toast.warning('Provider issue detected', {
+                  description: data.message || 'Main model failed, switching to fallback...',
+                  duration: 5000,
+                });
+                continue;
+              }
+
               if (data.status === 'completed') {
                 setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
                 setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
@@ -159,14 +168,14 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
             return;
           } else if (data.status === 'error') {
-              setError(data.error);
-              setSteps(prev => prev.map((s, idx) => {
-                if (idx < _currentStepIndex) return { ...s, status: 'completed' };
-                if (idx === _currentStepIndex) return { ...s, status: 'error' };
-                return { ...s, status: 'pending' };
-              }));
-              return;
-            }
+            setError(data.error);
+            setSteps(prev => prev.map((s, idx) => {
+              if (idx < _currentStepIndex) return { ...s, status: 'completed' };
+              if (idx === _currentStepIndex) return { ...s, status: 'error' };
+              return { ...s, status: 'pending' };
+            }));
+            return;
+          }
         } catch { /* ignore */ }
       }
     } catch (err: unknown) {
@@ -228,8 +237,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.1 }}
               className={`p-6 border flex items-center justify-between transition-colors ${step.status === 'loading' ? 'border-primary bg-primary/5 shadow-neon' :
-                  step.status === 'completed' ? 'border-secondary-text/20 bg-transparent opacity-50' :
-                    'border-border bg-transparent opacity-30'
+                step.status === 'completed' ? 'border-secondary-text/20 bg-transparent opacity-50' :
+                  'border-border bg-transparent opacity-30'
                 }`}
             >
               <div className="flex items-center gap-4">
