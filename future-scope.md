@@ -11,8 +11,7 @@
 - **Visual Selector**: Click an element in the preview to automatically highlight its code or target it with AI instructions.
 
 ### 3. 🌐 Deployment & Sharing
-- **One-Click Deployment**: Integrate with Vercel, Netlify, or GitHub Pages. Allow users to deploy to live URLs (e.g., `project-name.miniappfactory.com`) directly from the dashboard.
-- **Project Branching**: Save "checkpoints" or branches to experiment with different design directions without losing progress.
+- **One-Click Deployment**: Integrate with Vercel, Netlify, or GitHub Pages. Allow users to deploy to live directly from the dashboard.
 
 ### 4. 📊 Data & Form Handling
 - Provide built-in support for simple backends. For example, a contact form that sends emails or saves submissions to a Convex database without writing server-side code.
