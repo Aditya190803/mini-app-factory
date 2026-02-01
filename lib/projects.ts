@@ -17,6 +17,8 @@ export interface ProjectMetadata {
   isMultiPage?: boolean;
   pageCount?: number;
   description?: string;
+  favicon?: string;
+  seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>;
   files?: ProjectFile[];
 }
 
@@ -54,6 +56,8 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
     isMultiPage: project.isMultiPage,
     pageCount: project.pageCount,
     description: project.description,
+    favicon: project.favicon,
+    seoData: project.seoData,
   };
 }
 

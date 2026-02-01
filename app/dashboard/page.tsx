@@ -5,6 +5,18 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { 
+  Trash2, 
+  ExternalLink, 
+  Settings2, 
+  Code2, 
+  Calendar, 
+  Layers, 
+  Layout,
+  Globe,
+  ArrowRight
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   const user = useUser();
@@ -103,86 +115,116 @@ export default function DashboardPage() {
         </div>
 
         {projects.length === 0 ? (
-          <div className="h-[400px] border border-dashed flex flex-col items-center justify-center gap-6" style={{ borderColor: 'var(--border)' }}>
-            <div className="w-16 h-16 border flex items-center justify-center text-3xl opacity-20" style={{ borderColor: 'var(--border)' }}>
+          <div className="h-[400px] border border-dashed flex flex-col items-center justify-center gap-6 rounded-lg" style={{ borderColor: 'var(--border)' }}>
+            <div className="w-16 h-16 border flex items-center justify-center text-3xl opacity-20 rounded-full" style={{ borderColor: 'var(--border)' }}>
               ∅
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-xs font-mono uppercase font-bold tracking-widest" style={{ color: 'var(--foreground)' }}>
+              <h3 className="text-xs font-mono uppercase font-bold tracking-widest text-[var(--foreground)]">
                 No Active Fabrications
               </h3>
-              <p className="text-[10px] font-mono max-w-xs leading-relaxed" style={{ color: 'var(--muted-text)' }}>
+              <p className="text-[10px] font-mono max-w-xs leading-relaxed text-[var(--muted-text)]">
                 Your production queue is currently empty. Initialize a new project from the workshop.
               </p>
             </div>
-            <button
+            <Button
               onClick={() => router.push('/')}
-              className="px-6 py-2 text-[10px] font-mono uppercase border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-all font-bold"
+              className="px-6 h-9 font-mono uppercase border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-all font-bold"
+              variant="outline"
             >
-              Enter Workshop
-            </button>
+              Enter Workshop <ArrowRight className="ml-2 w-3 h-3" />
+            </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => (
               <div
                 key={project._id}
-                className="group border p-6 bg-[var(--background-surface)] hover:border-[var(--primary)] transition-all relative overflow-hidden"
-                style={{ borderColor: 'var(--border)' }}
+                className="group relative flex flex-col bg-[var(--background-surface)] border border-[var(--border)] rounded-sm hover:border-[var(--primary)] transition-all duration-300"
               >
-                <div className="absolute top-0 right-0 w-16 h-16 bg-[var(--primary)] opacity-[0.02] -translate-y-8 translate-x-8 rotate-45" />
-
-                <div className="flex justify-between items-start mb-8">
-                  <div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest opacity-50 mb-1" style={{ color: 'var(--muted-text)' }}>
-                      Identifier
-                    </div>
-                    <div className="text-sm font-mono font-black" style={{ color: 'var(--foreground)' }}>
-                      {project.projectName.toUpperCase()}
+                <div className="p-6 flex-1">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="space-y-1">
+                      <h2 className="text-sm font-mono font-black text-[var(--foreground)] tracking-tight group-hover:text-[var(--primary)] transition-colors">
+                        {project.projectName.toUpperCase()}
+                      </h2>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(project.projectName)}
-                    disabled={isDeleting === project.projectName}
-                    className="text-[9px] font-mono uppercase opacity-30 group-hover:opacity-100 hover:bg-red-500/10 transition-all px-2 py-1 border border-transparent hover:border-red-500/20"
-                    style={{ color: '#ff4444' }}
-                  >
-                    {isDeleting === project.projectName ? 'Purging...' : 'Purge'}
-                  </button>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-[9px] font-mono">
-                    <span style={{ color: 'var(--muted-text)' }}>Type</span>
-                    <span className="text-[var(--secondary-text)] uppercase">{project.isMultiPage ? 'Multi-Page' : 'Single-Page'}</span>
-                  </div>
-                  {project.isMultiPage && (
-                    <div className="flex items-center justify-between text-[9px] font-mono">
-                      <span style={{ color: 'var(--muted-text)' }}>Pages</span>
-                      <span className="text-[var(--secondary-text)]">{project.pageCount || 1}</span>
+                  {/* Metrics Grid */}
+                  <div className="grid grid-cols-2 gap-px bg-[var(--border)]/30 border border-[var(--border)]/30 mb-6 overflow-hidden rounded-sm">
+                    <div className="bg-[var(--background-surface)] p-3 space-y-1">
+                      <div className="flex items-center gap-1.5 opacity-50">
+                        <Layout className="w-2.5 h-2.5" />
+                        <span className="text-[8px] font-mono uppercase">Topology</span>
+                      </div>
+                      <div className="text-[9px] font-mono uppercase font-bold text-[var(--secondary-text)]">
+                        {project.isMultiPage ? 'Multi' : 'Single'}
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center justify-between text-[9px] font-mono">
-                    <span style={{ color: 'var(--muted-text)' }}>Timestamp</span>
-                    <span style={{ color: 'var(--secondary-text)' }}>{new Date(project.createdAt).toLocaleDateString()}</span>
+                    <div className="bg-[var(--background-surface)] p-3 space-y-1">
+                      <div className="flex items-center gap-1.5 opacity-50">
+                        <Layers className="w-2.5 h-2.5" />
+                        <span className="text-[8px] font-mono uppercase">Modules</span>
+                      </div>
+                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                        {project.pageCount || 1} Nodes
+                      </div>
+                    </div>
+                    <div className="bg-[var(--background-surface)] p-3 space-y-1 col-span-2">
+                      <div className="flex items-center gap-1.5 opacity-50">
+                        <Calendar className="w-2.5 h-2.5" />
+                        <span className="text-[8px] font-mono uppercase">Last Sync</span>
+                      </div>
+                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                        {new Date(project.createdAt).toLocaleDateString(undefined, { 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-8 pt-6 border-t flex gap-2" style={{ borderColor: 'var(--border)' }}>
-                  <button
-                    onClick={() => router.push(`/edit/${project.projectName}`)}
-                    className="flex-1 px-3 py-2 text-[10px] font-mono uppercase font-black bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 transition-all text-center"
-                  >
-                    Load Editor
-                  </button>
-                  {project.isPublished && (
-                    <button
-                      onClick={() => window.open(`/results/${project.projectName}`, '_blank')}
-                      className="px-4 py-2 text-[10px] font-mono uppercase border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-all font-bold"
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(project.projectName)}
+                      disabled={isDeleting === project.projectName}
+                      className="h-8 flex-1 text-red-500/60 hover:text-red-500 hover:bg-red-500/5 text-[9px] font-mono uppercase px-0"
                     >
-                      View
-                    </button>
-                  )}
+                      <Trash2 className="w-3 h-3 mr-2" />
+                      Decom
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="p-3 border-t border-[var(--border)] bg-[var(--background)]/50 grid grid-cols-4 gap-2">
+                  <Button
+                    onClick={() => router.push(`/edit/${project.projectName}`)}
+                    className="col-span-2 h-9 bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 font-mono uppercase text-[10px] font-black rounded-none shadow-[2px_2px_0px_rgba(var(--primary-rgb),0.1)]"
+                  >
+                    Launch
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(`/dashboard/${project.projectName}/metadata`)}
+                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none"
+                    title="Metadata & SEO"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!project.isPublished}
+                    onClick={() => window.open(`/results/${project.projectName}`, '_blank')}
+                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none disabled:opacity-20"
+                    title="View Live Site"
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
             ))}
