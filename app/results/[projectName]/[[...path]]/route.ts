@@ -16,9 +16,17 @@ export async function GET(
   const filePath = segments ? segments.join('/') : 'index.html';
   let file = await getFile(projectName, filePath);
 
-  if (!file && !filePath.includes('.')) {
-    // Try adding .html extension
-    file = await getFile(projectName, `${filePath}.html`);
+  if (!file) {
+    // 1. Try directory routing: folder/ -> folder/index.html
+    const indexInFolder = filePath.endsWith('/') 
+      ? `${filePath}index.html` 
+      : `${filePath}/index.html`;
+    file = await getFile(projectName, indexInFolder);
+
+    // 2. Try adding .html extension if not found and no extension provided
+    if (!file && !filePath.includes('.')) {
+      file = await getFile(projectName, `${filePath}.html`);
+    }
   }
 
   if (!file) {

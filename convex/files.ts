@@ -108,13 +108,24 @@ export const saveFiles = mutation({
     const now = Date.now();
     let pageCount = 0;
     
+    // Get existing files to identify which ones to delete
+    const existingFiles = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const inputPaths = new Set(args.files.map(f => f.path));
+    
+    // Delete files that are no longer in the input list
+    for (const existing of existingFiles) {
+      if (!inputPaths.has(existing.path)) {
+        await ctx.db.delete(existing._id);
+      }
+    }
+
+    // Update or insert provided files
     for (const file of args.files) {
-      const existing = await ctx.db
-        .query("projectFiles")
-        .withIndex("by_project_path", (q) =>
-          q.eq("projectId", args.projectId).eq("path", file.path)
-        )
-        .first();
+      const existing = existingFiles.find(f => f.path === file.path);
 
       if (existing) {
         await ctx.db.patch(existing._id, {
@@ -139,7 +150,7 @@ export const saveFiles = mutation({
 
     await ctx.db.patch(args.projectId, {
       updatedAt: now,
-      pageCount: pageCount, // Reset or update page count
+      pageCount: pageCount,
     });
   },
 });
