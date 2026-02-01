@@ -10,14 +10,21 @@ export interface ProjectFile {
 /**
  * Resolves <!-- include:filename.html --> directives
  */
-export function resolveIncludes(html: string, files: ProjectFile[]): string {
+export function resolveIncludes(html: string, files: ProjectFile[], isPreview = false): string {
   const partials = files.filter(f => f.fileType === 'partial');
   
   return html.replace(/<!--\s*include:([a-zA-Z0-9._-]+)\s*-->/g, (match, fileName) => {
     const partial = partials.find(p => p.path === fileName);
     if (partial) {
       // Recursively resolve includes in partials
-      return resolveIncludes(partial.content, files);
+      const content = resolveIncludes(partial.content, files, isPreview);
+      
+      if (isPreview) {
+        // Wrap in a marker for the visual selector
+        // We use display: contents to avoid breaking layout while providing a target for the selector
+        return `<div data-source-file="${fileName}" style="display: contents;">${content}</div>`;
+      }
+      return content;
     }
     return `<!-- Error: Partial ${fileName} not found -->`;
   });
@@ -34,13 +41,24 @@ export function assembleFullPage(
     favicon?: string,
     globalSeo?: { siteName?: string, description?: string, ogImage?: string },
     seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>
-  }
+  },
+  isEditorPreview = false
 ): string {
   const pageFile = files.find(f => f.path === pagePath);
   if (!pageFile) return '';
 
-  let html = resolveIncludes(pageFile.content, files);
+  let html = resolveIncludes(pageFile.content, files, isEditorPreview);
   const $ = cheerio.load(html);
+
+  // Tag body with source file for visual selector
+  if (isEditorPreview) {
+    $('body').attr('data-source-file', pagePath);
+    
+    // Process the include comments to add data-source-file to elements
+    // This is a bit tricky with cheerio but we can try to wrap contents
+    // or just let the selector walk up to comments (though DOM doesn't easily walk to comments via parent)
+    // For now, we'll manually tag the body. Recursive tagging for partials below.
+  }
 
   // Set base href if projectName is provided to fix relative links in subfolders
   if (projectName) {
@@ -132,6 +150,111 @@ export function assembleFullPage(
       else $.root().append(scriptElement);
     }
   });
+
+  // Inject Bridge Script for HMR and Visual Selector
+  if (isEditorPreview) {
+    const bridgeScript = `
+<script id="preview-bridge">
+  (function() {
+    // Navigation handling
+    document.addEventListener('click', (e) => {
+      if (window.__SELECTOR_ACTIVE__) return; // Handled by selector logic below
+
+      const a = e.target.closest('a');
+      if (a) {
+        const href = a.getAttribute('href');
+        if (href && href.startsWith('#')) {
+          e.preventDefault();
+          const target = document.querySelector(href);
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth' });
+            history.pushState(null, null, href);
+          }
+        } else if (href && !href.startsWith('javascript:') && !href.startsWith('http') && !href.startsWith('mailto:')) {
+          e.preventDefault();
+          window.parent.postMessage({ type: 'navigate', path: href }, '*');
+        } else if (href && href.startsWith('http')) {
+          e.preventDefault();
+          window.open(a.href, '_blank');
+        }
+      }
+    });
+
+    // Communication bridge
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'update-css') {
+        const { file, content } = event.data;
+        let style = document.querySelector(\`style[data-file="\${file}"]\`);
+        if (!style) {
+          style = document.createElement('style');
+          style.setAttribute('data-file', file);
+          document.head.appendChild(style);
+        }
+        style.textContent = content;
+        console.log(\`[HMR] Updated \${file}\`);
+      }
+      
+      if (event.data.type === 'toggle-selector') {
+        window.__SELECTOR_ACTIVE__ = event.data.active;
+        document.body.style.cursor = event.data.active ? 'crosshair' : 'default';
+        if (!event.data.active) {
+            document.querySelectorAll('*').forEach(el => {
+                if (el instanceof HTMLElement) el.style.outline = '';
+            });
+        }
+      }
+    });
+
+    // Visual Selector interaction
+    document.addEventListener('click', (e) => {
+      if (!window.__SELECTOR_ACTIVE__) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+
+      let target = e.target;
+      let sourceFile = null;
+
+      while (target && target !== document.documentElement) {
+         if (target instanceof HTMLElement && target.hasAttribute('data-source-file')) {
+           sourceFile = target.getAttribute('data-source-file');
+           break;
+         }
+         target = target.parentElement;
+      }
+      
+      if (!sourceFile) sourceFile = document.body.getAttribute('data-source-file');
+
+      window.parent.postMessage({
+        type: 'element-selected',
+        path: sourceFile,
+        elementHtml: target instanceof HTMLElement ? target.outerHTML : null,
+        elementText: target instanceof HTMLElement ? target.innerText : null,
+        tagName: target instanceof HTMLElement ? target.tagName.toLowerCase() : null,
+        x: e.clientX,
+        y: e.clientY
+      }, '*');
+    }, true);
+
+    document.addEventListener('mouseover', (e) => {
+      if (!window.__SELECTOR_ACTIVE__) return;
+      if (e.target instanceof HTMLElement) {
+        e.target.style.outline = '2px solid #3b82f6';
+        e.target.style.outlineOffset = '-2px';
+      }
+    });
+    document.addEventListener('mouseout', (e) => {
+      if (!window.__SELECTOR_ACTIVE__) return;
+      if (e.target instanceof HTMLElement) {
+        e.target.style.outline = '';
+      }
+    });
+  })();
+</script>`;
+    if ($('head').length > 0) $('head').append(bridgeScript);
+    else if ($('body').length > 0) $('body').prepend(bridgeScript);
+    else $.root().append(bridgeScript);
+  }
 
   return $.html();
 }

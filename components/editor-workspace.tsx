@@ -40,6 +40,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState('index.html');
+  const [selectedElement, setSelectedElement] = useState<{ path: string, html: string } | null>(null);
+  const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -187,7 +189,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const previewHtml = useMemo(() => {
     if (files.length === 0) return '';
     
-    const assembledHtml = assembleFullPage(
+    return assembleFullPage(
       activeFilePath.endsWith('.html') ? activeFilePath : 'index.html', 
       files,
       projectName,
@@ -195,39 +197,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         favicon: projectData?.favicon,
         globalSeo: projectData?.globalSeo,
         seoData: projectData?.seoData
-      }
+      },
+      true // isEditorPreview
     );
-
-    const script = `
-      <script>
-        document.addEventListener('click', (e) => {
-          const a = e.target.closest('a');
-          if (a) {
-            const href = a.getAttribute('href');
-            if (href && href.startsWith('#')) {
-              e.preventDefault();
-              const target = document.querySelector(href);
-              if (target) {
-                target.scrollIntoView({ behavior: 'smooth' });
-                history.pushState(null, null, href);
-              }
-            } else if (href && !href.startsWith('javascript:') && !href.startsWith('http') && !href.startsWith('mailto:')) {
-              e.preventDefault();
-              window.parent.postMessage({ type: 'navigate', path: href }, '*');
-            } else if (href && href.startsWith('http')) {
-              e.preventDefault();
-              window.open(a.href, '_blank');
-            }
-          }
-        });
-      </script>
-    `;
-
-    if (/<head[^>]*>/i.test(assembledHtml)) {
-      return assembledHtml.replace(/<head[^>]*>/i, (match) => `${match}\n    ${script}`);
-    }
-    return `${script}${assembledHtml}`;
-  }, [files, activeFilePath]);
+  }, [files, activeFilePath, projectName, projectData]);
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -276,13 +249,24 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (!transformPrompt.trim()) return;
     setIsTransforming(true);
     try {
+      let finalPrompt = transformPrompt;
+
+      if (selectedElement) {
+        // Strip out the internal data-source-file attributes for better AI clarity
+        const cleanHtml = selectedElement.html
+          .replace(/ data-source-file="[^"]*"/g, '')
+          .replace(/ style="display: contents;"/g, '');
+        
+        finalPrompt = `Target element in ${selectedElement.path}:\n${cleanHtml}\n\nInstructions: ${transformPrompt}`;
+      }
+
       const response = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           files, 
           activeFile: activeFilePath,
-          prompt: transformPrompt 
+          prompt: finalPrompt 
         }),
       });
 
@@ -300,6 +284,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         persistFiles(result.files);
       }
       setTransformPrompt('');
+      setSelectedElement(null);
     } catch (err) {
       console.error('Transform error', err);
       alert(err instanceof Error ? err.message : 'Transform failed');
@@ -812,7 +797,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         
         <main className="flex-1 flex overflow-hidden">
           {activeTab === 'preview' && (
-            <PreviewPanel previewHtml={previewHtml} />
+            <PreviewPanel 
+              previewHtml={previewHtml} 
+              files={files}
+              onOpenInEditor={(path, html) => {
+                setActiveFilePath(path);
+                setActiveTab('code');
+                if (html) setEditorSearchText(html);
+              }}
+              onAttachToChat={(path, html) => {
+                setSelectedElement({ path, html });
+              }}
+            />
           )}
 
           {activeTab === 'code' && activeFile && (
@@ -821,6 +817,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               language={activeFile.language}
               onChange={handleEditorChange}
               onReset={handleReset}
+              searchText={editorSearchText}
             />
           )}
 
@@ -835,7 +832,17 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 />
               </div>
               <div className="flex-1 overflow-hidden">
-                <PreviewPanel previewHtml={previewHtml} />
+                <PreviewPanel 
+                  previewHtml={previewHtml} 
+                  files={files}
+                  onOpenInEditor={(path, html) => {
+                    setActiveFilePath(path);
+                    if (html) setEditorSearchText(html);
+                  }}
+                  onAttachToChat={(path, html) => {
+                    setSelectedElement({ path, html });
+                  }}
+                />
               </div>
             </div>
           )}
@@ -853,6 +860,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               <EditorSidebar
                 transformPrompt={transformPrompt}
                 setTransformPrompt={setTransformPrompt}
+                selectedElement={selectedElement}
+                setSelectedElement={setSelectedElement}
                 runTransform={runTransform}
                 runPolish={() => setIsPolishDialogOpen(true)}
                 isTransforming={isTransforming}

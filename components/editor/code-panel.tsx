@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 
 interface CodePanelProps {
@@ -8,9 +8,65 @@ interface CodePanelProps {
     language?: 'html' | 'css' | 'javascript';
     onChange: (val: string | undefined) => void;
     onReset: () => void;
+    searchText?: string;
 }
 
-export default function CodePanel({ html, language = 'html', onChange, onReset }: CodePanelProps) {
+export default function CodePanel({ html, language = 'html', onChange, onReset, searchText }: CodePanelProps) {
+    const editorRef = useRef<any>(null);
+    const decorationRef = useRef<string[]>([]);
+
+    const handleEditorDidMount = (editor: any) => {
+        editorRef.current = editor;
+    };
+
+    useEffect(() => {
+        if (searchText && editorRef.current) {
+            const editor = editorRef.current;
+            const model = editor.getModel();
+            if (!model) return;
+            
+            // Clean the search text to match source code
+            // 1. Remove data-source-file attributes
+            // 2. Remove style="display: contents;" if it was a wrapper
+            let cleanSearch = searchText
+                .replace(/ data-source-file="[^"]*"/g, '')
+                .replace(/ style="display: contents;"/g, '')
+                .trim();
+
+            // 3. Try exact match first
+            let matches = model.findMatches(cleanSearch, true, false, true, null, true);
+            
+            if (matches.length === 0) {
+                // 4. Try matching a significant chunk (tag + first bit of content)
+                const partial = cleanSearch.length > 150 ? cleanSearch.substring(0, 150) : cleanSearch;
+                matches = model.findMatches(partial, true, false, true, null, true);
+            }
+
+            if (matches && matches.length > 0) {
+                const range = matches[0].range;
+                
+                // Reveal and highlight
+                editor.revealRangeInCenter(range);
+                
+                // Use decorations for a persistent "slight" highlight
+                decorationRef.current = editor.deltaDecorations(decorationRef.current, [
+                    {
+                        range: range,
+                        options: {
+                            inlineClassName: 'monaco-highlight-glow',
+                            className: 'monaco-highlight-glow-line', // line background
+                            isWholeLine: false,
+                        }
+                    }
+                ]);
+
+                // Also select it briefly
+                editor.setSelection(range);
+                editor.focus();
+            }
+        }
+    }, [searchText, editorRef.current]);
+
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: '#1e1e1e' }}>
             <div className="absolute top-4 right-8 z-20 flex gap-2">
@@ -40,6 +96,7 @@ export default function CodePanel({ html, language = 'html', onChange, onReset }
                     theme="vs-dark"
                     value={html}
                     onChange={onChange}
+                    onMount={handleEditorDidMount}
                     options={{
                         fontSize: 12,
                         fontFamily: 'var(--font-mono)',
