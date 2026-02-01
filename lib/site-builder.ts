@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { getAIClient, withSession } from './ai-client';
+import { getAIClient, SessionEvent } from './ai-client';
 
 export enum BuildStatus {
   PENDING = 'pending',
@@ -56,13 +56,30 @@ export function createJob(jobId: string, description: string): BuildJob {
 const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
 
 export function buildMainPrompt(description: string): string {
-  return `Create a complete, production-ready HTML landing page for: ${description}
+  return `Create a complete, production-ready multi-page site for: ${description}
 
-Output the complete code in a fenced code block:
+Output each file in a separate fenced code block with the language and path:
 
 ${'```'}html:index.html
-[your complete HTML here]
+[index page content]
 ${'```'}
+
+${'```'}css:styles.css
+[global styles]
+${'```'}
+
+${'```'}html:about.html
+[about page content]
+${'```'}
+
+Recommended structure:
+- index.html (Main page)
+- styles.css (Extracted styles)
+- script.js (Extracted scripts)
+- partials/header.html (Reusable header)
+- partials/footer.html (Reusable footer)
+
+You can use <!-- include:partials/header.html --> to include fragments.
 
 ## 2026 Design Requirements
 
@@ -257,7 +274,7 @@ export async function runAISession(prompt: string, outputDir: string, job?: Buil
     let sessionError: Error | null = null;
     const outputs: string[] = [];
 
-    const unsubscribe = session.on((event: any) => {
+    const unsubscribe = session.on((event: SessionEvent) => {
       if (event.type === 'session.error') {
         sessionError = new Error(event.data?.message || 'session error');
         job?.addLog(`Session error: ${event.data?.message}`);
@@ -280,8 +297,9 @@ export async function runAISession(prompt: string, outputDir: string, job?: Buil
     if (saved.length > 0) job?.addLog(`Saved: ${saved.join(', ')}`);
 
     return { success: !sessionError, output };
-  } catch (err: any) {
-    return { success: false, output: String(err?.message || err) };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, output: msg };
   } finally {
     await session.destroy().catch(() => { });
   }
@@ -342,9 +360,10 @@ export async function buildSite(
           job.siteUrl = siteUrl;
           updateProgress(100, `Deployed to ${siteUrl}`);
         }
-      } catch (e: any) {
-        job.addLog(`Deploy failed: ${String(e?.message || e)}`);
-        job.error = String(e?.message || e);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        job.addLog(`Deploy failed: ${msg}`);
+        job.error = msg;
       }
     } else {
       updateProgress(100, 'Build complete');
@@ -353,10 +372,11 @@ export async function buildSite(
     job.status = BuildStatus.COMPLETED;
     job.addLog('Build completed successfully');
     saveJob(job);
-  } catch (e: any) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     job.status = BuildStatus.FAILED;
-    job.error = String(e?.message || e);
-    job.addLog(`Build failed: ${String(e?.message || e)}`);
+    job.error = msg;
+    job.addLog(`Build failed: ${msg}`);
     saveJob(job);
   }
 

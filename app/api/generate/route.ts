@@ -1,7 +1,9 @@
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
-import { getProject, saveProject } from '@/lib/projects';
+import { getProject, saveProject, saveFiles } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
-import { getAIClient } from '@/lib/ai-client';
+import { getAIClient, SessionEvent } from '@/lib/ai-client';
+import { parseMultiFileOutput } from '@/lib/file-parser';
+import { ProjectFile } from '@/lib/page-builder';
 
 const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
 
@@ -50,7 +52,7 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
 
 function sanitizeErrorMessage(raw: unknown): string {
   try {
-    const rawMsg = typeof raw === 'string' ? raw : raw && typeof (raw as any).message === 'string' ? (raw as any).message : String(raw);
+    const rawMsg = typeof raw === 'string' ? raw : (raw instanceof Error ? raw.message : String(raw));
     const m = rawMsg.toLowerCase();
 
     if (m.includes('cerebras_api_key') || m.includes('cerebras api key') || m.includes('cerebras_api_key'.toLowerCase())) {
@@ -66,7 +68,7 @@ function sanitizeErrorMessage(raw: unknown): string {
 
     // Default to the raw string but keep it concise
     return rawMsg.length > 800 ? rawMsg.slice(0, 800) + '…' : rawMsg;
-  } catch (_) {
+  } catch {
     return 'Unknown error contacting AI provider';
   }
 }
@@ -79,8 +81,8 @@ export async function runGeneration(
   projectName: string,
   finalPrompt: string,
   signal: AbortSignal,
-  onEvent?: (event: { type: string; data: any }) => void
-): Promise<{ html: string } | { error: string }> {
+  onEvent?: (event: SessionEvent) => void
+): Promise<{ html: string; files: ProjectFile[] } | { error: string }> {
   const project = await getProject(projectName);
   if (!project) return { error: 'Project not found during generation' };
 
@@ -128,10 +130,33 @@ export async function runGeneration(
     // HTML generation phase
     const htmlSession = await client.createSession({
       model: MODEL,
-      systemMessage: { content: 'You are an expert developer. Generate a complete Tailwind CSS HTML file. Return ONLY code.' },
+      systemMessage: { content: `You are an expert developer. Generate a complete multi-file website project. 
+Return files using code blocks with the format:
+\`\`\`html:filename.html
+Code here...
+\`\`\`
+
+Mandatory requirements:
+1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
+2. **No Inline Tags**: DO NOT use <style> or <script> tags inside HTML files.
+3. **Linking**: index.html MUST include <link rel="stylesheet" href="styles.css"> and <script src="script.js" defer></script>.
+4. **Project Files**: Always include at least:
+   - index.html (main landing page)
+   - styles.css (common styles)
+   - script.js (common interactions)
+
+5. **Shared Partials (CRITICAL)**:
+   - If the project has multiple pages, you MUST create a \`header.html\` (and \`footer.html\` if applicable).
+   - DO NOT duplicate the header or footer HTML code inside individual page files.
+   - Instead, use the placeholder \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
+   - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
+
+You can also create sub-pages (e.g. about.html, gallery.html).
+Return ONLY code blocks. No explanations.` },
     });
 
     let html = '';
+    let files: ProjectFile[] = [];
     try {
       // Listen for session errors that might occur during send
       let sessionError: Error | null = null;
@@ -150,7 +175,18 @@ export async function runGeneration(
           prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
         }, 120000);
         if (sessionError) throw sessionError;
-        html = stripCodeFence(htmlResp?.data?.content || '');
+        
+        const content = htmlResp?.data?.content || '';
+        files = parseMultiFileOutput(content);
+        
+        if (files.length === 0) {
+          // Fallback if no code fences found
+          html = stripCodeFence(content);
+          files = [{ path: 'index.html', content: html, language: 'html', fileType: 'page' }];
+        } else {
+          // Find index.html for legacy compatibility
+          html = files.find(f => f.path === 'index.html')?.content || '';
+        }
       } finally {
         unsubscribe();
       }
@@ -161,14 +197,24 @@ export async function runGeneration(
     // Always save the result to the database (even if client disconnected)
     const finalProject = await getProject(projectName);
     if (finalProject) {
-      finalProject.html = html;
+      finalProject.html = html; // Keep for legacy / preview
       finalProject.status = 'completed';
+      finalProject.isMultiPage = files.length > 1;
+      finalProject.pageCount = files.filter(f => f.fileType === 'page').length;
+      finalProject.description = designSpec.slice(0, 500); // Save partial spec as description
+      
       await saveProject(finalProject).catch(err => {
         console.error('Failed to save completed project:', err);
       });
+      
+      if (files.length > 0) {
+        await saveFiles(projectName, files).catch(err => {
+          console.error('Failed to save project files:', err);
+        });
+      }
     }
 
-    return { html };
+    return { html, files };
   } catch (err) {
     const original = err instanceof Error ? err.message : String(err);
     const errorMessage = sanitizeErrorMessage(original);
@@ -283,7 +329,7 @@ export async function POST(request: Request) {
             if (!sse.write({ status: 'finalizing', message: 'Polishing and optimizing...' })) return;
             await new Promise(r => setTimeout(r, 300));
             if (!sse.isClosed()) {
-              sse.write({ status: 'completed', html: result.html });
+              sse.write({ status: 'completed', html: result.html, files: result.files });
             }
           }
         })()

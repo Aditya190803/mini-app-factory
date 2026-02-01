@@ -89,15 +89,31 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 - Buzzwords without specifics ("revolutionary", "cutting-edge", "seamless")
 - Cookie-cutter layouts with no personality
 - Walls of text with identical paragraph lengths
+- **INLINE CSS/JS**: Never use <style> or <script> tags inside HTML files.
+- **DUPLICATION**: Never repeat the same header/footer code across multiple HTML files.
 
 ## Structure
-Include in one HTML file with inline <style>:
-- Navigation (minimal - logo + 2-3 links max)
-- Hero section (headline, subhead, CTA button)
-- 2-3 content sections showcasing value
-- Footer with contact/social
+Split the project into multiple files for better organization:
+- **index.html**: Main structure, linking to styles.css and script.js.
+- **styles.css**: All CSS rules and animations.
+- **script.js**: All interactive functionality.
+- **header.html & footer.html**: (MANDATORY for multiple pages) Extract shared navigation and branding into these partials.
+- Use \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
 
-Output the complete, working HTML file now.`
+Output each file in its own code block using the format:
+\`\`\`html:index.html
+[content]
+\`\`\`
+
+\`\`\`css:styles.css
+[content]
+\`\`\`
+
+\`\`\`javascript:script.js
+[content]
+\`\`\`
+
+Output the complete, working project now.`
 }
 
 /**

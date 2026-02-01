@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import EditorWorkspace from '@/components/editor-workspace';
 import { ProjectMetadata } from '@/lib/projects';
+import { ProjectFile } from '@/lib/page-builder';
 import { toast } from 'sonner';
 import { readStream } from '@/lib/stream-utils';
 
@@ -45,8 +46,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         const res = await fetch(`/api/project/${projectName}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.status === 'completed' && data.html) {
-            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+          if (data.status === 'completed') {
+            setProject(prev => ({ ...prev, status: 'completed', html: data.html, files: data.files }));
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
             return true;
           } else if (data.status === 'error') {
@@ -105,7 +106,13 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           }
 
           if (data.status === 'completed') {
-            setProject(prev => ({ ...prev, status: 'completed', html: data.html }));
+            const completedData = data as { html: string; files?: ProjectFile[] };
+            setProject(prev => ({ 
+              ...prev, 
+              status: 'completed', 
+              html: completedData.html,
+              files: completedData.files || prev.files
+            }));
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
             return;
           }
@@ -142,10 +149,10 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     }
   }
 
-  if (project.status === 'completed' && project.html) {
+  if (project.status === 'completed') {
     return (
       <EditorWorkspace
-        initialHTML={project.html}
+        initialHTML={project.html || ''}
         initialPrompt={project.prompt}
         projectName={projectName}
         onBack={() => window.location.href = '/'}

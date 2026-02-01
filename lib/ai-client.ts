@@ -5,7 +5,15 @@
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, streamText } from 'ai';
 
-export type SessionEvent = { type: string; data: any };
+export type SessionEvent = { 
+  type: string; 
+  data: {
+    message?: string;
+    error?: string;
+    content?: string;
+    [key: string]: unknown;
+  } 
+};
 
 export interface AIClient {
   createSession: (opts?: { model?: string; systemMessage?: { content: string } }) => Promise<AIClientSession>;
@@ -25,9 +33,10 @@ let singletonClient: AIClient | null = null;
  * Ensures .env.local is loaded even if the runner didn't load it.
  */
 function loadEnv() {
+  if (process.env.NODE_ENV === 'test') return;
   try {
     require('dotenv').config({ path: '.env.local' });
-  } catch (e) {
+  } catch {
     // dotenv might not be available in all contexts
   }
 }
@@ -82,10 +91,11 @@ function createCerebrasClient(): AIClient {
             const content = result.text || '';
             listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
             return { data: { content } };
-          } catch (err: any) {
+          } catch (err: unknown) {
             let m = err instanceof Error ? err.message : String(err);
+            const isAbortError = err instanceof Error && err.name === 'AbortError';
 
-            if (err.name === 'AbortError' || /timed out|timeout/i.test(m)) {
+            if (isAbortError || /timed out|timeout/i.test(m)) {
               m = 'Request to Cerebras timed out.';
             } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
               m = 'Network error contacting Cerebras.';
@@ -120,7 +130,7 @@ function createCerebrasClient(): AIClient {
             });
 
             return result.textStream;
-          } catch (err: any) {
+          } catch (err: unknown) {
             let m = err instanceof Error ? err.message : String(err);
             listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
             throw new Error(m);
@@ -185,10 +195,11 @@ function createGroqClient(): AIClient {
             const content = result.text || '';
             listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
             return { data: { content } };
-          } catch (err: any) {
+          } catch (err: unknown) {
             let m = err instanceof Error ? err.message : String(err);
+            const isAbortError = err instanceof Error && err.name === 'AbortError';
 
-            if (err.name === 'AbortError' || /timed out|timeout/i.test(m)) {
+            if (isAbortError || /timed out|timeout/i.test(m)) {
               m = 'Request to Groq timed out.';
             } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
               m = 'Network error contacting Groq.';
@@ -223,7 +234,7 @@ function createGroqClient(): AIClient {
             });
 
             return result.textStream;
-          } catch (err: any) {
+          } catch (err: unknown) {
             let m = err instanceof Error ? err.message : String(err);
             listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
             throw new Error(m);
@@ -243,7 +254,7 @@ function createGroqClient(): AIClient {
  * Get the AI client that handles Cerebras as primary and Groq as fallback
  */
 export async function getAIClient(): Promise<AIClient> {
-  if (singletonClient) return singletonClient;
+  if (singletonClient && process.env.NODE_ENV !== 'test') return singletonClient;
 
   loadEnv();
 
@@ -251,15 +262,15 @@ export async function getAIClient(): Promise<AIClient> {
   const groqKey = process.env.GROQ_API_KEY;
 
   if (!cerebrasKey && !groqKey) {
-    throw new Error('Neither CEREBRAS_API_KEY nor GROQ_API_KEY is set.');
+    throw new Error('Neither CEREBRAS_API_KEY nor GROQ_API_KEY is set. Please configure at least one AI provider.');
   }
 
   const cerebrasClient = cerebrasKey ? createCerebrasClient() : null;
   const groqClient = groqKey ? createGroqClient() : null;
 
-  singletonClient = {
+  const client: AIClient = {
     createSession: async (opts) => {
-      let primarySession = cerebrasClient ? await cerebrasClient.createSession(opts) : null;
+      let primarySession = (cerebrasClient && cerebrasClient.createSession) ? await cerebrasClient.createSession(opts) : null;
       let fallbackSession: AIClientSession | null = null;
       const listeners: Array<(e: SessionEvent) => void> = [];
 
@@ -290,12 +301,13 @@ export async function getAIClient(): Promise<AIClient> {
           if (primarySession) {
             try {
               return await primarySession.sendAndWait(sendOpts, timeout);
-            } catch (err: any) {
-              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback:', err.message);
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback:', message);
 
               listeners.forEach(l => l({
                 type: 'provider.fallback',
-                data: { message: 'Main model failed, switching to fallback...', error: err.message }
+                data: { message: 'Main model failed, switching to fallback...', error: message }
               }));
 
               if (!groqClient) throw err;
@@ -321,12 +333,13 @@ export async function getAIClient(): Promise<AIClient> {
           if (primarySession) {
             try {
               return await primarySession.stream(sendOpts);
-            } catch (err: any) {
-              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback for stream:', err.message);
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback for stream:', message);
 
               listeners.forEach(l => l({
                 type: 'provider.fallback',
-                data: { message: 'Main model failed, switching to fallback for stream...', error: err.message }
+                data: { message: 'Main model failed, switching to fallback for stream...', error: message }
               }));
 
               if (!groqClient) throw err;
@@ -354,7 +367,10 @@ export async function getAIClient(): Promise<AIClient> {
     }
   };
 
-  return singletonClient;
+  if (process.env.NODE_ENV !== 'test') {
+    singletonClient = client;
+  }
+  return client;
 }
 
 /**

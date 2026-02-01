@@ -5,12 +5,12 @@ import Editor from '@monaco-editor/react';
 
 interface CodePanelProps {
     html: string;
+    language?: 'html' | 'css' | 'javascript';
     onChange: (val: string | undefined) => void;
     onReset: () => void;
-    initialHTML: string;
 }
 
-export default function CodePanel({ html, onChange, onReset, initialHTML }: CodePanelProps) {
+export default function CodePanel({ html, language = 'html', onChange, onReset }: CodePanelProps) {
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: '#1e1e1e' }}>
             <div className="absolute top-4 right-8 z-20 flex gap-2">
@@ -38,7 +38,7 @@ export default function CodePanel({ html, onChange, onReset, initialHTML }: Code
             <div className="flex-1 overflow-hidden pt-0">
                 <Editor
                     height="100%"
-                    defaultLanguage="html"
+                    language={language}
                     theme="vs-dark"
                     value={html}
                     onChange={onChange}

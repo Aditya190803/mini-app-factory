@@ -16,9 +16,17 @@ export const saveProject = mutation({
     projectName: v.string(),
     prompt: v.string(),
     html: v.optional(v.string()),
-    status: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("generating"),
+      v.literal("completed"),
+      v.literal("error")
+    ),
     userId: v.optional(v.string()),
     isPublished: v.boolean(),
+    isMultiPage: v.optional(v.boolean()),
+    pageCount: v.optional(v.number()),
+    description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -26,6 +34,7 @@ export const saveProject = mutation({
       .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
       .first();
 
+    const now = Date.now();
     if (existing) {
       if (existing.userId && existing.userId !== args.userId) {
         throw new Error("Unauthorized to edit this project");
@@ -36,6 +45,10 @@ export const saveProject = mutation({
         status: args.status,
         userId: args.userId ?? existing.userId,
         isPublished: args.isPublished,
+        isMultiPage: args.isMultiPage ?? existing.isMultiPage ?? false,
+        pageCount: args.pageCount ?? existing.pageCount ?? 0,
+        description: args.description ?? existing.description,
+        updatedAt: now,
       });
       return existing._id;
     } else {
@@ -46,7 +59,11 @@ export const saveProject = mutation({
         status: args.status,
         userId: args.userId,
         isPublished: args.isPublished,
-        createdAt: Date.now(),
+        isMultiPage: args.isMultiPage ?? false,
+        pageCount: args.pageCount ?? 0,
+        description: args.description,
+        createdAt: now,
+        updatedAt: now,
       });
     }
   },

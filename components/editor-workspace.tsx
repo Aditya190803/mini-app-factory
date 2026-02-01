@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
@@ -15,13 +15,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { stripCodeFence } from '@/lib/utils';
-import { readStream } from '@/lib/stream-utils';
+import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
+import { migrateProject } from '@/lib/migration';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
+import FileTree from './editor/file-tree';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -32,7 +33,8 @@ interface EditorWorkspaceProps {
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
-  const [editableHtml, setEditableHtml] = useState(initialHTML);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [activeFilePath, setActiveFilePath] = useState('index.html');
   const [transformPrompt, setTransformPrompt] = useState('');
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -41,77 +43,124 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
 
-  // History State
-  const [history, setHistory] = useState<string[]>([]);
+  // Global history for files
+  const [history, setHistory] = useState<ProjectFile[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
+  const saveFilesAction = useMutation(api.files.saveFiles);
+  const deleteFileAction = useMutation(api.files.deleteFile);
   const publishProject = useMutation(api.projects.publishProject);
   const projectData = useQuery(api.projects.getProject, { projectName });
+  const projectFiles = useQuery(api.files.getFilesByProject, 
+    projectData?._id ? { projectId: projectData._id } : "skip"
+  );
 
-  // Initialize history
-  useEffect(() => {
-    if (initialHTML && history.length === 0) {
-      setHistory([initialHTML]);
-      setHistoryIndex(0);
-      setEditableHtml(initialHTML);
-    }
-  }, [initialHTML, history.length]);
-
-  const addToHistory = useCallback((html: string) => {
+  const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
       const next = prev.slice(0, historyIndex + 1);
-      next.push(html);
+      next.push([...currentFiles]);
+      // Limit history size
+      if (next.length > 50) next.shift();
       return next;
     });
-    setHistoryIndex(prev => prev + 1);
+    setHistoryIndex(prev => Math.min(prev + 1, 49));
   }, [historyIndex]);
 
   const undo = () => {
     if (historyIndex > 0) {
-      const prevHtml = history[historyIndex - 1];
+      const prevFiles = history[historyIndex - 1];
       setHistoryIndex(historyIndex - 1);
-      setEditableHtml(prevHtml);
+      setFiles(prevFiles);
     }
   };
 
   const redo = () => {
     if (historyIndex < history.length - 1) {
-      const nextHtml = history[historyIndex + 1];
+      const nextFiles = history[historyIndex + 1];
       setHistoryIndex(historyIndex + 1);
-      setEditableHtml(nextHtml);
+      setFiles(nextFiles);
     }
   };
 
-  // Auto-save to Convex
+  // Load files from Convex or migrate
   useEffect(() => {
-    if (!user || !editableHtml) return;
-
-    const timer = setTimeout(async () => {
-      setSaveStatus('saving');
-      try {
-        await saveProject({
-          projectName,
-          prompt: initialPrompt,
-          html: editableHtml,
-          status: 'completed',
-          userId: user.id,
-          isPublished: projectData?.isPublished ?? false,
-        });
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (err) {
-        console.error('Auto-save failed', err);
-        setSaveStatus('idle');
+    if (projectFiles && files.length === 0) {
+      let loadedFiles: ProjectFile[] = [];
+      if (projectFiles.length > 0) {
+        loadedFiles = (projectFiles as Array<{ path: string; content: string; language: string; fileType: string }>).map(f => ({
+          path: f.path,
+          content: f.content,
+          language: f.language as ProjectFile['language'],
+          fileType: f.fileType as ProjectFile['fileType']
+        }));
+      } else if (initialHTML) {
+        loadedFiles = migrateProject(initialHTML);
+        
+        // Save migrated files back to database if project exists
+        if (projectData?._id) {
+          saveFilesAction({
+            projectId: projectData._id,
+            files: loadedFiles
+          });
+          
+          saveProject({
+            projectName,
+            prompt: initialPrompt,
+            status: 'completed',
+            isPublished: projectData.isPublished,
+            isMultiPage: false,
+            pageCount: 1,
+            userId: user?.id
+          });
+        }
       }
-    }, 2000);
 
-    return () => clearTimeout(timer);
-  }, [editableHtml, user, projectName, initialPrompt, saveProject, projectData?.isPublished]);
+      if (loadedFiles.length > 0) {
+        setFiles(loadedFiles);
+        setHistory([loadedFiles]);
+        setHistoryIndex(0);
+      }
+    }
+  }, [projectFiles, initialHTML, projectData?._id, files.length, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+
+  // Handle message from preview iframe
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data.type === 'navigate') {
+        const path = e.data.path.startsWith('/') ? e.data.path.slice(1) : e.data.path;
+        if (files.some(f => f.path === path)) {
+          setActiveFilePath(path);
+        } else if (path === '' && files.some(f => f.path === 'index.html')) {
+          setActiveFilePath('index.html');
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [files]);
+
+  const handleReset = () => {
+    if (history.length > 0) {
+      setFiles(history[0]);
+      setHistoryIndex(0);
+    }
+  };
+
+  const activeFile = useMemo(() => 
+    files.find(f => f.path === activeFilePath) || files[0]
+  , [files, activeFilePath]);
 
   const previewHtml = useMemo(() => {
-    if (!editableHtml) return '';
+    if (files.length === 0) return '';
+    
+    const assembledHtml = assembleFullPage(
+      activeFilePath.endsWith('.html') ? activeFilePath : 'index.html', 
+      files,
+      projectName
+    );
+
     const script = `
       <script>
         document.addEventListener('click', (e) => {
@@ -125,7 +174,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 target.scrollIntoView({ behavior: 'smooth' });
                 history.pushState(null, null, href);
               }
-            } else if (href && !href.startsWith('javascript:')) {
+            } else if (href && !href.startsWith('javascript:') && !href.startsWith('http') && !href.startsWith('mailto:')) {
+              e.preventDefault();
+              window.parent.postMessage({ type: 'navigate', path: href }, '*');
+            } else if (href && href.startsWith('http')) {
               e.preventDefault();
               window.open(a.href, '_blank');
             }
@@ -134,34 +186,49 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       </script>
     `;
 
-    if (/<head[^>]*>/i.test(editableHtml)) {
-      return editableHtml.replace(/<head[^>]*>/i, (match) => `${match}\n    ${script}`);
+    if (/<head[^>]*>/i.test(assembledHtml)) {
+      return assembledHtml.replace(/<head[^>]*>/i, (match) => `${match}\n    ${script}`);
     }
-    if (/<body[^>]*>/i.test(editableHtml)) {
-      return editableHtml.replace(/<body[^>]*>/i, (match) => `${match}\n    ${script}`);
-    }
-    return `${script}${editableHtml}`;
-  }, [editableHtml]);
+    return `${script}${assembledHtml}`;
+  }, [files, activeFilePath]);
 
-  const downloadZip = async () => {
-    try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      zip.file('index.html', editableHtml);
-      zip.file('README.txt', 'Generated by Mini App Factory');
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'site.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Zip failed', err);
+  const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      const nextFiles = files.map(f => 
+        f.path === activeFilePath ? { ...f, content: value } : f
+      );
+      setFiles(nextFiles);
+      
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+      historyTimerRef.current = setTimeout(() => {
+        addToHistory(nextFiles);
+      }, 1000);
     }
   };
+
+  // Auto-save to Convex
+  useEffect(() => {
+    if (!user || !files.length || !projectData?._id) return;
+
+    const timer = setTimeout(async () => {
+      setSaveStatus('saving');
+      try {
+        await saveFilesAction({
+          projectId: projectData._id,
+          files: files
+        });
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } catch (err) {
+        console.error('Auto-save failed', err);
+        setSaveStatus('idle');
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [files, user, projectData?._id, saveFilesAction]);
 
   const runTransform = async () => {
     if (!transformPrompt.trim()) return;
@@ -170,7 +237,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       const response = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: editableHtml, prompt: transformPrompt }),
+        body: JSON.stringify({ 
+          files, 
+          activeFile: activeFilePath,
+          prompt: transformPrompt 
+        }),
       });
 
       if (!response.ok) {
@@ -178,15 +249,13 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         throw new Error(data.error || 'Transform failed');
       }
 
-      let streamedHtml = '';
-      await readStream(response, (chunk) => {
-        streamedHtml += chunk;
-        setEditableHtml(streamedHtml);
-      });
-
-      const finalHtml = stripCodeFence(streamedHtml);
-      setEditableHtml(finalHtml);
-      addToHistory(finalHtml);
+      // Transition to streaming multi-file parser
+      // For now, assume it returns full files
+      const result = await response.json();
+      if (result.files) {
+        setFiles(result.files);
+        addToHistory(result.files);
+      }
       setTransformPrompt('');
     } catch (err) {
       console.error('Transform error', err);
@@ -196,6 +265,59 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  const handleNewFile = (type: ProjectFile['fileType']) => {
+    const name = prompt(`Name for new ${type} (e.g. about.html):`);
+    if (!name) return;
+    
+    if (files.some(f => f.path === name)) {
+      alert('File already exists');
+      return;
+    }
+
+    const lang: ProjectFile['language'] = name.endsWith('.css') ? 'css' : name.endsWith('.js') ? 'javascript' : 'html';
+    const newFile: ProjectFile = {
+      path: name,
+      content: '', // Template could be added here
+      language: lang,
+      fileType: type
+    };
+
+    setFiles(prev => {
+      const next = [...prev, newFile];
+      addToHistory(next);
+      return next;
+    });
+    setActiveFilePath(name);
+  };
+
+  const handleDeleteFile = async (path: string) => {
+    if (!confirm(`Delete ${path}?`)) return;
+    
+    setFiles(prev => {
+      const next = prev.filter(f => f.path !== path);
+      addToHistory(next);
+      return next;
+    });
+    if (activeFilePath === path) {
+      setActiveFilePath('index.html');
+    }
+
+    if (projectData?._id) {
+      await deleteFileAction({ projectId: projectData._id, path });
+    }
+  };
+
+  const handleReorderFiles = (startIndex: number, endIndex: number) => {
+    setFiles(prev => {
+      const result = [...prev];
+      const [removed] = result.splice(startIndex, 1);
+      result.splice(endIndex, 0, removed);
+      
+      addToHistory(result);
+      return result;
+    });
+  };
+
   const onPolishSubmit = async () => {
     setIsPolishDialogOpen(false);
     setIsTransforming(true);
@@ -203,19 +325,15 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       const resp = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: editableHtml, polishDescription }),
+        body: JSON.stringify({ files, polishDescription }),
       });
       if (!resp.ok) throw new Error('Polish failed');
 
-      let streamedHtml = '';
-      await readStream(resp, (chunk) => {
-        streamedHtml += chunk;
-        setEditableHtml(streamedHtml);
-      });
-
-      const finalHtml = stripCodeFence(streamedHtml);
-      setEditableHtml(finalHtml);
-      addToHistory(finalHtml);
+      const result = await resp.json();
+      if (result.files) {
+        setFiles(result.files);
+        addToHistory(result.files);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -234,10 +352,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       await saveProject({
         projectName,
         prompt: initialPrompt,
-        html: editableHtml,
+        html: previewHtml, // Keep for legacy / thumbnails
         status: 'completed',
         userId: user.id,
         isPublished: true,
+        isMultiPage: files.length > 1,
+        pageCount: files.filter(f => f.fileType === 'page').length
       });
       await publishProject({
         projectName,
@@ -252,9 +372,25 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined) {
-      setEditableHtml(value);
+  const downloadZip = async () => {
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      files.forEach(f => {
+        zip.file(f.path, f.content);
+      });
+      zip.file('README.txt', 'Generated by Mini App Factory');
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectName}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Zip failed', err);
     }
   };
 
@@ -283,34 +419,37 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       />
 
       <div className="flex-1 flex overflow-hidden">
+        <FileTree 
+          files={files} 
+          activeFilePath={activeFilePath} 
+          onFileSelect={setActiveFilePath}
+          onNewFile={handleNewFile}
+          onDeleteFile={handleDeleteFile}
+          onReorderFiles={handleReorderFiles}
+        />
+        
         <main className="flex-1 flex overflow-hidden">
           {activeTab === 'preview' && (
             <PreviewPanel previewHtml={previewHtml} />
           )}
 
-          {activeTab === 'code' && (
+          {activeTab === 'code' && activeFile && (
             <CodePanel
-              html={editableHtml}
+              html={activeFile.content}
+              language={activeFile.language}
               onChange={handleEditorChange}
-              onReset={() => {
-                setEditableHtml(initialHTML);
-                addToHistory(initialHTML);
-              }}
-              initialHTML={initialHTML}
+              onReset={handleReset}
             />
           )}
 
-          {activeTab === 'split' && (
+          {activeTab === 'split' && activeFile && (
             <div className="flex-1 flex">
               <div className="flex-1 border-r border-[var(--border)] overflow-hidden">
                 <CodePanel
-                  html={editableHtml}
+                  html={activeFile.content}
+                  language={activeFile.language}
                   onChange={handleEditorChange}
-                  onReset={() => {
-                    setEditableHtml(initialHTML);
-                    addToHistory(initialHTML);
-                  }}
-                  initialHTML={initialHTML}
+                  onReset={handleReset}
                 />
               </div>
               <div className="flex-1 overflow-hidden">

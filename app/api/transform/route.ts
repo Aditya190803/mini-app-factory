@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
 import { getAIClient } from '@/lib/ai-client';
+import { parseMultiFileOutput } from '@/lib/file-parser';
+import { executeTool } from '@/lib/tool-executor';
+import { ProjectFile } from '@/lib/page-builder';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -25,12 +28,17 @@ export async function sendAIMessage(systemPrompt: string, userPrompt: string): P
 }
 
 const transformSchema = z.object({
-  html: z.string(),
+  files: z.array(z.object({
+    path: z.string(),
+    content: z.string(),
+    language: z.string(),
+    fileType: z.string(),
+  })).optional(),
+  html: z.string().optional(), // Legacy support
   prompt: z.string().optional(),
+  activeFile: z.string().optional(),
   polishDescription: z.string().optional(),
 });
-
-const encoder = new TextEncoder();
 
 export async function POST(request: Request) {
   try {
@@ -40,49 +48,135 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { html, prompt, polishDescription } = parsed.data;
+    const { files, html, prompt, activeFile, polishDescription } = parsed.data;
+
+    let projectContext = '';
+    if (files && files.length > 0) {
+      projectContext = files.map(f => `File: ${f.path}\n\`\`\`${f.language}\n${f.content}\n\`\`\``).join('\n\n');
+    } else if (html) {
+      projectContext = `File: index.html\n\`\`\`html\n${html}\n\`\`\``;
+    }
 
     const client = await getAIClient();
-    const systemMessage = `You are an expert web developer. You will be given a complete HTML file and a user's modification request. Return ONLY the full updated HTML file (no commentary, no extra text). Preserve any important semantics and accessibility. Make minimal changes to satisfy the request and ensure the result is a complete, valid HTML file. If images are needed, use placeholder images.`;
+    const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
+You will be given the complete project context comprising all files.
+
+Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
+
+**Shared Partials (CRITICAL)**:
+- If a project has multiple pages, you MUST ensure there is a \`header.html\` (and \`footer.html\` if applicable).
+- DO NOT allow duplicate header/footer code in individual pages. 
+- If you see duplication, use the \`createFile\` tool to make a partial and replace the duplicate code in all pages with \`<!-- include:header.html -->\`.
+- Any shared navigation or branding MUST live in a partial.
+
+You MUST use structured tool calls to modify files. 
+Available tools:
+1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes.
+2. insertContent(file, position, selector, content) - position: before, after, prepend, append.
+3. deleteContent(file, selector) - Remove an element.
+4. createFile(path, content, fileType) - Create a new page, style, script or partial.
+5. deleteFile(path) - Remove a file.
+6. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
+
+FORMAT: Return your changes ONLY as a JSON array of tool calls:
+[
+  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello World" } },
+  ...
+]
+
+If a change is too complex for tools, or you need to rewrite a file completely, use:
+{ "tool": "updateFile", "args": { "file": "path/to/file", "content": "FULL_CONTENT" } }
+
+Note:
+- You have access to ALL project files. 
+- Ensure links (<a> tags) and asset references remain valid.
+- Active file focus is: ${activeFile || 'index.html'}.
+
+Only return changes. No explanations.`;
 
     let userMessage: string;
     if (polishDescription && !prompt) {
       const polishPrompt = buildPolishPrompt(polishDescription);
-      userMessage = `${polishPrompt}\n\nCurrent HTML:\n\n${html}`;
+      userMessage = `${polishPrompt}\n\nProject Context:\n\n${projectContext}`;
     } else {
-      userMessage = `Current HTML:\n\n${html}\n\nModification Request:\n\n${prompt || ''}`;
+      userMessage = `Project Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
     }
 
     const session = await client.createSession({
+      model: process.env.CEREBRAS_MODEL || 'zai-glm-4.7',
       systemMessage: { content: systemMessage },
     });
 
-    const textStream = await session.stream({ prompt: userMessage });
+    // Since we need to parse the multi-file output, we can't easily stream it back as raw text
+    // if we want to return a structured JSON response. 
+    // However, the EditorWorkspace expects a JSON response now.
+    
+    const response = await session.sendAndWait({ prompt: userMessage }, 150000);
+    const content = response?.data?.content || '';
+    
+    let finalFiles = files ? [...files] : (html ? [{ path: 'index.html', content: html, language: 'html', fileType: 'page' } as ProjectFile] : []);
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of textStream) {
-            controller.enqueue(encoder.encode(chunk));
+    try {
+      // Try to parse as JSON tool calls
+      const toolCalls = JSON.parse(stripCodeFence(content));
+      if (Array.isArray(toolCalls)) {
+        for (const call of toolCalls) {
+          if (call.tool === 'updateFile') {
+            const idx = finalFiles.findIndex(f => f.path === call.args.file);
+            if (idx >= 0) {
+              finalFiles[idx] = {
+                ...finalFiles[idx],
+                content: call.args.content
+              };
+            } else {
+              finalFiles.push({
+                path: call.args.file,
+                content: call.args.content,
+                language: call.args.file.endsWith('.css') ? 'css' : call.args.file.endsWith('.js') ? 'javascript' : 'html',
+                fileType: call.args.file.endsWith('.css') ? 'style' : call.args.file.endsWith('.js') ? 'script' : 'page',
+              });
+            }
+          } else {
+            const result = await executeTool(call.tool, call.args, finalFiles as ProjectFile[]);
+            if (result.success && result.updatedFiles) {
+              result.updatedFiles.forEach(uf => {
+                const idx = finalFiles.findIndex(f => f.path === uf.path);
+                if (idx >= 0) finalFiles[idx] = uf;
+                else finalFiles.push(uf);
+              });
+            }
+            if (result.success && result.deletedPaths) {
+              finalFiles = finalFiles.filter(f => !result.deletedPaths?.includes(f.path));
+            }
           }
-        } catch (err) {
-          console.error('Stream error:', err);
-        } finally {
-          controller.close();
-          await session.destroy().catch(() => { });
         }
-      },
-      cancel() {
-        session.destroy().catch(() => { });
+      } else {
+        throw new Error('Not an array of tool calls');
       }
-    });
+    } catch {
+      // Fallback to block parsing
+      const updatedFiles = parseMultiFileOutput(content);
+      if (updatedFiles.length > 0) {
+        updatedFiles.forEach(uf => {
+          const idx = finalFiles.findIndex(f => f.path === uf.path);
+          if (idx >= 0) {
+            finalFiles[idx] = uf;
+          } else {
+            finalFiles.push(uf);
+          }
+        });
+      } else if (content && !content.includes('```')) {
+        const activePath = activeFile || 'index.html';
+        const idx = finalFiles.findIndex(f => f.path === activePath);
+        if (idx >= 0) {
+          finalFiles[idx].content = stripCodeFence(content);
+        }
+      }
+    }
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
-      },
-    });
+    await session.destroy().catch(() => { });
+
+    return Response.json({ files: finalFiles });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to transform site';
     console.error('Transform error:', error);

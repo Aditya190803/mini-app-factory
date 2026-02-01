@@ -153,9 +153,15 @@ export default function DashboardPage() {
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-[9px] font-mono">
-                    <span style={{ color: 'var(--muted-text)' }}>Status</span>
-                    <span className="text-[var(--primary)] font-bold uppercase tracking-widest">Available</span>
+                    <span style={{ color: 'var(--muted-text)' }}>Type</span>
+                    <span className="text-[var(--secondary-text)] uppercase">{project.isMultiPage ? 'Multi-Page' : 'Single-Page'}</span>
                   </div>
+                  {project.isMultiPage && (
+                    <div className="flex items-center justify-between text-[9px] font-mono">
+                      <span style={{ color: 'var(--muted-text)' }}>Pages</span>
+                      <span className="text-[var(--secondary-text)]">{project.pageCount || 1}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-[9px] font-mono">
                     <span style={{ color: 'var(--muted-text)' }}>Timestamp</span>
                     <span style={{ color: 'var(--secondary-text)' }}>{new Date(project.createdAt).toLocaleDateString()}</span>
