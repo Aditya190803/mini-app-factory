@@ -1,27 +1,26 @@
 # Future Scope for Mini App Factory
 
-This document outlines ambitious new features and directions for the Mini App Factory to evolve into a full-fledged low-code/no-code fabrication engine.
+## New Features (Prioritized)
 
-## New Features
+### 1. 🤖 AI Capabilities
 
-### 1. Multi-Page Project Support
-- Move beyond single-page static sites. Allow users to describe a multi-page site (e.g., "Home", "About", "Pricing", "Contact").
-- Implement internal linking logic so the AI can automatically connect these pages.
+- **Design-to-Code & Visual References**: Allow users to upload screenshots or Figma links. Use Vision models (GPT-4o or Gemini Flash) to analyze designs and fabricate matching HTML/Tailwind code.
 
-### 2. One-Click Deployment
-- Integrate with Vercel, Netlify, or GitHub Pages.
-- Allow users to deploy their generated site to a live URL (e.g., `project-name.miniappfactory.com` or a custom domain) directly from the dashboard.
+### 2. ⚡ Developer Experience
+- **Hot Module Reloading (HMR)**: Instant preview updates using a virtual file system in the browser iframe.
+- **Visual Selector**: Click an element in the preview to automatically highlight its code or target it with AI instructions.
 
-### 3. Advanced Component Library
-- Create a library of pre-built, AI-optimized interactive components (e.g., carousels, modals, tabbed interfaces, contact forms).
-- Allow users to "drag and drop" these or specifically ask the AI to include them.
+### 3. 🌐 Deployment & Sharing
+- **One-Click Deployment**: Integrate with Vercel, Netlify, or GitHub Pages. Allow users to deploy to live URLs (e.g., `project-name.miniappfactory.com`) directly from the dashboard.
+- **Project Branching**: Save "checkpoints" or branches to experiment with different design directions without losing progress.
 
-### 4. Data & Form Handling
-- Provide built-in support for simple backends. For example, a contact form that actually sends emails or saves submissions to a Convex database without the user writing any server-side code.
+### 4. 📊 Data & Form Handling
+- Provide built-in support for simple backends. For example, a contact form that sends emails or saves submissions to a Convex database without writing server-side code.
 
-### 5. Team Collaboration
+### 5. 👥 Team Collaboration
 - Enable shared projects where multiple users can work on the same site fabrication.
 - Real-time cursor presence and collaborative AI prompting.
 
-### 6. Design-to-Code (Figma/Screenshot)
-- Allow users to upload a screenshot or a Figma link. Use a Vision model (like GPT-4o or Gemini Flash) to analyze the design and fabricate the matching HTML/Tailwind code.
+### 6. 🧩 Advanced Component Library
+- Create a library of pre-built, AI-optimized interactive components (e.g., carousels, modals, tabbed interfaces, contact forms).
+- Allow users to "drag and drop" these or specifically ask the AI to include them.
