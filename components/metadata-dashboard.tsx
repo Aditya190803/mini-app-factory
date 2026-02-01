@@ -8,9 +8,10 @@ import { ProjectFile } from '@/lib/page-builder';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import { Globe, Info, Layout, Smile, AlertTriangle, Settings2, Box } from 'lucide-react';
+import { Globe, Info, Layout, Smile, AlertTriangle, Settings2, Box, CheckCircle2, Loader2, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface MetadataDashboardProps {
   projectId?: Id<"projects">;
@@ -23,6 +24,8 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
   const project = useQuery(api.projects.getProject, { projectName });
   const updateMetadata = useMutation(api.projects.updateMetadata);
   
+  const [isSaving, setIsSaving] = useState(false);
+  const [showStatus, setShowStatus] = useState<'success' | 'error' | null>(null);
   const [favicon, setFavicon] = useState('');
   const [globalSeo, setGlobalSeo] = useState({
     siteName: '',
@@ -73,6 +76,7 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
 
   const save = async () => {
     if (!projectId) return;
+    setIsSaving(true);
     try {
       await updateMetadata({
         projectId: projectId,
@@ -80,10 +84,17 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
         globalSeo,
         seoData
       });
-      alert('Project Configuration Synced!');
+      setShowStatus('success');
+      setTimeout(() => {
+        setShowStatus(null);
+        if (onClose) onClose();
+      }, 2000);
     } catch (err) {
       console.error(err);
-      alert('Sync Failed');
+      setShowStatus('error');
+      setTimeout(() => setShowStatus(null), 3000);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -258,12 +269,94 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
           )}
           <Button 
             onClick={save}
-            className="h-9 px-8 bg-[var(--primary)] text-black font-black uppercase text-[10px] shadow-[4px_4px_0px_rgba(var(--primary-rgb),0.2)] hover:translate-y-[-1px] transition-transform"
+            disabled={isSaving}
+            className="h-9 px-8 bg-[var(--primary)] text-black font-black uppercase text-[10px] shadow-[4px_4px_0px_rgba(var(--primary-rgb),0.2)] hover:translate-y-[-1px] transition-transform disabled:opacity-50"
           >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Rocket className="w-4 h-4 mr-2" />}
             Deploy Metadata
           </Button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {(isSaving || showStatus) && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--background)]/80 backdrop-blur-sm p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-[var(--background-overlay)] border border-[var(--border)] p-8 rounded-sm shadow-2xl max-w-sm w-full text-center space-y-6"
+            >
+              {isSaving ? (
+                <>
+                  <div className="flex justify-center">
+                    <div className="relative">
+                      <Loader2 className="w-16 h-16 text-[var(--primary)] animate-spin" />
+                      <Rocket className="w-6 h-6 text-[var(--primary)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-black uppercase text-[var(--foreground)] tracking-tighter">Deploying Configuration</h3>
+                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
+                      Updating SEO headers, social graph, and favicon across all pages...
+                    </p>
+                  </div>
+                </>
+              ) : showStatus === 'success' ? (
+                <>
+                  <div className="flex justify-center">
+                    <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                      <CheckCircle2 className="w-10 h-10 text-green-500" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-black uppercase text-green-500 tracking-tighter">Sync Successful</h3>
+                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
+                      Metadata has been successfully deployed to the project edge.
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                        setShowStatus(null);
+                        if (onClose) onClose();
+                    }}
+                    className="w-full border-[var(--border)] text-[9px] uppercase font-black"
+                  >
+                    Close
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-center">
+                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                      <AlertTriangle className="w-10 h-10 text-red-500" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-black uppercase text-red-500 tracking-tighter">Deploy Failed</h3>
+                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
+                      Something went wrong during the sync process. Please try again.
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowStatus(null)}
+                    className="w-full border-[var(--border)] text-[9px] uppercase font-black"
+                  >
+                    Retry
+                  </Button>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

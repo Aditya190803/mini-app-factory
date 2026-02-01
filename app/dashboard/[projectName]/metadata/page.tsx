@@ -76,6 +76,7 @@ export default function ProjectMetadataPage() {
           projectId={project._id}
           projectName={projectName}
           files={formattedFiles}
+          onClose={() => router.push('/dashboard')}
         />
       </main>
     </div>
