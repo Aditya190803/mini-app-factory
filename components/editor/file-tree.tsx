@@ -12,12 +12,23 @@ import {
   ChevronRight,
   ChevronDown,
   FolderOpen,
-  Edit2
+  Edit2,
+  Copy,
 } from 'lucide-react';
 import { ProjectFile } from '@/lib/page-builder';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from '../ui/context-menu';
 
 interface FileTreeProps {
   files: ProjectFile[];
@@ -27,6 +38,8 @@ interface FileTreeProps {
   onNewFolder?: () => void;
   onDeleteItem: (path: string, type: 'file' | 'folder') => void;
   onRenameItem?: (path: string) => void;
+  onDuplicateItem?: (path: string) => void;
+  onNewFileInFolder?: (folderPath: string, type: ProjectFile['fileType']) => void;
   onMoveItem: (sourcePath: string, destinationPath: string) => void;
   onMoveAndReorder: (sourcePath: string, destFolderPath: string, targetPath: string) => void;
   onReorderFiles: (sourcePath: string, destinationPath: string) => void;
@@ -50,6 +63,8 @@ export default function FileTree({
   onNewFolder,
   onDeleteItem,
   onRenameItem,
+  onDuplicateItem,
+  onNewFileInFolder,
   onMoveItem,
   onMoveAndReorder,
   onReorderFiles
@@ -201,67 +216,147 @@ export default function FileTree({
                 {visibleItems.map((item, index) => (
                   <Draggable key={item.id} draggableId={item.id} index={index}>
                     {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className={cn(
-                          "group flex items-center py-1 cursor-pointer text-xs transition-colors",
-                          item.type === 'folder' 
-                            ? "hover:bg-[#252525] text-gray-400 hover:text-gray-200"
-                            : activeFilePath === item.path 
-                              ? "bg-[#2d2d2d] text-white border-l-2 border-primary" 
-                              : "text-gray-400 hover:bg-[#252525] hover:text-gray-200",
-                          snapshot.isDragging && "bg-[#363636] shadow-xl z-50 opacity-80",
-                          snapshot.combineWith && "bg-primary/20 ring-2 ring-primary border-primary"
-                        )}
-                        style={{ 
-                          ...provided.draggableProps.style,
-                          paddingLeft: `${item.depth * 12 + 12}px` 
-                        }}
-                        onClick={() => item.type === 'folder' ? toggleFolder(item.path) : onFileSelect(item.path)}
-                      >
-                        {item.type === 'folder' && (
-                          <span className="mr-1">
-                            {item.isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                          </span>
-                        )}
-                        <span className="mr-2">
-                          {item.type === 'folder' 
-                            ? (item.isExpanded ? <FolderOpen className="w-4 h-4 text-yellow-500/60" /> : <Folder className="w-4 h-4 text-yellow-500/60" />)
-                            : getIcon(item.file!)
-                          }
-                        </span>
-                        <span className={cn("flex-1 truncate", item.type === 'folder' && "font-medium")}>
-                          {item.name}
-                        </span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
-                          {item.path !== 'index.html' && (
-                            <button
-                              className="p-1 hover:text-primary transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRenameItem?.(item.path);
-                              }}
-                              title="Rename"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
+                      <ContextMenu>
+                        <ContextMenuTrigger>
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className={cn(
+                              "group flex items-center py-1 cursor-pointer text-xs transition-colors",
+                              item.type === 'folder' 
+                                ? "hover:bg-[#252525] text-gray-400 hover:text-gray-200"
+                                : activeFilePath === item.path 
+                                  ? "bg-[#2d2d2d] text-white border-l-2 border-primary" 
+                                  : "text-gray-400 hover:bg-[#252525] hover:text-gray-200",
+                              snapshot.isDragging && "bg-[#363636] shadow-xl z-50 opacity-80",
+                              snapshot.combineWith && "bg-primary/20 ring-2 ring-primary border-primary"
+                            )}
+                            style={{ 
+                              ...provided.draggableProps.style,
+                              paddingLeft: `${item.depth * 12 + 12}px` 
+                            }}
+                            onClick={() => item.type === 'folder' ? toggleFolder(item.path) : onFileSelect(item.path)}
+                          >
+                            {item.type === 'folder' && (
+                              <span className="mr-1">
+                                {item.isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                              </span>
+                            )}
+                            <span className="mr-2">
+                              {item.type === 'folder' 
+                                ? (item.isExpanded ? <FolderOpen className="w-4 h-4 text-yellow-500/60" /> : <Folder className="w-4 h-4 text-yellow-500/60" />)
+                                : getIcon(item.file!)
+                              }
+                            </span>
+                            <span className={cn("flex-1 truncate", item.type === 'folder' && "font-medium")}>
+                              {item.name}
+                            </span>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+                              {item.path !== 'index.html' && (
+                                <button
+                                  className="p-1 hover:text-primary transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRenameItem?.(item.path);
+                                  }}
+                                  title="Rename"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                              )}
+                              {item.path !== 'index.html' && (
+                                <button
+                                  className="p-1 hover:text-red-400 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteItem(item.path, item.type);
+                                  }}
+                                  title={item.type === 'folder' ? "Delete Folder" : "Delete File"}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent className="bg-[#252525] border-[#333] text-gray-200 min-w-[160px]">
+                          {item.type === 'folder' && (
+                            <>
+                              <ContextMenuSub>
+                                <ContextMenuSubTrigger className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs">
+                                  <Plus className="mr-2 h-3.5 w-3.5" />
+                                  <span>New File in folder</span>
+                                </ContextMenuSubTrigger>
+                                <ContextMenuSubContent className="bg-[#252525] border-[#333] text-gray-200">
+                                  <ContextMenuItem 
+                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    onClick={() => onNewFileInFolder?.(item.path, 'page')}
+                                  >
+                                    <File className="mr-2 h-3.5 w-3.5 text-blue-400" />
+                                    <span>New Page</span>
+                                  </ContextMenuItem>
+                                  <ContextMenuItem 
+                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    onClick={() => onNewFileInFolder?.(item.path, 'partial')}
+                                  >
+                                    <Puzzle className="mr-2 h-3.5 w-3.5 text-purple-400" />
+                                    <span>New Partial</span>
+                                  </ContextMenuItem>
+                                  <ContextMenuItem 
+                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    onClick={() => onNewFileInFolder?.(item.path, 'style')}
+                                  >
+                                    <Palette className="mr-2 h-3.5 w-3.5 text-pink-400" />
+                                    <span>New Stylesheet</span>
+                                  </ContextMenuItem>
+                                  <ContextMenuItem 
+                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    onClick={() => onNewFileInFolder?.(item.path, 'script')}
+                                  >
+                                    <Code className="mr-2 h-3.5 w-3.5 text-yellow-400" />
+                                    <span>New Script</span>
+                                  </ContextMenuItem>
+                                </ContextMenuSubContent>
+                              </ContextMenuSub>
+                              <ContextMenuSeparator className="bg-[#333]" />
+                            </>
                           )}
+                          
                           {item.path !== 'index.html' && (
-                            <button
-                              className="p-1 hover:text-red-400 transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteItem(item.path, item.type);
-                              }}
-                              title={item.type === 'folder' ? "Delete Folder" : "Delete File"}
+                            <ContextMenuItem 
+                              className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                              onClick={() => onRenameItem?.(item.path)}
                             >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                              <Edit2 className="mr-2 h-3.5 w-3.5" />
+                              <span>Rename</span>
+                            </ContextMenuItem>
                           )}
-                        </div>
-                      </div>
+                          
+                          {item.type === 'file' && (
+                            <ContextMenuItem 
+                              className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                              onClick={() => onDuplicateItem?.(item.path)}
+                            >
+                              <Copy className="mr-2 h-3.5 w-3.5" />
+                              <span>Duplicate</span>
+                            </ContextMenuItem>
+                          )}
+                          
+                          {item.path !== 'index.html' && (
+                            <>
+                              <ContextMenuSeparator className="bg-[#333]" />
+                              <ContextMenuItem 
+                                className="focus:bg-red-900/40 focus:text-red-200 px-2 py-1.5 text-xs text-red-500"
+                                onClick={() => onDeleteItem(item.path, item.type)}
+                              >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                <span>Delete</span>
+                              </ContextMenuItem>
+                            </>
+                          )}
+                        </ContextMenuContent>
+                      </ContextMenu>
                     )}
                   </Draggable>
                 ))}

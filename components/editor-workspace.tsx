@@ -52,9 +52,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [newFileType, setNewFileType] = useState<ProjectFile['fileType']>('page');
   const [newFileName, setNewFileName] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFileInFolderPath, setNewFileInFolderPath] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
   const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
@@ -98,7 +100,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
   // Load files from Convex or migrate
   useEffect(() => {
-    if (projectFiles && files.length === 0) {
+    if (projectFiles && !hasLoaded) {
       let loadedFiles: ProjectFile[] = [];
       if (projectFiles.length > 0) {
         loadedFiles = (projectFiles as Array<{ path: string; content: string; language: string; fileType: string }>).map(f => ({
@@ -133,9 +135,13 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setFiles(loadedFiles);
         setHistory([loadedFiles]);
         setHistoryIndex(0);
+        setHasLoaded(true);
+      } else if (projectFiles.length === 0 && initialHTML === '') {
+        // Handle empty project case where we might be creating from scratch or something
+        setHasLoaded(true);
       }
     }
-  }, [projectFiles, initialHTML, projectData?._id, files.length, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+  }, [projectFiles, initialHTML, projectData?._id, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
 
   // Handle message from preview iframe
   useEffect(() => {
@@ -225,27 +231,32 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  const persistFiles = useCallback(async (nextFiles: ProjectFile[]) => {
+    if (!user || !projectData?._id) return;
+    setSaveStatus('saving');
+    try {
+      await saveFilesAction({
+        projectId: projectData._id,
+        files: nextFiles
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Save failed', err);
+      setSaveStatus('idle');
+    }
+  }, [user, projectData?._id, saveFilesAction]);
+
   // Auto-save to Convex
   useEffect(() => {
     if (!user || !files.length || !projectData?._id) return;
 
     const timer = setTimeout(async () => {
-      setSaveStatus('saving');
-      try {
-        await saveFilesAction({
-          projectId: projectData._id,
-          files: files
-        });
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (err) {
-        console.error('Auto-save failed', err);
-        setSaveStatus('idle');
-      }
+      persistFiles(files);
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [files, user, projectData?._id, saveFilesAction]);
+  }, [files, user, projectData?._id, persistFiles]);
 
   const runTransform = async () => {
     if (!transformPrompt.trim()) return;
@@ -272,6 +283,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       if (result.files) {
         setFiles(result.files);
         addToHistory(result.files);
+        persistFiles(result.files);
       }
       setTransformPrompt('');
     } catch (err) {
@@ -285,32 +297,77 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
     setNewFileName('');
+    setNewFileInFolderPath(null);
     setIsNewFileDialogOpen(true);
+  };
+
+  const handleNewFileInFolder = (folderPath: string, type: ProjectFile['fileType']) => {
+    setNewFileInFolderPath(folderPath);
+    setNewFileType(type);
+    setNewFileName('');
+    setIsNewFileDialogOpen(true);
+  };
+
+  const handleDuplicateItem = (path: string) => {
+    const file = files.find(f => f.path === path);
+    if (!file) return;
+
+    const parts = path.split('/');
+    const fileName = parts.pop()!;
+    const nameParts = fileName.split('.');
+    const ext = nameParts.length > 1 ? `.${nameParts.pop()}` : '';
+    const baseName = nameParts.join('.');
+    
+    let newPath = '';
+    let counter = 1;
+    const parentPath = parts.length > 0 ? parts.join('/') + '/' : '';
+    
+    do {
+      newPath = `${parentPath}${baseName}_copy${counter}${ext}`;
+      counter++;
+    } while (files.some(f => f.path === newPath));
+
+    const newFile: ProjectFile = {
+      ...file,
+      path: newPath
+    };
+
+    const nextFiles = [...files, newFile];
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
+    setActiveFilePath(newPath);
   };
 
   const confirmNewFile = () => {
     if (!newFileName) return;
     
-    if (files.some(f => f.path === newFileName)) {
+    let finalPath = newFileName;
+    if (newFileInFolderPath) {
+      const folder = newFileInFolderPath.endsWith('/') ? newFileInFolderPath : `${newFileInFolderPath}/`;
+      finalPath = `${folder}${newFileName}`;
+    }
+
+    if (files.some(f => f.path === finalPath)) {
       alert('File already exists');
       return;
     }
 
-    const lang: ProjectFile['language'] = newFileName.endsWith('.css') ? 'css' : newFileName.endsWith('.js') ? 'javascript' : 'html';
+    const lang: ProjectFile['language'] = finalPath.endsWith('.css') ? 'css' : finalPath.endsWith('.js') ? 'javascript' : 'html';
     const newFile: ProjectFile = {
-      path: newFileName,
+      path: finalPath,
       content: '', // Template could be added here
       language: lang,
       fileType: newFileType as ProjectFile['fileType']
     };
 
-    setFiles(prev => {
-      const next = [...prev, newFile];
-      addToHistory(next);
-      return next;
-    });
-    setActiveFilePath(newFileName);
+    const nextFiles = [...files, newFile];
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
+    setActiveFilePath(finalPath);
     setIsNewFileDialogOpen(false);
+    setNewFileInFolderPath(null);
   };
 
   const handleNewFolder = () => {
@@ -336,11 +393,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       fileType: 'partial'
     };
 
-    setFiles(prev => {
-      const next = [...prev, newFile];
-      addToHistory(next);
-      return next;
-    });
+    const nextFiles = [...files, newFile];
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
     setIsNewFolderDialogOpen(false);
   };
 
@@ -353,19 +409,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (!itemToDelete) return;
     const { path, type } = itemToDelete;
     
-    setFiles(prev => {
-      let next;
-      if (type === 'file') {
-        next = prev.filter(f => f.path !== path);
-      } else {
-        // Folder deletion: remove all files starting with "path/"
-        const prefix = path.endsWith('/') ? path : `${path}/`;
-        next = prev.filter(f => !f.path.startsWith(prefix));
-      }
-      
-      addToHistory(next);
-      return next;
-    });
+    let nextFiles: ProjectFile[] = [];
+    if (type === 'file') {
+      nextFiles = files.filter(f => f.path !== path);
+    } else {
+      // Folder deletion: remove all files starting with "path/"
+      const prefix = path.endsWith('/') ? path : `${path}/`;
+      nextFiles = files.filter(f => !f.path.startsWith(prefix));
+    }
+    
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
 
     if (type === 'file' && activeFilePath === path) {
       setActiveFilePath('index.html');
@@ -398,28 +453,28 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       return;
     }
 
-    setFiles(prev => {
-      const next = prev.map(f => {
-        // Exact match (file or the .keep file of a folder)
-        if (f.path === oldPath) {
-          if (activeFilePath === oldPath) setActiveFilePath(newPath);
-          return { ...f, path: newPath };
-        }
-        
-        // Nested items
-        const folderPrefix = `${oldPath}/`;
-        if (f.path.startsWith(folderPrefix)) {
-          const newFolderPrefix = `${newPath}/`;
-          const updatedPath = f.path.replace(folderPrefix, newFolderPrefix);
-          if (activeFilePath === f.path) setActiveFilePath(updatedPath);
-          return { ...f, path: updatedPath };
-        }
-        
-        return f;
-      });
-      addToHistory(next);
-      return next;
+    const nextFiles = files.map(f => {
+      // Exact match (file or the .keep file of a folder)
+      if (f.path === oldPath) {
+        if (activeFilePath === oldPath) setActiveFilePath(newPath);
+        return { ...f, path: newPath };
+      }
+      
+      // Nested items
+      const folderPrefix = `${oldPath}/`;
+      if (f.path.startsWith(folderPrefix)) {
+        const newFolderPrefix = `${newPath}/`;
+        const updatedPath = f.path.replace(folderPrefix, newFolderPrefix);
+        if (activeFilePath === f.path) setActiveFilePath(updatedPath);
+        return { ...f, path: updatedPath };
+      }
+      
+      return f;
     });
+
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
 
     setIsRenameDialogOpen(false);
     setItemToRename(null);
@@ -429,88 +484,85 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     // If destination is same as source, skip
     if (sourcePath === destFolderPath) return;
 
-    setFiles(prev => {
-      const sourceName = sourcePath.split('/').pop()!;
-      const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
-      const newPathBase = `${targetDir}${sourceName}`;
+    const sourceName = sourcePath.split('/').pop()!;
+    const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
+    const newPathBase = `${targetDir}${sourceName}`;
 
-      // Check for collisions
-      if (prev.some(f => f.path === newPathBase)) {
-         alert(`An item named "${sourceName}" already exists in "${destFolderPath}"`);
-         return prev;
+    // Check for collisions
+    if (files.some(f => f.path === newPathBase)) {
+        alert(`An item named "${sourceName}" already exists in "${destFolderPath}"`);
+        return;
+    }
+
+    const nextFiles = files.map(f => {
+      // If it's the exact file
+      if (f.path === sourcePath) {
+        if (activeFilePath === f.path) setActiveFilePath(newPathBase);
+        return { ...f, path: newPathBase };
       }
-
-      const next = prev.map(f => {
-        // If it's the exact file
-        if (f.path === sourcePath) {
-          if (activeFilePath === f.path) setActiveFilePath(newPathBase);
-          return { ...f, path: newPathBase };
-        }
-        
-        // If it's a file inside a folder being moved
-        if (f.path.startsWith(`${sourcePath}/`)) {
-          const newPath = f.path.replace(sourcePath, newPathBase);
-          if (activeFilePath === f.path) setActiveFilePath(newPath);
-          return { ...f, path: newPath };
-        }
-        
-        return f;
-      });
-
-      addToHistory(next);
-      return next;
+      
+      // If it's a file inside a folder being moved
+      if (f.path.startsWith(`${sourcePath}/`)) {
+        const newPath = f.path.replace(sourcePath, newPathBase);
+        if (activeFilePath === f.path) setActiveFilePath(newPath);
+        return { ...f, path: newPath };
+      }
+      
+      return f;
     });
+
+    setFiles(nextFiles);
+    addToHistory(nextFiles);
+    persistFiles(nextFiles);
   };
 
   const handleMoveAndReorder = (sourcePath: string, destFolderPath: string, targetPath: string) => {
-    setFiles(prev => {
-      const sourceName = sourcePath.split('/').pop()!;
-      const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
-      const newPathBase = `${targetDir}${sourceName}`;
+    const sourceName = sourcePath.split('/').pop()!;
+    const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
+    const newPathBase = `${targetDir}${sourceName}`;
 
-      // 1. Move/Rename
-      const movedFiles = prev.map(f => {
-        if (f.path === sourcePath) {
-          if (activeFilePath === f.path) setActiveFilePath(newPathBase);
-          return { ...f, path: newPathBase };
-        }
-        if (f.path.startsWith(`${sourcePath}/`)) {
-          const newPath = f.path.replace(sourcePath, newPathBase);
-          if (activeFilePath === f.path) setActiveFilePath(newPath);
-          return { ...f, path: newPath };
-        }
-        return f;
-      });
-
-      // 2. Reorder
-      const result = [...movedFiles];
-      const sourceIndex = result.findIndex(f => f.path === newPathBase);
-      const destIndex = result.findIndex(f => f.path === targetPath);
-      
-      if (sourceIndex !== -1 && destIndex !== -1) {
-        const [removed] = result.splice(sourceIndex, 1);
-        result.splice(destIndex, 0, removed);
+    // 1. Move/Rename
+    const movedFiles = files.map(f => {
+      if (f.path === sourcePath) {
+        if (activeFilePath === f.path) setActiveFilePath(newPathBase);
+        return { ...f, path: newPathBase };
       }
-      
-      addToHistory(result);
-      return result;
+      if (f.path.startsWith(`${sourcePath}/`)) {
+        const newPath = f.path.replace(sourcePath, newPathBase);
+        if (activeFilePath === f.path) setActiveFilePath(newPath);
+        return { ...f, path: newPath };
+      }
+      return f;
     });
+
+    // 2. Reorder
+    const result = [...movedFiles];
+    const sourceIndex = result.findIndex(f => f.path === newPathBase);
+    const destIndex = result.findIndex(f => f.path === targetPath);
+    
+    if (sourceIndex !== -1 && destIndex !== -1) {
+      const [removed] = result.splice(sourceIndex, 1);
+      result.splice(destIndex, 0, removed);
+    }
+    
+    setFiles(result);
+    addToHistory(result);
+    persistFiles(result);
   };
 
   const handleReorderFiles = (sourcePath: string, destinationPath: string) => {
-    setFiles(prev => {
-      const result = [...prev];
-      const sourceIndex = result.findIndex(f => f.path === sourcePath);
-      const destIndex = result.findIndex(f => f.path === destinationPath);
-      
-      if (sourceIndex === -1 || destIndex === -1) return prev;
-      
-      const [removed] = result.splice(sourceIndex, 1);
-      result.splice(destIndex, 0, removed);
-      
-      addToHistory(result);
-      return result;
-    });
+    const result = [...files];
+    const sourceIndex = result.findIndex(f => f.path === sourcePath);
+    const destIndex = result.findIndex(f => f.path === destinationPath);
+    
+    if (sourceIndex === -1 || destIndex === -1) return;
+    
+    const [removed] = result.splice(sourceIndex, 1);
+    result.splice(destIndex, 0, removed);
+    
+    setFiles(result);
+    addToHistory(result);
+    persistFiles(result);
   };
 
   const onPolishSubmit = async () => {
@@ -528,6 +580,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       if (result.files) {
         setFiles(result.files);
         addToHistory(result.files);
+        persistFiles(result.files);
       }
     } catch (err) {
       console.error(err);
@@ -651,6 +704,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           onNewFolder={handleNewFolder}
           onDeleteItem={handleDeleteItem}
           onRenameItem={handleRenameItem}
+          onDuplicateItem={handleDuplicateItem}
+          onNewFileInFolder={handleNewFileInFolder}
           onMoveItem={handleMoveItem}
           onMoveAndReorder={handleMoveAndReorder}
           onReorderFiles={handleReorderFiles}
@@ -940,9 +995,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                     const prefix = itemToDelete.path.endsWith('/') ? itemToDelete.path : `${itemToDelete.path}/`;
                     const hasFiles = files.some(f => f.path.startsWith(prefix) && !f.path.endsWith('.keep'));
                     return hasFiles ? (
-                      <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-bold uppercase text-[10px]">
+                      <span className="block mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-bold uppercase text-[10px]">
                         Warning: This folder contains files. All of them will be permanently deleted.
-                      </div>
+                      </span>
                     ) : null;
                   })()}
                 </>
