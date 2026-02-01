@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -15,9 +15,12 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
+import { cn } from '@/lib/utils';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
@@ -59,6 +62,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
   const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isExplorerVisible, setIsExplorerVisible] = useState(true);
+  const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
+  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const [quickOpenSearch, setQuickOpenSearch] = useState('');
 
   // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
@@ -439,6 +446,62 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     setItemToDelete(null);
   };
 
+  const filteredQuickOpenFiles = useMemo(() => {
+    if (!quickOpenSearch) return files;
+    const search = quickOpenSearch.toLowerCase();
+    return files.filter(f => f.path.toLowerCase().includes(search));
+  }, [files, quickOpenSearch]);
+
+  // Global shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input or textarea (unless it's the Quick Open input itself)
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      
+      // Ctrl + S: Save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        persistFiles(files);
+      }
+      
+      // Ctrl + B: Toggle Explorer Sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setIsExplorerVisible(prev => !prev);
+      }
+
+      // Ctrl + I (or Ctrl + Shift + B): Toggle Right Sidebar
+      // We'll use Ctrl + I as 'Instructions' or 'Insights'
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+        e.preventDefault();
+        setIsRightSidebarVisible(prev => !prev);
+      }
+      
+      // Ctrl + P: Quick Open
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        setIsQuickOpenOpen(true);
+      }
+
+      // Del: Delete active file
+      if (e.key === 'Delete' && !isInput && !isQuickOpenOpen && !isNewFileDialogOpen && !isNewFolderDialogOpen && !isRenameDialogOpen && !isDeleteDialogOpen) {
+        // Only trigger if no dialog is open and we have an active file
+        if (activeFile) {
+          handleDeleteItem(activeFile.path, 'file');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [files, persistFiles, activeFile, isQuickOpenOpen, isNewFileDialogOpen, isNewFolderDialogOpen, isRenameDialogOpen, isDeleteDialogOpen, isExplorerVisible, isRightSidebarVisible]);
+
+  useEffect(() => {
+    if (!isQuickOpenOpen) {
+      setQuickOpenSearch('');
+    }
+  }, [isQuickOpenOpen]);
+
   const handleRenameItem = (path: string) => {
     setItemToRename(path);
     // Extract the name part for initial value
@@ -703,21 +766,49 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onMetadata={() => setIsMetadataDialogOpen(true)}
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        <FileTree 
-          files={files} 
-          activeFilePath={activeFilePath} 
-          onFileSelect={setActiveFilePath}
-          onNewFile={handleNewFile}
-          onNewFolder={handleNewFolder}
-          onDeleteItem={handleDeleteItem}
-          onRenameItem={handleRenameItem}
-          onDuplicateItem={handleDuplicateItem}
-          onNewFileInFolder={handleNewFileInFolder}
-          onMoveItem={handleMoveItem}
-          onMoveAndReorder={handleMoveAndReorder}
-          onReorderFiles={handleReorderFiles}
-        />
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Toggle Explorer Button (Always visible) */}
+        <button
+          onClick={() => setIsExplorerVisible(!isExplorerVisible)}
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-l-0 rounded-r flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
+            isExplorerVisible ? "left-[280px]" : "left-0"
+          )}
+          title={isExplorerVisible ? "Hide Explorer (Ctrl+B)" : "Show Explorer (Ctrl+B)"}
+        >
+          {isExplorerVisible ? (
+            <ChevronLeft className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
+          )}
+        </button>
+
+        <AnimatePresence>
+          {isExplorerVisible && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 280, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden flex flex-col shrink-0"
+            >
+              <FileTree 
+                files={files} 
+                activeFilePath={activeFilePath} 
+                onFileSelect={setActiveFilePath}
+                onNewFile={handleNewFile}
+                onNewFolder={handleNewFolder}
+                onDeleteItem={handleDeleteItem}
+                onRenameItem={handleRenameItem}
+                onDuplicateItem={handleDuplicateItem}
+                onNewFileInFolder={handleNewFileInFolder}
+                onMoveItem={handleMoveItem}
+                onMoveAndReorder={handleMoveAndReorder}
+                onReorderFiles={handleReorderFiles}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         <main className="flex-1 flex overflow-hidden">
           {activeTab === 'preview' && (
@@ -750,13 +841,41 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </main>
 
-        <EditorSidebar
-          transformPrompt={transformPrompt}
-          setTransformPrompt={setTransformPrompt}
-          runTransform={runTransform}
-          runPolish={() => setIsPolishDialogOpen(true)}
-          isTransforming={isTransforming}
-        />
+        <AnimatePresence>
+          {isRightSidebarVisible && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 320, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden flex flex-col shrink-0"
+            >
+              <EditorSidebar
+                transformPrompt={transformPrompt}
+                setTransformPrompt={setTransformPrompt}
+                runTransform={runTransform}
+                runPolish={() => setIsPolishDialogOpen(true)}
+                isTransforming={isTransforming}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Toggle Right Sidebar Button (Always visible) */}
+        <button
+          onClick={() => setIsRightSidebarVisible(!isRightSidebarVisible)}
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-r-0 rounded-l flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
+            isRightSidebarVisible ? "right-[320px]" : "right-0"
+          )}
+          title={isRightSidebarVisible ? "Hide AI Sidebar (Ctrl+I)" : "Show AI Sidebar (Ctrl+I)"}
+        >
+          {isRightSidebarVisible ? (
+            <ChevronRight className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
+          ) : (
+            <ChevronLeft className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
+          )}
+        </button>
       </div>
 
       <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
@@ -1079,6 +1198,63 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             files={files}
             onClose={() => setIsMetadataDialogOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isQuickOpenOpen} onOpenChange={setIsQuickOpenOpen}>
+        <DialogContent className="sm:max-w-[500px] p-0 gap-0 bg-[var(--background)] border-[var(--border)] overflow-hidden shadow-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Quick Open Files</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center border-b border-[var(--border)] px-3">
+            <Search className="w-4 h-4 text-[var(--muted-text)] mr-2" />
+            <Input
+              autoFocus
+              placeholder="Search files..."
+              className="flex-1 border-0 focus-visible:ring-0 bg-transparent text-sm h-12 font-mono"
+              value={quickOpenSearch}
+              onChange={(e) => setQuickOpenSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
+                  setActiveFilePath(filteredQuickOpenFiles[0].path);
+                  setIsQuickOpenOpen(false);
+                }
+              }}
+            />
+          </div>
+          <div className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
+            {filteredQuickOpenFiles.length > 0 ? (
+              filteredQuickOpenFiles.map((file) => (
+                <button
+                  key={file.path}
+                  className="w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group"
+                  onClick={() => {
+                    setActiveFilePath(file.path);
+                    setIsQuickOpenOpen(false);
+                  }}
+                >
+                  <div className="w-8 h-8 rounded border border-[var(--border)] flex items-center justify-center bg-[var(--background)] group-hover:bg-[var(--background-overlay)] transition-colors">
+                    <span className="text-[9px] uppercase font-bold text-[var(--muted-text)]">
+                      {file.path.split('.').pop()}
+                    </span>
+                  </div>
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <span className="text-xs font-mono truncate">{file.path}</span>
+                    <span className="text-[9px] text-[var(--muted-text)] font-mono uppercase tracking-widest leading-none mt-1">
+                      {file.fileType}
+                    </span>
+                  </div>
+                  {activeFilePath === file.path && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
+                  )}
+                </button>
+              ))
+            ) : (
+              <div className="p-12 text-center text-xs text-[var(--muted-text)] font-mono uppercase tracking-widest opacity-50">
+                No matching files
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </motion.div>

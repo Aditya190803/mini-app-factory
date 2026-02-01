@@ -172,7 +172,7 @@ export default function FileTree({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] border-r border-[#2d2d2d] w-64 select-none">
+    <div className="flex flex-col h-full bg-[#1e1e1e] border-r border-[#2d2d2d] w-full select-none">
       <div className="p-3 flex items-center justify-between border-b border-[#2d2d2d]">
         <h3 className="text-xs font-semibold uppercase text-gray-500 tracking-wider flex items-center gap-2">
           Explorer
