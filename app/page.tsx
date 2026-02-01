@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useUser } from "@stackframe/stack";
 import AIStatusBadge from '@/components/ai-status-badge';
+import { FactoryIcon } from "@/components/ui/factory-icon";
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -117,13 +118,13 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div
-              className="w-8 h-8 flex items-center justify-center font-black text-sm"
+              className="w-8 h-8 flex items-center justify-center"
               style={{
                 backgroundColor: 'var(--primary)',
                 color: 'var(--primary-foreground)'
               }}
             >
-              ⚙
+              <FactoryIcon size={18} />
             </div>
             <div>
               <h1

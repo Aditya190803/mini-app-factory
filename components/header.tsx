@@ -1,4 +1,4 @@
-'use client';
+import { FactoryIcon } from "@/components/ui/factory-icon";
 
 export default function Header() {
   return (
@@ -12,13 +12,13 @@ export default function Header() {
       <div className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
           <div 
-            className="w-12 h-12 rounded flex items-center justify-center font-display text-2xl font-black"
+            className="w-12 h-12 rounded flex items-center justify-center"
             style={{
               backgroundColor: 'var(--primary)',
               color: 'var(--primary-foreground)',
             }}
           >
-            ⚙
+            <FactoryIcon size={32} />
           </div>
           <div>
             <h1 

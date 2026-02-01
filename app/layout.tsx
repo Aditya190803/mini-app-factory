@@ -15,9 +15,6 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'Mini App Factory',
   description: 'Generate production-ready static websites from natural language descriptions',
-  icons: {
-    icon: []
-  },
 }
 
 export default function RootLayout({
