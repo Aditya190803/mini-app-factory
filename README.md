@@ -1,35 +1,44 @@
  # Mini App Factory
 
-A powerful AI-powered web application that generates production-ready static websites from natural language descriptions. Simply describe what you want to build, and the AI will create a complete, responsive HTML website for you.
+A powerful AI-powered web application that generates production-ready multi-page websites from natural language descriptions. Simply describe what you want to build, and the AI will create a complete, responsive project for you.
 
 ## Features
 
 - **Natural Language Input**: Describe your website in plain English
+- **Multi-page Architecture**: Automatically generates multiple linked pages based on description
 - **Two-Pass AI Pipeline**:
-  - **Conceptualize**: AI creates a detailed design specification from your description
-  - **Generate**: AI builds production-ready HTML with Tailwind CSS
-- **Live Preview**: See your generated website in real-time
-- **Code View**: Inspect the generated HTML code
-- **Polish Pass**: Run a full polish from the code view to refine images, typography, animations, and mobile layout via the LLM
-- **Download & Deploy**: Export as HTML file or deploy directly
-- **Responsive Design**: All generated websites work perfectly on mobile, tablet, and desktop
+  - **Conceptualize**: AI creates a detailed design specification and site map
+  - **Generate**: AI builds production-ready files with Tailwind CSS v4
+- **Project Dashboard**: Manage and track all your generated sites
+- **Authentication**: Secure access to your projects via Stack Auth
+- **Live Preview & Editor**: Interactive workspace to see and edit your sites in real-time
+- **Download & Deploy**: Export as ZIP with all assets or deploy to the web
 - **Modern UI**: Built with Tailwind CSS v4 and shadcn/ui components
+
+## How It Works
+
+1. **Input Your Description**: Tell the AI what kind of website you want to create.
+2. **AI Conceptualizes**: The AI analyzes your request, creates a design spec, and plans the page structure.
+3. **AI Generates**: The AI generates all necessary HTML, CSS (Tailwind), and assets.
+4. **Manage & Edit**: Access your project from the dashboard to preview, edit, or export.
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 with App Router
+- **Framework**: [Next.js 16](https://nextjs.org/) with App Router
+- **Database & Backend**: [Convex](https://convex.dev/)
+- **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
-  - **Primary**: Cerebras SDK with `zai-glm-4.7` (requires `CEREBRAS_API_KEY`)
-  - **Fallback**: Groq with `moonshotai/kimi-k2-instruct-0905` (requires `GROQ_API_KEY`)
-- **Styling**: Tailwind CSS v4 with custom dark theme
+  - **Primary**: Cerebras SDK with `zai-glm-4.7`
+  - **Fallback**: Groq with `moonshotai/kimi-k2-instruct-0905`
+- **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
-- **Language**: TypeScript
+- **Runtime & Package Manager**: [Bun](https://bun.sh/)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- [Bun](https://bun.sh/) installed on your machine
 
 ### Installation
 
@@ -39,26 +48,36 @@ A powerful AI-powered web application that generates production-ready static web
    bun install
    ```
 
-3. Set up your AI providers in `.env.local`:
+3. Set up your environment variables in `.env.local`:
    
    ```bash
-   # Required: Cerebras API Key (Primary Provider - zai-glm-4.7)
+   # AI Providers
    CEREBRAS_API_KEY=your_cerebras_api_key
-   
-   # Required: Groq API Key (Fallback Provider - Moonshot Kimi K2)
+   CEREBRAS_MODEL=zai-glm-4.7
    GROQ_API_KEY=your_groq_api_key
-   ```
+   GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
    
-   See [AI_SETUP.md](AI_SETUP.md) for detailed configuration instructions.
+   # Convex
+   CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev
+   NEXT_PUBLIC_CONVEX_URL=your_convex_url
+   
+   # Stack Auth
+   NEXT_PUBLIC_STACK_PROJECT_ID=your_stack_project_id
+   NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=your_stack_key
+   STACK_SECRET_SERVER_KEY=your_stack_secret
+   ```
 
-4. Note: This project now requires `jszip` for ZIP downloads. Running `pnpm install` or `npm install` will pick it up from `package.json`.
+4. Initialize Convex:
+   ```bash
+   bun convex dev
+   ```
 
 ### Development
 
 Run the development server:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the application.
@@ -68,37 +87,11 @@ Open [http://localhost:3000](http://localhost:3000) to see the application.
 Run unit tests (Vitest):
 
 ```bash
-npm test
+bun test
 ```
 
-## How It Works
-
-1. **Input Your Description**: Tell the AI what kind of website you want to create
-2. **AI Conceptualizes**: The AI analyzes your request and creates a detailed design specification
-3. **AI Generates**: Using the specification, the AI generates complete, production-ready HTML
-4. **Preview & Export**: View your website and download the HTML or deploy it
-
-## Example Prompts
-
-- "A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA"
-- "An e-commerce product page with image gallery, reviews, and add to cart button"
-- "A portfolio website showcasing design work with a grid layout and case studies"
-
-## Deployment
-
-Deploy easily to Vercel:
+Build the project:
 
 ```bash
-npm run build
-npm run start
+bun run build
 ```
-
-Or use the Vercel CLI:
-
-```bash
-vercel deploy
-```
-
-## License
-
-MIT
