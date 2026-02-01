@@ -25,9 +25,7 @@ export default function CodePanel({ html, language = 'html', onChange, onReset }
                 </button>
                 <button
                     onClick={() => {
-                        if (confirm('Reset to initial version? All manual changes will be lost.')) {
-                            onReset();
-                        }
+                        onReset();
                     }}
                     className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--error)] hover:border-[var(--error)] transition-all flex items-center gap-1.5"
                 >

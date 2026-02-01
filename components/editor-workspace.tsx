@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Spinner } from '@/components/ui/spinner';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 
@@ -38,9 +39,21 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [transformPrompt, setTransformPrompt] = useState('');
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+  const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
+  const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [itemToRename, setItemToRename] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [newFileType, setNewFileType] = useState<ProjectFile['fileType']>('page');
+  const [newFileName, setNewFileName] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
   const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
 
   // Global history for files
@@ -50,7 +63,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
   const saveFilesAction = useMutation(api.files.saveFiles);
-  const deleteFileAction = useMutation(api.files.deleteFile);
   const publishProject = useMutation(api.projects.publishProject);
   const projectData = useQuery(api.projects.getProject, { projectName });
   const projectFiles = useQuery(api.files.getFilesByProject, 
@@ -142,10 +154,15 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   }, [files]);
 
   const handleReset = () => {
+    setIsResetDialogOpen(true);
+  };
+
+  const confirmReset = () => {
     if (history.length > 0) {
       setFiles(history[0]);
       setHistoryIndex(0);
     }
+    setIsResetDialogOpen(false);
   };
 
   const activeFile = useMemo(() => 
@@ -266,20 +283,25 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
-    const name = prompt(`Name for new ${type} (e.g. about.html):`);
-    if (!name) return;
+    setNewFileType(type);
+    setNewFileName('');
+    setIsNewFileDialogOpen(true);
+  };
+
+  const confirmNewFile = () => {
+    if (!newFileName) return;
     
-    if (files.some(f => f.path === name)) {
+    if (files.some(f => f.path === newFileName)) {
       alert('File already exists');
       return;
     }
 
-    const lang: ProjectFile['language'] = name.endsWith('.css') ? 'css' : name.endsWith('.js') ? 'javascript' : 'html';
+    const lang: ProjectFile['language'] = newFileName.endsWith('.css') ? 'css' : newFileName.endsWith('.js') ? 'javascript' : 'html';
     const newFile: ProjectFile = {
-      path: name,
+      path: newFileName,
       content: '', // Template could be added here
       language: lang,
-      fileType: type
+      fileType: newFileType as ProjectFile['fileType']
     };
 
     setFiles(prev => {
@@ -287,31 +309,204 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       addToHistory(next);
       return next;
     });
-    setActiveFilePath(name);
+    setActiveFilePath(newFileName);
+    setIsNewFileDialogOpen(false);
   };
 
-  const handleDeleteFile = async (path: string) => {
-    if (!confirm(`Delete ${path}?`)) return;
+  const handleNewFolder = () => {
+    setNewFolderName('');
+    setIsNewFolderDialogOpen(true);
+  };
+
+  const confirmNewFolder = () => {
+    if (!newFolderName) return;
     
+    // Check if folder or file with this name already exists
+    const folderPath = newFolderName.endsWith('/') ? newFolderName : `${newFolderName}/`;
+    if (files.some(f => f.path.startsWith(folderPath) || f.path === newFolderName)) {
+      alert('A file or folder with this name already exists');
+      return;
+    }
+
+    // Create a .keep file to make the folder persistent
+    const newFile: ProjectFile = {
+      path: `${folderPath}.keep`,
+      content: '',
+      language: 'html',
+      fileType: 'partial'
+    };
+
     setFiles(prev => {
-      const next = prev.filter(f => f.path !== path);
+      const next = [...prev, newFile];
       addToHistory(next);
       return next;
     });
-    if (activeFilePath === path) {
+    setIsNewFolderDialogOpen(false);
+  };
+
+  const handleDeleteItem = (path: string, type: 'file' | 'folder') => {
+    setItemToDelete({ path, type });
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    const { path, type } = itemToDelete;
+    
+    setFiles(prev => {
+      let next;
+      if (type === 'file') {
+        next = prev.filter(f => f.path !== path);
+      } else {
+        // Folder deletion: remove all files starting with "path/"
+        const prefix = path.endsWith('/') ? path : `${path}/`;
+        next = prev.filter(f => !f.path.startsWith(prefix));
+      }
+      
+      addToHistory(next);
+      return next;
+    });
+
+    if (type === 'file' && activeFilePath === path) {
+      setActiveFilePath('index.html');
+    } else if (type === 'folder' && activeFilePath?.startsWith(path.endsWith('/') ? path : `${path}/`)) {
       setActiveFilePath('index.html');
     }
 
-    if (projectData?._id) {
-      await deleteFileAction({ projectId: projectData._id, path });
-    }
+    setIsDeleteDialogOpen(false);
+    setItemToDelete(null);
   };
 
-  const handleReorderFiles = (startIndex: number, endIndex: number) => {
+  const handleRenameItem = (path: string) => {
+    setItemToRename(path);
+    // Extract the name part for initial value
+    const name = path.endsWith('/') ? path.slice(0, -1).split('/').pop()! : path.split('/').pop()!;
+    setRenameValue(name);
+    setIsRenameDialogOpen(true);
+  };
+
+  const confirmRename = () => {
+    if (!itemToRename || !renameValue) return;
+    
+    const oldPath = itemToRename;
+    
+    const parentPath = oldPath.split('/').slice(0, -1).join('/');
+    const newPath = parentPath ? `${parentPath}/${renameValue}` : renameValue;
+
+    if (files.some(f => f.path === newPath)) {
+      alert('An item with this name already exists');
+      return;
+    }
+
+    setFiles(prev => {
+      const next = prev.map(f => {
+        // Exact match (file or the .keep file of a folder)
+        if (f.path === oldPath) {
+          if (activeFilePath === oldPath) setActiveFilePath(newPath);
+          return { ...f, path: newPath };
+        }
+        
+        // Nested items
+        const folderPrefix = `${oldPath}/`;
+        if (f.path.startsWith(folderPrefix)) {
+          const newFolderPrefix = `${newPath}/`;
+          const updatedPath = f.path.replace(folderPrefix, newFolderPrefix);
+          if (activeFilePath === f.path) setActiveFilePath(updatedPath);
+          return { ...f, path: updatedPath };
+        }
+        
+        return f;
+      });
+      addToHistory(next);
+      return next;
+    });
+
+    setIsRenameDialogOpen(false);
+    setItemToRename(null);
+  };
+
+  const handleMoveItem = (sourcePath: string, destFolderPath: string) => {
+    // If destination is same as source, skip
+    if (sourcePath === destFolderPath) return;
+
+    setFiles(prev => {
+      const sourceName = sourcePath.split('/').pop()!;
+      const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
+      const newPathBase = `${targetDir}${sourceName}`;
+
+      // Check for collisions
+      if (prev.some(f => f.path === newPathBase)) {
+         alert(`An item named "${sourceName}" already exists in "${destFolderPath}"`);
+         return prev;
+      }
+
+      const next = prev.map(f => {
+        // If it's the exact file
+        if (f.path === sourcePath) {
+          if (activeFilePath === f.path) setActiveFilePath(newPathBase);
+          return { ...f, path: newPathBase };
+        }
+        
+        // If it's a file inside a folder being moved
+        if (f.path.startsWith(`${sourcePath}/`)) {
+          const newPath = f.path.replace(sourcePath, newPathBase);
+          if (activeFilePath === f.path) setActiveFilePath(newPath);
+          return { ...f, path: newPath };
+        }
+        
+        return f;
+      });
+
+      addToHistory(next);
+      return next;
+    });
+  };
+
+  const handleMoveAndReorder = (sourcePath: string, destFolderPath: string, targetPath: string) => {
+    setFiles(prev => {
+      const sourceName = sourcePath.split('/').pop()!;
+      const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
+      const newPathBase = `${targetDir}${sourceName}`;
+
+      // 1. Move/Rename
+      const movedFiles = prev.map(f => {
+        if (f.path === sourcePath) {
+          if (activeFilePath === f.path) setActiveFilePath(newPathBase);
+          return { ...f, path: newPathBase };
+        }
+        if (f.path.startsWith(`${sourcePath}/`)) {
+          const newPath = f.path.replace(sourcePath, newPathBase);
+          if (activeFilePath === f.path) setActiveFilePath(newPath);
+          return { ...f, path: newPath };
+        }
+        return f;
+      });
+
+      // 2. Reorder
+      const result = [...movedFiles];
+      const sourceIndex = result.findIndex(f => f.path === newPathBase);
+      const destIndex = result.findIndex(f => f.path === targetPath);
+      
+      if (sourceIndex !== -1 && destIndex !== -1) {
+        const [removed] = result.splice(sourceIndex, 1);
+        result.splice(destIndex, 0, removed);
+      }
+      
+      addToHistory(result);
+      return result;
+    });
+  };
+
+  const handleReorderFiles = (sourcePath: string, destinationPath: string) => {
     setFiles(prev => {
       const result = [...prev];
-      const [removed] = result.splice(startIndex, 1);
-      result.splice(endIndex, 0, removed);
+      const sourceIndex = result.findIndex(f => f.path === sourcePath);
+      const destIndex = result.findIndex(f => f.path === destinationPath);
+      
+      if (sourceIndex === -1 || destIndex === -1) return prev;
+      
+      const [removed] = result.splice(sourceIndex, 1);
+      result.splice(destIndex, 0, removed);
       
       addToHistory(result);
       return result;
@@ -373,13 +568,40 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   const downloadZip = async () => {
+    setIsExporting(true);
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
       files.forEach(f => {
         zip.file(f.path, f.content);
       });
-      zip.file('README.txt', 'Generated by Mini App Factory');
+      
+      // Generate README using AI
+      let readmeContent = `# ${projectName}\n\n${initialPrompt}\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)`;
+      
+      try {
+        const response = await fetch('/api/generate/readme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectName,
+            prompt: initialPrompt,
+            files: files.map(f => f.path)
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.content) {
+            readmeContent = data.content;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to generate AI README, using fallback', err);
+      }
+
+      zip.file('README.md', readmeContent);
+
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -391,6 +613,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Zip failed', err);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -424,7 +648,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           activeFilePath={activeFilePath} 
           onFileSelect={setActiveFilePath}
           onNewFile={handleNewFile}
-          onDeleteFile={handleDeleteFile}
+          onNewFolder={handleNewFolder}
+          onDeleteItem={handleDeleteItem}
+          onRenameItem={handleRenameItem}
+          onMoveItem={handleMoveItem}
+          onMoveAndReorder={handleMoveAndReorder}
           onReorderFiles={handleReorderFiles}
         />
         
@@ -541,6 +769,236 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             >
               Got it
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isExporting} onOpenChange={setIsExporting}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight flex items-center gap-2">
+              <Spinner className="text-[var(--primary)]" />
+              Exporting Project
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Please wait while we generate a professional README using AI and bundle your project files into a ZIP.
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewFileDialogOpen} onOpenChange={setIsNewFileDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
+              New {newFileType === 'page' ? 'Page' : 'Partial'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              {newFileType === 'page' 
+                ? "Enter a name for the new page. High-level routes like 'pricing.html'." 
+                : "Partials are reusable components (like navbars or buttons) that you can include in pages using <!-- include:filename.html -->."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              placeholder={newFileType === 'page' ? 'about.html' : 'navbar.html'}
+              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmNewFile();
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <div className="flex justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsNewFileDialogOpen(false)}
+                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmNewFile}
+                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+              >
+                Create
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewFolderDialogOpen} onOpenChange={setIsNewFolderDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
+              New Folder
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Enter a name for the new folder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="assets"
+              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmNewFolder();
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <div className="flex justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsNewFolderDialogOpen(false)}
+                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmNewFolder}
+                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+              >
+                Create
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-[var(--primary)]">
+              Rename Item
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Enter a new name for the item.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmRename();
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <div className="flex justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsRenameDialogOpen(false)}
+                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmRename}
+                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+              >
+                Rename
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-red-500">
+              Delete {itemToDelete?.type === 'folder' ? 'Folder' : 'File'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              {itemToDelete?.type === 'folder' ? (
+                <>
+                  Are you sure you want to delete the folder <span className="text-[var(--foreground)] font-bold">{itemToDelete.path}</span>?
+                  {(() => {
+                    const prefix = itemToDelete.path.endsWith('/') ? itemToDelete.path : `${itemToDelete.path}/`;
+                    const hasFiles = files.some(f => f.path.startsWith(prefix) && !f.path.endsWith('.keep'));
+                    return hasFiles ? (
+                      <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-bold uppercase text-[10px]">
+                        Warning: This folder contains files. All of them will be permanently deleted.
+                      </div>
+                    ) : null;
+                  })()}
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete <span className="text-[var(--foreground)] font-bold">{itemToDelete?.path}</span>? This action cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <div className="flex justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmDeleteItem}
+                className="bg-red-500 hover:bg-red-600 text-white font-mono uppercase text-[10px] font-black"
+              >
+                Delete
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-red-500">
+              Reset Project
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Are you sure you want to reset to the initial version? <span className="text-[var(--foreground)] font-bold">All manual changes will be lost.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <div className="flex justify-end gap-2 w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsResetDialogOpen(false)}
+                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmReset}
+                className="bg-red-500 hover:bg-red-600 text-white font-mono uppercase text-[10px] font-black"
+              >
+                Reset
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
