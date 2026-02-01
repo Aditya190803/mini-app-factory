@@ -16,6 +16,7 @@ interface EditorHeaderProps {
     onUndo: () => void;
     onRedo: () => void;
     onHelp: () => void;
+    onMetadata: () => void;
 }
 
 export default function EditorHeader({
@@ -31,7 +32,8 @@ export default function EditorHeader({
     canRedo,
     onUndo,
     onRedo,
-    onHelp
+    onHelp,
+    onMetadata
 }: EditorHeaderProps) {
     return (
         <header
@@ -101,6 +103,16 @@ export default function EditorHeader({
                         >
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
                             Help
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
+                        <button
+                            onClick={onMetadata}
+                            className="text-[10px] font-mono uppercase font-bold text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors flex items-center gap-1.5"
+                        >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            SEO/Metadata
                         </button>
                     </div>
                 </div>

@@ -51,7 +51,11 @@ export async function GET(
       language: f.language as 'html' | 'css' | 'javascript',
       fileType: f.fileType as 'page' | 'partial' | 'style' | 'script'
     }));
-    content = assembleFullPage(file.path, projectFiles, projectName);
+    content = assembleFullPage(file.path, projectFiles, projectName, {
+      favicon: project.favicon,
+      globalSeo: project.globalSeo,
+      seoData: project.seoData
+    });
     contentType = 'text/html; charset=utf-8';
   } else if (file.fileType === 'style' || file.path.endsWith('.css')) {
     contentType = 'text/css; charset=utf-8';

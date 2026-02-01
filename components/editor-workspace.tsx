@@ -24,6 +24,7 @@ import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
 import FileTree from './editor/file-tree';
+import MetadataDashboard from './metadata-dashboard';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -47,6 +48,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [isMetadataDialogOpen, setIsMetadataDialogOpen] = useState(false);
   const [itemToRename, setItemToRename] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newFileType, setNewFileType] = useState<ProjectFile['fileType']>('page');
@@ -181,7 +183,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     const assembledHtml = assembleFullPage(
       activeFilePath.endsWith('.html') ? activeFilePath : 'index.html', 
       files,
-      projectName
+      projectName,
+      {
+        favicon: projectData?.favicon,
+        globalSeo: projectData?.globalSeo,
+        seoData: projectData?.seoData
+      }
     );
 
     const script = `
@@ -693,6 +700,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onUndo={undo}
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
+        onMetadata={() => setIsMetadataDialogOpen(true)}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -1055,6 +1063,22 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               </Button>
             </div>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isMetadataDialogOpen} onOpenChange={setIsMetadataDialogOpen}>
+        <DialogContent className="max-w-[800px] w-[90vw] max-h-[90vh] overflow-y-auto bg-[var(--background)] border-[var(--border)] text-[var(--foreground)] p-0 scrollbar-hide">
+          <div className="sticky top-0 z-10 p-6 bg-[var(--background)] border-b border-[var(--border)]">
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
+              Project Control Center: SEO & Favicon
+            </DialogTitle>
+          </div>
+          <MetadataDashboard 
+            projectId={projectData?._id}
+            projectName={projectName}
+            files={files}
+            onClose={() => setIsMetadataDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </motion.div>

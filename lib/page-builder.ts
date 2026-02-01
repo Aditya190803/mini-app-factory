@@ -26,7 +26,16 @@ export function resolveIncludes(html: string, files: ProjectFile[]): string {
 /**
  * Assembles a full page by injecting partials, and inlining styles/scripts for the preview.
  */
-export function assembleFullPage(pagePath: string, files: ProjectFile[], projectName?: string): string {
+export function assembleFullPage(
+  pagePath: string, 
+  files: ProjectFile[], 
+  projectName?: string,
+  metadata?: {
+    favicon?: string,
+    globalSeo?: { siteName?: string, description?: string, ogImage?: string },
+    seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>
+  }
+): string {
   const pageFile = files.find(f => f.path === pagePath);
   if (!pageFile) return '';
 
@@ -48,6 +57,52 @@ export function assembleFullPage(pagePath: string, files: ProjectFile[], project
       // Last resort fallback
       $.root().prepend(`<base href="${baseHref}">`);
     }
+  }
+
+  // Inject SEO Metadata
+  const pageSeo = metadata?.seoData?.find(s => s.path === pagePath);
+  const global = metadata?.globalSeo;
+
+  // Title Logic: Page Title || (Site Name | Page Path) || Site Name
+  let finalTitle = pageSeo?.title;
+  if (!finalTitle && global?.siteName) {
+    const displayPath = pagePath === 'index.html' ? '' : ` | ${pagePath.replace(/\.html$/, '')}`;
+    finalTitle = `${global.siteName}${displayPath}`;
+  }
+
+  if (finalTitle) {
+    if ($('title').length > 0) $('title').text(finalTitle);
+    else if ($('head').length > 0) $('head').prepend(`<title>${finalTitle}</title>`);
+    else $.root().prepend(`<title>${finalTitle}</title>`);
+  }
+
+  // Description Logic: Page Description || Global Description
+  const finalDesc = pageSeo?.description || global?.description;
+  if (finalDesc) {
+    if ($('meta[name="description"]').length > 0) $('meta[name="description"]').attr('content', finalDesc);
+    else if ($('head').length > 0) $('head').append(`<meta name="description" content="${finalDesc}">`);
+  }
+
+  // OG Image Logic: Page OG || Global OG
+  const finalOg = pageSeo?.ogImage || global?.ogImage;
+  if (finalOg) {
+    if ($('meta[property="og:image"]').length > 0) $('meta[property="og:image"]').attr('content', finalOg);
+    else if ($('head').length > 0) $('head').append(`<meta property="og:image" content="${finalOg}">`);
+  }
+
+  // Inject Favicon
+  if (metadata?.favicon) {
+    let faviconTag = '';
+    const isEmoji = !metadata.favicon.startsWith('http') && !metadata.favicon.startsWith('/') && metadata.favicon.length < 8;
+    
+    if (isEmoji) {
+      faviconTag = `<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${metadata.favicon}</text></svg>">`;
+    } else {
+      faviconTag = `<link rel="icon" href="${metadata.favicon}">`;
+    }
+
+    if ($('link[rel="icon"]').length > 0) $('link[rel="icon"]').replaceWith(faviconTag);
+    else if ($('head').length > 0) $('head').append(faviconTag);
   }
 
   // Handle Styles: Inline them into the preview so they actually load in srcDoc
