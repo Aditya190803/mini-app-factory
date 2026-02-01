@@ -5,6 +5,8 @@ import React from 'react';
 interface EditorSidebarProps {
     transformPrompt: string;
     setTransformPrompt: (val: string) => void;
+    selectedElement: { path: string, html: string } | null;
+    setSelectedElement: (val: { path: string, html: string } | null) => void;
     runTransform: () => void;
     runPolish: () => void;
     isTransforming: boolean;
@@ -13,6 +15,8 @@ interface EditorSidebarProps {
 export default function EditorSidebar({
     transformPrompt,
     setTransformPrompt,
+    selectedElement,
+    setSelectedElement,
     runTransform,
     runPolish,
     isTransforming
@@ -23,6 +27,24 @@ export default function EditorSidebar({
             if (!isTransforming && transformPrompt.trim()) {
                 runTransform();
             }
+        }
+    };
+
+    // Helper to get a human-readable tag info for the badge
+    const getElementBadgeInfo = () => {
+        if (!selectedElement) return null;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(selectedElement.html, 'text/html');
+            const el = doc.body.firstElementChild;
+            if (!el) return selectedElement.path;
+            
+            const tag = el.tagName.toLowerCase();
+            const classes = Array.from(el.classList).join('.');
+            const className = classes ? `.${classes.split(' ').slice(0, 2).join('.')}` : '';
+            return `<${tag}${className}> in ${selectedElement.path}`;
+        } catch (e) {
+            return selectedElement.path;
         }
     };
 
@@ -42,11 +64,30 @@ export default function EditorSidebar({
                 >
                     Transform with AI
                 </h3>
+
+                {selectedElement && (
+                    <div className="mb-3 p-2 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded flex items-center justify-between group">
+                        <div className="flex flex-col overflow-hidden">
+                            <span className="text-[9px] uppercase font-black text-[var(--primary)] tracking-wider">Targeting Element</span>
+                            <span className="text-[10px] font-mono text-[var(--foreground)] truncate pr-2">
+                                {getElementBadgeInfo()}
+                            </span>
+                        </div>
+                        <button 
+                            onClick={() => setSelectedElement(null)}
+                            className="p-1 hover:bg-[var(--primary)]/20 rounded text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors"
+                            title="Clear selection"
+                        >
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                    </div>
+                )}
+
                 <textarea
                     value={transformPrompt}
                     onChange={(e) => setTransformPrompt(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Describe changes... (e.g., 'Make the hero purple and add a signup modal') [Ctrl+Enter to apply]"
+                    placeholder={selectedElement ? "Describe changes for this element..." : "Describe changes... (e.g., 'Make the hero purple') [Ctrl+Enter]"}
                     className="w-full h-32 resize-none text-xs p-3 border bg-[var(--background)] focus:outline-none focus:border-[var(--primary)] transition-colors font-mono leading-relaxed"
                     style={{
                         borderColor: 'var(--border)',

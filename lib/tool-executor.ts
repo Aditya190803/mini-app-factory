@@ -19,6 +19,8 @@ export async function executeTool(
   switch (toolName) {
     case 'replaceContent':
       return handleReplaceContent(args as Parameters<typeof handleReplaceContent>[0], fileList);
+    case 'replaceElement':
+      return handleReplaceElement(args as Parameters<typeof handleReplaceElement>[0], fileList);
     case 'insertContent':
       return handleInsertContent(args as Parameters<typeof handleInsertContent>[0], fileList);
     case 'deleteContent':
@@ -59,6 +61,28 @@ function handleReplaceContent(args: { file: string; selector: string; oldContent
     element.html(newContent);
     file.content = $.html();
     return { success: true, message: 'Content replaced', updatedFiles: [file] };
+  }
+
+  return { success: false, message: `Replacement not supported for ${file.language}` };
+}
+
+function handleReplaceElement(args: { file: string; selector: string; newContent: string }, files: ProjectFile[]): ToolResult {
+  const { file: path, selector, newContent } = args;
+  const file = files.find(f => f.path === path);
+  if (!file) return { success: false, message: `File not found: ${path}` };
+
+  if (file.language === 'html') {
+    const isDocument = file.fileType === 'page';
+    const $ = cheerio.load(file.content, null, isDocument);
+    const element = $(selector);
+    
+    if (element.length === 0) {
+      return { success: false, message: `Selector not found: ${selector}` };
+    }
+
+    element.replaceWith(newContent);
+    file.content = $.html();
+    return { success: true, message: 'Element replaced', updatedFiles: [file] };
   }
 
   return { success: false, message: `Replacement not supported for ${file.language}` };

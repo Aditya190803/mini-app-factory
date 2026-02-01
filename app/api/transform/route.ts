@@ -50,6 +50,13 @@ export async function POST(request: Request) {
 
     const { files, html, prompt, activeFile, polishDescription } = parsed.data;
 
+    // Detect if there's a target element instruction to adjust focus
+    let targetFile = activeFile;
+    if (prompt && prompt.includes('Target element in ')) {
+      const match = prompt.match(/Target element in ([a-zA-Z0-9._-]+):/);
+      if (match) targetFile = match[1];
+    }
+
     let projectContext = '';
     if (files && files.length > 0) {
       projectContext = files.map(f => `File: ${f.path}\n\`\`\`${f.language}\n${f.content}\n\`\`\``).join('\n\n');
@@ -63,6 +70,11 @@ You will be given the complete project context comprising all files.
 
 Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
 
+**Target Element Context**:
+- If the user prompt mentions a "Target element", prioritize modifications to that specific piece of code.
+- Ensure any changes to the target element are reflected correctly using the tools provided.
+- If you use a selector, make it as specific as possible (e.g. use classes, IDs, or :contains() logic) to ensure only the intended element is changed.
+
 **Shared Partials (CRITICAL)**:
 - If a project has multiple pages, you MUST ensure there is a \`header.html\` (and \`footer.html\` if applicable).
 - DO NOT allow duplicate header/footer code in individual pages. 
@@ -71,12 +83,13 @@ Your modifications MUST maintain consistency across the entire project. For exam
 
 You MUST use structured tool calls to modify files. 
 Available tools:
-1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes.
-2. insertContent(file, position, selector, content) - position: before, after, prepend, append.
-3. deleteContent(file, selector) - Remove an element.
-4. createFile(path, content, fileType) - Create a new page, style, script or partial.
-5. deleteFile(path) - Remove a file.
-6. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
+1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes. newContent is the INNER html.
+2. replaceElement(file, selector, newContent) - Replace the matching element ENTIRELY with newContent.
+3. insertContent(file, position, selector, content) - position: before, after, prepend, append.
+4. deleteContent(file, selector) - Remove an element.
+5. createFile(path, content, fileType) - Create a new page, style, script or partial.
+6. deleteFile(path) - Remove a file.
+7. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
 
 FORMAT: Return your changes ONLY as a JSON array of tool calls:
 [
@@ -90,7 +103,7 @@ If a change is too complex for tools, or you need to rewrite a file completely, 
 Note:
 - You have access to ALL project files. 
 - Ensure links (<a> tags) and asset references remain valid.
-- Active file focus is: ${activeFile || 'index.html'}.
+- Active file focus is: ${targetFile || 'index.html'}.
 
 Only return changes. No explanations.`;
 
@@ -117,8 +130,17 @@ Only return changes. No explanations.`;
     let finalFiles = files ? [...files] : (html ? [{ path: 'index.html', content: html, language: 'html', fileType: 'page' } as ProjectFile] : []);
 
     try {
-      // Try to parse as JSON tool calls
-      const toolCalls = JSON.parse(stripCodeFence(content));
+      // Try to parse as JSON tool calls. 
+      // Be robust: extracted content might have leading/trailing text or be inside a code block
+      let jsonContent = content;
+      const jsonMatch = content.match(/\[\s*\{\s*"tool":[\s\S]*\}\s*\]/);
+      if (jsonMatch) {
+        jsonContent = jsonMatch[0];
+      } else {
+        jsonContent = stripCodeFence(content);
+      }
+
+      const toolCalls = JSON.parse(jsonContent);
       if (Array.isArray(toolCalls)) {
         for (const call of toolCalls) {
           if (call.tool === 'updateFile') {
@@ -153,7 +175,7 @@ Only return changes. No explanations.`;
       } else {
         throw new Error('Not an array of tool calls');
       }
-    } catch {
+    } catch (err) {
       // Fallback to block parsing
       const updatedFiles = parseMultiFileOutput(content);
       if (updatedFiles.length > 0) {
@@ -165,7 +187,8 @@ Only return changes. No explanations.`;
             finalFiles.push(uf);
           }
         });
-      } else if (content && !content.includes('```')) {
+      } else if (content && content.length > 50 && (content.includes('<html>') || content.includes('<div') || content.includes('function') || content.includes('const '))) {
+        // Only overwrite if it really looks like code content
         const activePath = activeFile || 'index.html';
         const idx = finalFiles.findIndex(f => f.path === activePath);
         if (idx >= 0) {
