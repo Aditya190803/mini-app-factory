@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
+import { Id } from '@/convex/_generated/dataModel';
 import { ProjectFile } from '@/lib/page-builder';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -12,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface MetadataDashboardProps {
-  projectId: any;
+  projectId?: Id<"projects">;
   projectName: string;
   files?: ProjectFile[];
   onClose?: () => void;
@@ -71,9 +72,10 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
   };
 
   const save = async () => {
+    if (!projectId) return;
     try {
       await updateMetadata({
-        projectId,
+        projectId: projectId,
         favicon,
         globalSeo,
         seoData

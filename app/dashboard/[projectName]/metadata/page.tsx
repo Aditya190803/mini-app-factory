@@ -28,11 +28,16 @@ export default function ProjectMetadataPage() {
   }
 
   // Type cast Convex files to ProjectFile
-  const formattedFiles: ProjectFile[] = (files as any[]).map(f => ({
+  const formattedFiles: ProjectFile[] = (files as Array<{
+    path: string;
+    content: string;
+    language: string;
+    fileType: string;
+  }>).map(f => ({
     path: f.path,
     content: f.content,
-    language: f.language as any,
-    fileType: f.fileType as any
+    language: f.language as ProjectFile['language'],
+    fileType: f.fileType as ProjectFile['fileType']
   }));
 
   return (

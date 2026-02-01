@@ -7,9 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { 
   Trash2, 
-  ExternalLink, 
   Settings2, 
-  Code2, 
   Calendar, 
   Layers, 
   Layout,
