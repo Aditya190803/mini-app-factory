@@ -4,7 +4,7 @@
 
 ### 1. 🤖 AI Capabilities
 
-- **Design-to-Code & Visual References**: Allow users to upload screenshots or Figma links. Use Vision models (GPT-4o or Gemini Flash) to analyze designs and fabricate matching HTML/Tailwind code.
+- **Design-to-Code & Visual References**: Allow users to upload screenshots or Figma links. Use Vision models to analyze designs and fabricate matching HTML/Tailwind code.
 
 ### 2. ⚡ Developer Experience
 - **Hot Module Reloading (HMR)**: Instant preview updates using a virtual file system in the browser iframe.
@@ -20,7 +20,3 @@
 ### 5. 👥 Team Collaboration
 - Enable shared projects where multiple users can work on the same site fabrication.
 - Real-time cursor presence and collaborative AI prompting.
-
-### 6. 🧩 Advanced Component Library
-- Create a library of pre-built, AI-optimized interactive components (e.g., carousels, modals, tabbed interfaces, contact forms).
-- Allow users to "drag and drop" these or specifically ask the AI to include them.
