@@ -24,6 +24,18 @@ export default defineSchema({
     globalHeader: v.optional(v.string()),
     globalFooter: v.optional(v.string()),
     pages: v.optional(v.any()),
+    favicon: v.optional(v.string()), // URL or Emoji
+    globalSeo: v.optional(v.object({
+      siteName: v.optional(v.string()),
+      description: v.optional(v.string()),
+      ogImage: v.optional(v.string()),
+    })),
+    seoData: v.optional(v.array(v.object({
+      path: v.string(), // file path e.g. "index.html"
+      title: v.optional(v.string()),
+      description: v.optional(v.string()),
+      ogImage: v.optional(v.string()),
+    }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

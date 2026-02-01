@@ -92,6 +92,35 @@ export const publishProject = mutation({
   },
 });
 
+export const updateMetadata = mutation({
+  args: {
+    projectId: v.id("projects"),
+    favicon: v.optional(v.string()),
+    globalSeo: v.optional(v.object({
+      siteName: v.optional(v.string()),
+      description: v.optional(v.string()),
+      ogImage: v.optional(v.string()),
+    })),
+    seoData: v.optional(v.array(v.object({
+      path: v.string(),
+      title: v.optional(v.string()),
+      description: v.optional(v.string()),
+      ogImage: v.optional(v.string()),
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project not found");
+    
+    await ctx.db.patch(args.projectId, {
+      favicon: args.favicon !== undefined ? args.favicon : project.favicon,
+      globalSeo: args.globalSeo !== undefined ? args.globalSeo : project.globalSeo,
+      seoData: args.seoData !== undefined ? args.seoData : project.seoData,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const getUserProjects = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
