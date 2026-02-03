@@ -97,7 +97,8 @@ export async function runGeneration(
 
     // Design phase
     const designSession = await client.createSession({
-      model: MODEL,
+      model: project.selectedModel || MODEL,
+      providerId: project.providerId,
       systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
     });
 
@@ -129,7 +130,8 @@ export async function runGeneration(
 
     // HTML generation phase
     const htmlSession = await client.createSession({
-      model: MODEL,
+      model: project.selectedModel || MODEL,
+      providerId: project.providerId,
       systemMessage: { content: `You are an expert developer. Generate a complete multi-file website project. 
 Return files using code blocks with the format:
 \`\`\`html:filename.html

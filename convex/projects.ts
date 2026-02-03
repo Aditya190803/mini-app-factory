@@ -27,6 +27,8 @@ export const saveProject = mutation({
     isMultiPage: v.optional(v.boolean()),
     pageCount: v.optional(v.number()),
     description: v.optional(v.string()),
+    selectedModel: v.optional(v.string()),
+    providerId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -48,6 +50,8 @@ export const saveProject = mutation({
         isMultiPage: args.isMultiPage ?? existing.isMultiPage ?? false,
         pageCount: args.pageCount ?? existing.pageCount ?? 0,
         description: args.description ?? existing.description,
+        selectedModel: args.selectedModel ?? existing.selectedModel,
+        providerId: args.providerId ?? existing.providerId,
         updatedAt: now,
       });
       return existing._id;
@@ -62,6 +66,8 @@ export const saveProject = mutation({
         isMultiPage: args.isMultiPage ?? false,
         pageCount: args.pageCount ?? 0,
         description: args.description,
+        selectedModel: args.selectedModel,
+        providerId: args.providerId,
         createdAt: now,
         updatedAt: now,
       });

@@ -16,7 +16,11 @@ export type SessionEvent = {
 };
 
 export interface AIClient {
-  createSession: (opts?: { model?: string; systemMessage?: { content: string } }) => Promise<AIClientSession>;
+  createSession: (opts?: { 
+    model?: string; 
+    providerId?: string; 
+    systemMessage?: { content: string } 
+  }) => Promise<AIClientSession>;
   stop?: () => Promise<void>;
 }
 
@@ -270,7 +274,22 @@ export async function getAIClient(): Promise<AIClient> {
 
   const client: AIClient = {
     createSession: async (opts) => {
-      let primarySession = (cerebrasClient && cerebrasClient.createSession) ? await cerebrasClient.createSession(opts) : null;
+      const { providerId } = opts || {};
+      let primarySession: AIClientSession | null = null;
+      let fallbackClient: AIClient | null = null;
+
+      if (providerId === 'groq' && groqClient) {
+        primarySession = await groqClient.createSession(opts);
+        fallbackClient = cerebrasClient; // Fallback to Cerebras if Groq was explicitly chosen and fails
+      } else if (providerId === 'cerebras' && cerebrasClient) {
+        primarySession = await cerebrasClient.createSession(opts);
+        fallbackClient = groqClient;
+      } else {
+        // Default behavior
+        primarySession = (cerebrasClient && cerebrasClient.createSession) ? await cerebrasClient.createSession(opts) : null;
+        fallbackClient = groqClient;
+      }
+
       let fallbackSession: AIClientSession | null = null;
       const listeners: Array<(e: SessionEvent) => void> = [];
 
@@ -303,21 +322,24 @@ export async function getAIClient(): Promise<AIClient> {
               return await primarySession.sendAndWait(sendOpts, timeout);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback:', message);
+              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
+              const source = providerId || 'Primary';
+
+              console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}):`, message);
 
               listeners.forEach(l => l({
                 type: 'provider.fallback',
-                data: { message: 'Main model failed, switching to fallback...', error: message }
+                data: { message: `Model failed, switching to ${target} fallback...`, error: message }
               }));
 
-              if (!groqClient) throw err;
+              if (!fallbackClient) throw err;
 
-              fallbackSession = await groqClient.createSession(opts);
+              fallbackSession = await fallbackClient.createSession(opts);
               attachSession(fallbackSession);
               return await fallbackSession.sendAndWait(sendOpts, timeout);
             }
-          } else if (groqClient) {
-            fallbackSession = await groqClient.createSession(opts);
+          } else if (fallbackClient) {
+            fallbackSession = await fallbackClient.createSession(opts);
             attachSession(fallbackSession);
             return await fallbackSession.sendAndWait(sendOpts, timeout);
           } else {
@@ -335,21 +357,24 @@ export async function getAIClient(): Promise<AIClient> {
               return await primarySession.stream(sendOpts);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              console.warn('[AI Client] Primary provider (Cerebras) failed, trying fallback for stream:', message);
+              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
+              const source = providerId || 'Primary';
+
+              console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}) for stream:`, message);
 
               listeners.forEach(l => l({
                 type: 'provider.fallback',
-                data: { message: 'Main model failed, switching to fallback for stream...', error: message }
+                data: { message: `Model failed, switching to ${target} fallback for stream...`, error: message }
               }));
 
-              if (!groqClient) throw err;
+              if (!fallbackClient) throw err;
 
-              fallbackSession = await groqClient.createSession(opts);
+              fallbackSession = await fallbackClient.createSession(opts);
               attachSession(fallbackSession);
               return await fallbackSession.stream(sendOpts);
             }
-          } else if (groqClient) {
-            fallbackSession = await groqClient.createSession(opts);
+          } else if (fallbackClient) {
+            fallbackSession = await fallbackClient.createSession(opts);
             attachSession(fallbackSession);
             return await fallbackSession.stream(sendOpts);
           } else {

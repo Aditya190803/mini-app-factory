@@ -17,7 +17,14 @@ export interface ProjectMetadata {
   isMultiPage?: boolean;
   pageCount?: number;
   description?: string;
+  selectedModel?: string;
+  providerId?: string;
   favicon?: string;
+  globalSeo?: {
+    siteName?: string;
+    description?: string;
+    ogImage?: string;
+  };
   seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>;
   files?: ProjectFile[];
 }
@@ -38,6 +45,8 @@ export async function saveProject(metadata: ProjectMetadata) {
     isMultiPage: metadata.isMultiPage,
     pageCount: metadata.pageCount,
     description: metadata.description,
+    selectedModel: metadata.selectedModel,
+    providerId: metadata.providerId,
   });
 }
 
@@ -56,6 +65,8 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
     isMultiPage: project.isMultiPage,
     pageCount: project.pageCount,
     description: project.description,
+    selectedModel: project.selectedModel,
+    providerId: project.providerId,
     favicon: project.favicon,
     seoData: project.seoData,
   };

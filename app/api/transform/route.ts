@@ -38,6 +38,8 @@ const transformSchema = z.object({
   prompt: z.string().optional(),
   activeFile: z.string().optional(),
   polishDescription: z.string().optional(),
+  modelId: z.string().optional(),
+  providerId: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { files, html, prompt, activeFile, polishDescription } = parsed.data;
+    const { files, html, prompt, activeFile, polishDescription, modelId, providerId } = parsed.data;
 
     // Detect if there's a target element instruction to adjust focus
     let targetFile = activeFile;
@@ -116,7 +118,8 @@ Only return changes. No explanations.`;
     }
 
     const session = await client.createSession({
-      model: process.env.CEREBRAS_MODEL || 'zai-glm-4.7',
+      model: modelId || process.env.CEREBRAS_MODEL || 'zai-glm-4.7',
+      providerId: providerId,
       systemMessage: { content: systemMessage },
     });
 
@@ -175,7 +178,7 @@ Only return changes. No explanations.`;
       } else {
         throw new Error('Not an array of tool calls');
       }
-    } catch (err) {
+    } catch {
       // Fallback to block parsing
       const updatedFiles = parseMultiFileOutput(content);
       if (updatedFiles.length > 0) {

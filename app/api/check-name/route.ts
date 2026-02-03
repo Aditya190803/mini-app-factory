@@ -3,7 +3,7 @@ import { projectExists, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 
 export async function POST(req: NextRequest) {
-  const { name, prompt } = await req.json();
+  const { name, prompt, selectedModel, providerId } = await req.json();
 
   if (!name || name.trim().length === 0) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
       status: 'pending',
       userId: user.id,
+      selectedModel,
+      providerId,
     });
   }
 
