@@ -186,7 +186,7 @@ The README should include:
 
 Final line requirement:
 The very last line of the README must be exactly:
-"Made by Mini App Factory and the github repo link https://github.com/Aditya190803/mini-app-factory"
+"\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)"
 
 Output only the Markdown content for the README.md file. No preamble or conversational filler.`;
 }
