@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
+import type { editor as MonacoEditor } from 'monaco-editor';
 
 interface CodePanelProps {
     html: string;
@@ -12,10 +13,10 @@ interface CodePanelProps {
 }
 
 export default function CodePanel({ html, language = 'html', onChange, onReset, searchText }: CodePanelProps) {
-    const editorRef = useRef<any>(null);
+    const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
     const decorationRef = useRef<string[]>([]);
 
-    const handleEditorDidMount = (editor: any) => {
+    const handleEditorDidMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
         editorRef.current = editor;
     };
 

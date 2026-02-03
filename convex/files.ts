@@ -35,12 +35,14 @@ export const saveFile = mutation({
     ),
     fileType: v.union(
       v.literal("page"),
+      v.literal("html"),
       v.literal("partial"),
       v.literal("style"),
       v.literal("script")
     ),
   },
   handler: async (ctx, args) => {
+    const normalizedFileType = args.fileType === "html" ? "page" : args.fileType;
     const existing = await ctx.db
       .query("projectFiles")
       .withIndex("by_project_path", (q) =>
@@ -53,7 +55,7 @@ export const saveFile = mutation({
       await ctx.db.patch(existing._id, {
         content: args.content,
         language: args.language,
-        fileType: args.fileType,
+        fileType: normalizedFileType,
         updatedAt: now,
       });
       return existing._id;
@@ -63,7 +65,7 @@ export const saveFile = mutation({
         path: args.path,
         content: args.content,
         language: args.language,
-        fileType: args.fileType,
+        fileType: normalizedFileType,
         createdAt: now,
         updatedAt: now,
       });
@@ -72,7 +74,7 @@ export const saveFile = mutation({
       const project = await ctx.db.get(args.projectId);
       if (project) {
         const patch: { updatedAt: number; pageCount?: number } = { updatedAt: now };
-        if (args.fileType === "page") {
+        if (normalizedFileType === "page") {
           patch.pageCount = (project.pageCount || 0) + 1;
         }
         await ctx.db.patch(args.projectId, patch);
@@ -97,6 +99,7 @@ export const saveFiles = mutation({
         ),
         fileType: v.union(
           v.literal("page"),
+          v.literal("html"),
           v.literal("partial"),
           v.literal("style"),
           v.literal("script")
@@ -125,13 +128,15 @@ export const saveFiles = mutation({
 
     // Update or insert provided files
     for (const file of args.files) {
+      const normalizedFileType =
+        file.fileType === "html" ? "page" : file.fileType;
       const existing = existingFiles.find(f => f.path === file.path);
 
       if (existing) {
         await ctx.db.patch(existing._id, {
           content: file.content,
           language: file.language,
-          fileType: file.fileType,
+          fileType: normalizedFileType,
           updatedAt: now,
         });
       } else {
@@ -140,12 +145,12 @@ export const saveFiles = mutation({
           path: file.path,
           content: file.content,
           language: file.language,
-          fileType: file.fileType,
+          fileType: normalizedFileType,
           createdAt: now,
           updatedAt: now,
         });
       }
-      if (file.fileType === "page") pageCount++;
+      if (normalizedFileType === "page") pageCount++;
     }
 
     await ctx.db.patch(args.projectId, {
