@@ -176,6 +176,23 @@
   }
 }
 
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-text);
+}
+
 .monaco-highlight-glow {
   background: rgba(59, 130, 246, 0.2) !important;
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.3) !important;

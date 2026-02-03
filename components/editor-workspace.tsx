@@ -43,6 +43,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [selectedElement, setSelectedElement] = useState<{ path: string, html: string } | null>(null);
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isTransforming, setIsTransforming] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -266,7 +267,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         body: JSON.stringify({ 
           files, 
           activeFile: activeFilePath,
-          prompt: finalPrompt 
+          prompt: finalPrompt,
+          modelId: selectedModel.id || undefined,
+          providerId: selectedModel.providerId || undefined
         }),
       });
 
@@ -860,6 +863,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               <EditorSidebar
                 transformPrompt={transformPrompt}
                 setTransformPrompt={setTransformPrompt}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
                 selectedElement={selectedElement}
                 setSelectedElement={setSelectedElement}
                 runTransform={runTransform}

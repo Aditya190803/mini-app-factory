@@ -1,10 +1,13 @@
 'use client';
 
 import React from 'react';
+import { ModelSelector } from '../ui/model-selector';
 
 interface EditorSidebarProps {
     transformPrompt: string;
     setTransformPrompt: (val: string) => void;
+    selectedModel: { id: string, providerId: string };
+    setSelectedModel: (val: { id: string, providerId: string }) => void;
     selectedElement: { path: string, html: string } | null;
     setSelectedElement: (val: { path: string, html: string } | null) => void;
     runTransform: () => void;
@@ -15,6 +18,8 @@ interface EditorSidebarProps {
 export default function EditorSidebar({
     transformPrompt,
     setTransformPrompt,
+    selectedModel,
+    setSelectedModel,
     selectedElement,
     setSelectedElement,
     runTransform,
@@ -43,7 +48,7 @@ export default function EditorSidebar({
             const classes = Array.from(el.classList).join('.');
             const className = classes ? `.${classes.split(' ').slice(0, 2).join('.')}` : '';
             return `<${tag}${className}> in ${selectedElement.path}`;
-        } catch (e) {
+        } catch {
             return selectedElement.path;
         }
     };
@@ -82,6 +87,15 @@ export default function EditorSidebar({
                         </button>
                     </div>
                 )}
+
+                <div className="mb-4">
+                    <ModelSelector 
+                        selectedModelId={selectedModel.id}
+                        providerId={selectedModel.providerId}
+                        onModelChange={(id, providerId) => setSelectedModel({ id, providerId })}
+                        className="w-full"
+                    />
+                </div>
 
                 <textarea
                     value={transformPrompt}

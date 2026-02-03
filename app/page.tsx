@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation';
 import { useUser } from "@stackframe/stack";
 import AIStatusBadge from '@/components/ai-status-badge';
 import { FactoryIcon } from "@/components/ui/factory-icon";
+import { ModelSelector } from "@/components/ui/model-selector";
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [projectName, setProjectName] = useState('');
+  const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,7 +61,12 @@ export default function Home() {
       const response = await fetch('/api/check-name', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName.trim(), prompt: prompt.trim() }),
+        body: JSON.stringify({ 
+          name: projectName.trim(), 
+          prompt: prompt.trim(),
+          selectedModel: selectedModel.id || undefined,
+          providerId: selectedModel.providerId || undefined
+        }),
       });
 
       if (!response.ok) {
@@ -268,23 +275,21 @@ export default function Home() {
               className="flex items-center justify-between px-8 py-6 border-t"
               style={{ borderColor: 'var(--border)' }}
             >
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full bg-[var(--primary)] animate-pulse" />
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-6">
+                  <ModelSelector 
+                    selectedModelId={selectedModel.id}
+                    providerId={selectedModel.providerId}
+                    onModelChange={(id, providerId) => setSelectedModel({ id, providerId })}
+                  />
+
                   <span
-                    className="text-[10px] font-mono uppercase tracking-widest"
-                    style={{ color: 'var(--muted-text)' }}
+                    className="text-[10px] font-mono uppercase hidden md:inline opacity-60"
+                    style={{ color: 'var(--secondary-text)' }}
                   >
-                    Engine: <span className="text-[var(--primary)] font-bold">Cerebras + Groq</span>
+                    [Ctrl + Enter] to start fabrication
                   </span>
                 </div>
-
-                <span
-                  className="text-[10px] font-mono uppercase hidden md:inline opacity-60"
-                  style={{ color: 'var(--secondary-text)' }}
-                >
-                  [Ctrl + Enter] to start fabrication
-                </span>
               </div>
 
               <button
