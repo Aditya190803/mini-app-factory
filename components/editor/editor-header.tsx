@@ -9,14 +9,14 @@ interface EditorHeaderProps {
     onBack: () => void;
     saveStatus: 'idle' | 'saving' | 'saved';
     onExport: () => void;
-    onPublish: () => void;
-    isPublishing: boolean;
+    onDeploy: () => void;
+    isDeploying: boolean;
     canUndo: boolean;
     canRedo: boolean;
     onUndo: () => void;
     onRedo: () => void;
     onHelp: () => void;
-    onMetadata: () => void;
+    onSettings: () => void;
 }
 
 export default function EditorHeader({
@@ -26,14 +26,14 @@ export default function EditorHeader({
     onBack,
     saveStatus,
     onExport,
-    onPublish,
-    isPublishing,
+    onDeploy,
+    isDeploying,
     canUndo,
     canRedo,
     onUndo,
     onRedo,
     onHelp,
-    onMetadata
+    onSettings
 }: EditorHeaderProps) {
     return (
         <header
@@ -108,11 +108,11 @@ export default function EditorHeader({
 
                     <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
                         <button
-                            onClick={onMetadata}
+                            onClick={onSettings}
                             className="text-[10px] font-mono uppercase font-bold text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors flex items-center gap-1.5"
                         >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                            SEO/Metadata
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1l2.5 4.5L19 7l-4.5 2.5L12 14l-2.5-4.5L5 7l4.5-1.5L12 1z"/><path d="M4 14l2 3.5L9.5 19l-3.5 2L4 24"/><path d="M20 14l-2 3.5L14.5 19l3.5 2L20 24"/></svg>
+                            Settings
                         </button>
                     </div>
                 </div>
@@ -146,12 +146,12 @@ export default function EditorHeader({
                         Export ZIP
                     </button>
                     <button
-                        onClick={onPublish}
-                        disabled={isPublishing}
-                        className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono uppercase font-black bg-[var(--primary)] text-black hover:bg-white transition-all disabled:opacity-50"
+                        onClick={onDeploy}
+                        disabled={isDeploying}
+                        className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono uppercase font-bold border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition-all disabled:opacity-50"
                     >
-                        {isPublishing && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
-                        {isPublishing ? 'Publishing' : 'Publish'}
+                        {isDeploying && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
+                        {isDeploying ? 'Deploying' : 'Deploy'}
                     </button>
                 </div>
             </div>

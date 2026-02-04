@@ -21,13 +21,15 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { extractNetlifySiteNameFromUrl, extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from '@/lib/deploy-shared';
+import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
 import FileTree from './editor/file-tree';
-import MetadataDashboard from './metadata-dashboard';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -45,8 +47,23 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [transformPrompt, setTransformPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isTransforming, setIsTransforming] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
+    githubConnected: false,
+    netlifyConnected: false,
+  });
+  const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
+  const [githubOrg, setGithubOrg] = useState<string>('personal');
+  const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
+  const [deployOption, setDeployOption] = useState<'github-netlify' | 'github-only' | 'maf-hosted'>('github-netlify');
+  const [repoName, setRepoName] = useState<string>(projectName);
+  const [netlifySiteName, setNetlifySiteName] = useState<string>('');
+  const [repoCheck, setRepoCheck] = useState<{ status: 'idle' | 'checking' | 'available' | 'taken' | 'error'; owner?: string; message?: string }>({ status: 'idle' });
+  const [deployResult, setDeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deployNotice, setDeployNotice] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
@@ -54,7 +71,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
-  const [isMetadataDialogOpen, setIsMetadataDialogOpen] = useState(false);
   const [itemToRename, setItemToRename] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newFileType, setNewFileType] = useState<ProjectFile['fileType']>('page');
@@ -69,6 +85,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [quickOpenSearch, setQuickOpenSearch] = useState('');
+  const lastProjectNameRef = useRef(projectName);
 
   // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
@@ -78,10 +95,170 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const saveProject = useMutation(api.projects.saveProject);
   const saveFilesAction = useMutation(api.files.saveFiles);
   const publishProject = useMutation(api.projects.publishProject);
+  const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const projectData = useQuery(api.projects.getProject, { projectName });
   const projectFiles = useQuery(api.files.getFilesByProject, 
     projectData?._id ? { projectId: projectData._id } : "skip"
   );
+
+  const repoValidation = useMemo(() => validateRepoName(repoName), [repoName]);
+  const normalizedRepoName = repoValidation.normalized || normalizeRepoName(projectName);
+  const normalizedNetlifySiteName = useMemo(
+    () => normalizeNetlifySiteName(netlifySiteName || normalizedRepoName),
+    [netlifySiteName, normalizedRepoName]
+  );
+  const linkedRepoFullName = useMemo(
+    () => extractRepoFullNameFromUrl(projectData?.repoUrl),
+    [projectData?.repoUrl]
+  );
+  const linkedRepoName = useMemo(
+    () => extractRepoNameFromFullName(linkedRepoFullName),
+    [linkedRepoFullName]
+  );
+  const repoMismatch = useMemo(
+    () => !!(linkedRepoName && normalizedRepoName && linkedRepoName !== normalizedRepoName),
+    [linkedRepoName, normalizedRepoName]
+  );
+
+  const fetchIntegrationStatus = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/integrations/status');
+      if (resp.status === 401) {
+        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+        return;
+      }
+      if (!resp.ok) {
+        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+        return;
+      }
+      const data = await resp.json();
+      setIntegrationStatus({
+        githubConnected: !!data.githubConnected,
+        netlifyConnected: !!data.netlifyConnected,
+      });
+    } catch (err) {
+      console.error(err);
+      setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+    }
+  }, []);
+
+  const fetchGithubOrgs = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/integrations/github/orgs');
+      if (!resp.ok) {
+        setGithubOrgs([]);
+        return;
+      }
+      const data = await resp.json();
+      setGithubOrgs(Array.isArray(data.orgs) ? data.orgs : []);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDeployDialogOpen) return;
+    fetchIntegrationStatus();
+  }, [isDeployDialogOpen, fetchIntegrationStatus]);
+
+  useEffect(() => {
+    if (!isDeployDialogOpen) return;
+    if (integrationStatus.githubConnected) {
+      fetchGithubOrgs();
+    }
+  }, [isDeployDialogOpen, integrationStatus.githubConnected, fetchGithubOrgs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    if (connected) {
+      setIsDeployDialogOpen(true);
+      params.delete('connected');
+      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+      window.history.replaceState(null, '', next);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (linkedRepoName) {
+      setRepoName(linkedRepoName);
+      return;
+    }
+    if (repoName === '' || repoName === lastProjectNameRef.current) {
+      setRepoName(projectName);
+    }
+    lastProjectNameRef.current = projectName;
+  }, [projectName, repoName, linkedRepoName]);
+
+  useEffect(() => {
+    if (projectData?.netlifySiteName) {
+      setNetlifySiteName(projectData.netlifySiteName);
+    }
+  }, [projectData?.netlifySiteName]);
+
+  useEffect(() => {
+    if (!deployNotice) return;
+    const timer = window.setTimeout(() => setDeployNotice(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [deployNotice]);
+
+  useEffect(() => {
+    setDeployResult((prev) => (prev?.repoUrl || prev?.deploymentUrl || prev?.netlifySiteName ? prev : null));
+    setDeployError(null);
+  }, [deployOption]);
+
+  useEffect(() => {
+    if (!isDeployDialogOpen) return;
+    if (!projectData) return;
+    if (projectData.repoUrl || projectData.deploymentUrl || projectData.netlifySiteName) {
+      setDeployResult({
+        repoUrl: projectData.repoUrl ?? undefined,
+        deploymentUrl: projectData.deploymentUrl ?? undefined,
+        netlifySiteName: projectData.netlifySiteName ?? undefined,
+      });
+    }
+  }, [isDeployDialogOpen, projectData?.repoUrl, projectData?.deploymentUrl, projectData?.netlifySiteName, projectData]);
+
+  useEffect(() => {
+    if (!repoValidation.valid) {
+      setRepoCheck({ status: 'error', message: repoValidation.message });
+      return;
+    }
+    if (!normalizedRepoName) {
+      setRepoCheck({ status: 'idle' });
+      return;
+    }
+    if (deployOption === 'maf-hosted') return;
+    if (!integrationStatus.githubConnected) return;
+    if (projectData?.repoUrl) {
+      setRepoCheck({ status: 'available', message: 'Linked repo will be reused.' });
+      return;
+    }
+
+    const handle = window.setTimeout(async () => {
+      setRepoCheck({ status: 'checking' });
+      try {
+        const ownerParam = githubOrg === 'personal' ? '' : `&owner=${encodeURIComponent(githubOrg)}`;
+        const resp = await fetch(`/api/integrations/github/check-repo?name=${encodeURIComponent(normalizedRepoName)}${ownerParam}`);
+        if (!resp.ok) {
+          setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
+          return;
+        }
+        const data = await resp.json();
+        if (data.available) {
+          setRepoCheck({ status: 'available', owner: data.owner });
+        } else {
+          setRepoCheck({ status: 'taken', owner: data.owner, message: 'Name already exists.' });
+        }
+      } catch (err) {
+        console.error(err);
+        setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
+      }
+    }, 500);
+
+    return () => window.clearTimeout(handle);
+  }, [normalizedRepoName, repoValidation.valid, repoValidation.message, githubOrg, deployOption, integrationStatus.githubConnected, projectData?.repoUrl]);
 
   const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
@@ -648,37 +825,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  const handlePublish = async () => {
-    if (!user) {
-      window.location.href = '/handler/sign-in';
-      return;
-    }
-
-    setIsPublishing(true);
-    try {
-      await saveProject({
-        projectName,
-        prompt: initialPrompt,
-        html: previewHtml, // Keep for legacy / thumbnails
-        status: 'completed',
-        userId: user.id,
-        isPublished: true,
-        isMultiPage: files.length > 1,
-        pageCount: files.filter(f => f.fileType === 'page').length
-      });
-      await publishProject({
-        projectName,
-        userId: user.id,
-      });
-      window.open(`/results/${projectName}`, '_blank');
-    } catch (err) {
-      console.error('Publish failed', err);
-      alert('Failed to publish project');
-    } finally {
-      setIsPublishing(false);
-    }
-  };
-
   const downloadZip = async () => {
     setIsExporting(true);
     try {
@@ -730,6 +876,143 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  const startGithubConnect = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.href = `/api/integrations/github/start?returnTo=${encodeURIComponent(returnTo)}`;
+  };
+
+  const startNetlifyConnect = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.href = `/api/integrations/netlify/start?returnTo=${encodeURIComponent(returnTo)}`;
+  };
+
+  const handleHostedDeploy = async () => {
+    if (!user) {
+      window.location.href = '/handler/sign-in';
+      return;
+    }
+
+    setIsDeploying(true);
+    setDeployError(null);
+    setDeployResult(null);
+    setDeployNotice(null);
+    try {
+      const resultsPath = `/results/${projectName}`;
+      const resultsUrl = `${window.location.origin}${resultsPath}`;
+
+      await saveProject({
+        projectName,
+        prompt: initialPrompt,
+        html: previewHtml, // Keep for legacy / thumbnails
+        status: 'completed',
+        userId: user.id,
+        isPublished: true,
+        isMultiPage: files.length > 1,
+        pageCount: files.filter(f => f.fileType === 'page').length,
+        deploymentUrl: resultsUrl,
+        repoUrl: undefined,
+        deployProvider: 'maf-hosted',
+        deployedAt: Date.now(),
+        netlifySiteName: undefined,
+      });
+      await publishProject({
+        projectName,
+        userId: user.id,
+      });
+
+      setDeployResult({ deploymentUrl: resultsUrl });
+      if (projectData?._id) {
+        await addDeploymentHistory({
+          projectId: projectData._id,
+          provider: 'maf-hosted',
+          deploymentUrl: resultsUrl,
+        });
+      }
+      window.open(resultsPath, '_blank');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Publish failed';
+      const normalized = normalizeDeployError(message);
+      setDeployError(normalized);
+      toast.error('Deploy failed', { description: normalized });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleDeploy = async () => {
+    if (!user) {
+      window.location.href = '/handler/sign-in';
+      return;
+    }
+
+    if (deployOption === 'maf-hosted') {
+      await handleHostedDeploy();
+      return;
+    }
+
+    setIsDeploying(true);
+    setDeployError(null);
+    setDeployResult(null);
+    setDeployNotice(null);
+    try {
+      const data = await performDeploy({
+        projectName,
+        prompt: initialPrompt,
+        files: files.map(f => ({ path: f.path, content: f.content })),
+        repoVisibility,
+        githubOrg: githubOrg === 'personal' ? null : githubOrg,
+        deployMode: deployOption,
+        repoName: normalizedRepoName || projectName,
+        repoFullName: linkedRepoFullName,
+        netlifySiteName: deployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+      });
+      setDeployResult({ repoUrl: data.repoUrl, deploymentUrl: data.deploymentUrl, netlifySiteName: data.netlifySiteName });
+      await saveProject({
+        projectName,
+        prompt: initialPrompt,
+        html: previewHtml,
+        status: 'completed',
+        userId: user.id,
+        isPublished: projectData?.isPublished ?? false,
+        isMultiPage: files.length > 1,
+        pageCount: files.filter(f => f.fileType === 'page').length,
+        deploymentUrl: data.deploymentUrl ?? undefined,
+        repoUrl: data.repoUrl ?? undefined,
+        deployProvider: deployOption === 'github-only' ? 'github' : 'netlify',
+        deployedAt: Date.now(),
+        netlifySiteName: data.netlifySiteName ?? extractNetlifySiteNameFromUrl(data.deploymentUrl) ?? undefined,
+      });
+      if (projectData?._id) {
+        await addDeploymentHistory({
+          projectId: projectData._id,
+          provider: deployOption === 'github-only' ? 'github' : 'netlify',
+          deploymentUrl: data.deploymentUrl ?? undefined,
+          repoUrl: data.repoUrl ?? undefined,
+          netlifySiteName: data.netlifySiteName ?? undefined,
+        });
+      }
+      fetchIntegrationStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Deploy failed';
+      const normalized = normalizeDeployError(message);
+      setDeployError(normalized);
+      toast.error('Deploy failed', { description: normalized });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+
+  const copyToClipboard = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setDeployNotice(`${label} copied to clipboard.`);
+    } catch (err) {
+      console.error(err);
+      setDeployNotice(`Unable to copy ${label}.`);
+    }
+  };
+
   return (
     <motion.div
       className="flex flex-col h-screen"
@@ -745,14 +1028,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onBack={onBack}
         saveStatus={saveStatus}
         onExport={downloadZip}
-        onPublish={handlePublish}
-        isPublishing={isPublishing}
+        onDeploy={() => setIsDeployDialogOpen(true)}
+        isDeploying={isDeploying}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={undo}
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
-        onMetadata={() => setIsMetadataDialogOpen(true)}
+        onSettings={() => window.location.href = `/edit/${projectName}/settings`}
       />
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -984,6 +1267,276 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isDeployDialogOpen} onOpenChange={setIsDeployDialogOpen}>
+        <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">Deploy to Netlify</DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Connect GitHub and Netlify, then deploy your project with one click.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
+              <button
+                type="button"
+                onClick={() => setDeployOption('github-netlify')}
+                className={cn(
+                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
+                  deployOption === 'github-netlify'
+                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
+                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
+                )}
+              >
+                GitHub + Netlify (Recommended)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeployOption('github-only')}
+                className={cn(
+                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
+                  deployOption === 'github-only'
+                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
+                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
+                )}
+              >
+                GitHub Repo Only
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeployOption('maf-hosted')}
+                className={cn(
+                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
+                  deployOption === 'maf-hosted'
+                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
+                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
+                )}
+              >
+                Deploy with us (Easiest and fastest)
+              </button>
+            </div>
+
+            {deployOption !== 'maf-hosted' && (
+              <div className="grid gap-2">
+                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
+                <Input
+                  value={repoName}
+                  onChange={(e) => setRepoName(e.target.value)}
+                  placeholder={projectName}
+                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+                  disabled={!!linkedRepoFullName}
+                />
+                <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                  {linkedRepoFullName && `Linked repo: ${linkedRepoFullName}. Repo name locked. `}
+                  {repoMismatch && `Repo name mismatch: linked repo uses ${linkedRepoName}. `}
+                  {normalizedRepoName && `Slug: ${normalizedRepoName}. `}
+                  {repoCheck.status === 'checking' && 'Checking availability...'}
+                  {repoCheck.status === 'available' && `Available${repoCheck.owner ? ` under ${repoCheck.owner}` : ''}.`}
+                  {repoCheck.status === 'taken' && 'Name already exists.'}
+                  {repoCheck.status === 'error' && (repoCheck.message || 'Unable to verify repo name.')}
+                  {repoCheck.status === 'idle' && 'Leave blank to use the project name.'}
+                </div>
+              </div>
+            )}
+
+            {deployOption === 'github-netlify' && (
+              <div className="grid gap-2">
+                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
+                <Input
+                  value={netlifySiteName}
+                  onChange={(e) => setNetlifySiteName(e.target.value)}
+                  placeholder={normalizedRepoName || projectName}
+                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+                />
+                <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                  Leave blank to reuse the repo name. Subdomain slug: {normalizedNetlifySiteName || '—'}.
+                </div>
+              </div>
+            )}
+
+            {deployOption !== 'maf-hosted' && (
+              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
+                <div>
+                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
+                  <div className="text-[11px] text-[var(--muted-text)]">
+                    {integrationStatus.githubConnected ? 'Connected' : 'Not connected'}
+                  </div>
+                </div>
+                <Button
+                  onClick={startGithubConnect}
+                  variant="outline"
+                  className="font-mono uppercase text-[10px] border-[var(--border)]"
+                >
+                  {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
+                </Button>
+              </div>
+            )}
+
+            {deployOption === 'github-netlify' && (
+              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
+                <div>
+                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
+                  <div className="text-[11px] text-[var(--muted-text)]">
+                    {integrationStatus.netlifyConnected ? 'Connected' : 'Not connected'}
+                  </div>
+                </div>
+                <Button
+                  onClick={startNetlifyConnect}
+                  variant="outline"
+                  className="font-mono uppercase text-[10px] border-[var(--border)]"
+                >
+                  {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
+                </Button>
+              </div>
+            )}
+
+            {deployOption !== 'maf-hosted' && (
+              <>
+                <div className="grid gap-2">
+                  <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Visibility</label>
+                  <select
+                    value={repoVisibility}
+                    onChange={(e) => setRepoVisibility(e.target.value as 'private' | 'public')}
+                    className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                  >
+                    <option value="private">Private (Recommended)</option>
+                    <option value="public">Public</option>
+                  </select>
+                </div>
+
+                <div className="grid gap-2">
+                  <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">GitHub Owner</label>
+                  <select
+                    value={githubOrg}
+                    onChange={(e) => setGithubOrg(e.target.value)}
+                    className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                    disabled={!integrationStatus.githubConnected}
+                  >
+                    <option value="personal">Personal Account</option>
+                    {githubOrgs.map((org) => (
+                      <option key={org} value={org}>{org}</option>
+                    ))}
+                  </select>
+                  <div className="text-[10px] text-[var(--muted-text)] font-mono">
+                    Select an org only if your OAuth app has access to it.
+                  </div>
+                </div>
+              </>
+            )}
+
+            {deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected) && (
+              <div className="text-[11px] text-amber-500 font-mono">
+                Connect both GitHub and Netlify to enable this deploy option.
+              </div>
+            )}
+            {deployOption === 'github-only' && !integrationStatus.githubConnected && (
+              <div className="text-[11px] text-amber-500 font-mono">
+                Connect GitHub to enable this deploy option.
+              </div>
+            )}
+            {deployOption === 'maf-hosted' && (
+              <div className="text-[11px] text-amber-500 font-mono">
+                We will deploy your project to a hosted URL under Mini App Factory.
+              </div>
+            )}
+
+            {deployResult?.repoUrl && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Repo: <span className="text-[var(--primary)]">{deployResult.repoUrl}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="font-mono uppercase text-[10px] border-[var(--border)]"
+                    onClick={() => window.open(deployResult.repoUrl, '_blank')}
+                  >
+                    Open Repo
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="font-mono uppercase text-[10px] border-[var(--border)]"
+                    onClick={() => copyToClipboard(deployResult.repoUrl!, 'Repo URL')}
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+            )}
+            {deployResult?.deploymentUrl && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Live URL: <span className="text-[var(--primary)]">{deployResult.deploymentUrl}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="font-mono uppercase text-[10px] border-[var(--border)]"
+                    onClick={() => window.open(deployResult.deploymentUrl, '_blank')}
+                  >
+                    Open Live URL
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="font-mono uppercase text-[10px] border-[var(--border)]"
+                    onClick={() => copyToClipboard(deployResult.deploymentUrl!, 'Live URL')}
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+              </div>
+            )}
+            {deployResult?.netlifySiteName && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Netlify Site: <span className="text-[var(--primary)]">{deployResult.netlifySiteName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="font-mono uppercase text-[10px] border-[var(--border)]"
+                    onClick={() => copyToClipboard(deployResult.netlifySiteName!, 'Netlify Site Name')}
+                  >
+                    Copy Name
+                  </Button>
+                </div>
+              </div>
+            )}
+            {deployNotice && (
+              <div className="text-[11px] text-[var(--muted-text)] font-mono">
+                {deployNotice}
+              </div>
+            )}
+            {deployError && (
+              <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
+                {deployError}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeployDialogOpen(false)}
+              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleDeploy}
+              disabled={
+                isDeploying ||
+                (deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected)) ||
+                (deployOption === 'github-only' && !integrationStatus.githubConnected) ||
+                (deployOption !== 'maf-hosted' && (repoCheck.status === 'taken' || repoCheck.status === 'error' || !repoValidation.valid))
+              }
+              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+            >
+              {isDeploying ? 'Deploying...' : deployOption === 'github-only' ? 'Create Repo' : 'Deploy Now'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isNewFileDialogOpen} onOpenChange={setIsNewFileDialogOpen}>
         <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
           <DialogHeader>
@@ -1197,22 +1750,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               </Button>
             </div>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isMetadataDialogOpen} onOpenChange={setIsMetadataDialogOpen}>
-        <DialogContent className="max-w-[800px] w-[90vw] max-h-[90vh] overflow-y-auto bg-[var(--background)] border-[var(--border)] text-[var(--foreground)] p-0 scrollbar-hide">
-          <div className="sticky top-0 z-10 p-6 bg-[var(--background)] border-b border-[var(--border)]">
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
-              Project Control Center: SEO & Favicon
-            </DialogTitle>
-          </div>
-          <MetadataDashboard 
-            projectId={projectData?._id}
-            projectName={projectName}
-            files={files}
-            onClose={() => setIsMetadataDialogOpen(false)}
-          />
         </DialogContent>
       </Dialog>
 
