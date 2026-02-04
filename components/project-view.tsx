@@ -23,7 +23,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   const [project, setProject] = useState<ProjectMetadata>(initialProject);
   const [steps, setSteps] = useState<Step[]>([
     { id: 'initializing', label: 'Setting up project engine', status: 'pending' },
-    { id: 'analyzing', label: 'Analyzing visual requirements', status: 'pending' },
+    { id: 'analyzing', label: 'Analyzing requirements', status: 'pending' },
     { id: 'designing', label: 'Architecting design system', status: 'pending' },
     { id: 'fabricating', label: 'Fabricating production code', status: 'pending' },
     { id: 'finalizing', label: 'Polishing and optimizing', status: 'pending' },

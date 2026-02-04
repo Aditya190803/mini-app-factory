@@ -10,7 +10,6 @@ import {
   Settings2, 
   Calendar, 
   Layers, 
-  Layout,
   Globe,
   ArrowRight
 } from "lucide-react";
@@ -77,8 +76,8 @@ export default function DashboardPage() {
       {/* Ambient background accent */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-[var(--primary)] opacity-[0.03] blur-[120px] pointer-events-none" />
 
-      <div className="relative z-10 max-w-5xl mx-auto w-full px-6 py-10 flex-1">
-        <div className="flex items-center justify-between mb-12">
+      <div className="relative z-10 max-w-6xl mx-auto w-full px-6 py-8 flex-1">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
@@ -140,8 +139,8 @@ export default function DashboardPage() {
                 key={project._id}
                 className="group relative flex flex-col bg-[var(--background-surface)] border border-[var(--border)] rounded-sm hover:border-[var(--primary)] transition-all duration-300"
               >
-                <div className="p-6 flex-1">
-                  <div className="flex justify-between items-start mb-6">
+                <div className="p-5 flex-1">
+                  <div className="flex justify-between items-start mb-4">
                     <div className="space-y-1">
                       <h2 className="text-sm font-mono font-black text-[var(--foreground)] tracking-tight group-hover:text-[var(--primary)] transition-colors">
                         {project.projectName.toUpperCase()}
@@ -153,23 +152,14 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-2 gap-px bg-[var(--border)]/30 border border-[var(--border)]/30 mb-6 overflow-hidden rounded-sm">
                     <div className="bg-[var(--background-surface)] p-3 space-y-1">
                       <div className="flex items-center gap-1.5 opacity-50">
-                        <Layout className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">Topology</span>
+                        <Layers className="w-2.5 h-2.5" />
+                        <span className="text-[8px] font-mono uppercase">No of Pages</span>
                       </div>
-                      <div className="text-[9px] font-mono uppercase font-bold text-[var(--secondary-text)]">
-                        {project.isMultiPage ? 'Multi' : 'Single'}
+                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                        {project.pageCount || 1} Pages
                       </div>
                     </div>
                     <div className="bg-[var(--background-surface)] p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 opacity-50">
-                        <Layers className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">Modules</span>
-                      </div>
-                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
-                        {project.pageCount || 1} Nodes
-                      </div>
-                    </div>
-                    <div className="bg-[var(--background-surface)] p-3 space-y-1 col-span-2">
                       <div className="flex items-center gap-1.5 opacity-50">
                         <Calendar className="w-2.5 h-2.5" />
                         <span className="text-[8px] font-mono uppercase">Last Sync</span>

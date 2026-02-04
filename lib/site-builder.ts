@@ -102,15 +102,6 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 - Asymmetric grid or intentional overlap for visual interest
 - Mobile-first: thumb-friendly buttons, readable on small screens
 
-**Images** (CRITICAL - use REAL photos, never emojis):
-- Use Picsum with seed for themed images: https://picsum.photos/seed/coffee/800/600 (change "coffee" to relevant keyword)
-- For variety, increment the seed: seed/coffee1, seed/coffee2, seed/coffee3
-- Example hero: https://picsum.photos/seed/hero/1200/800
-- Example feature images: https://picsum.photos/seed/feature1/600/400, seed/feature2/600/400
-- Every image needs descriptive alt text
-- Use object-fit: cover for consistent sizing
-- NEVER use source.unsplash.com (deprecated and broken!)
-
 **Motion & Polish**:
 - Page load: fade-in with staggered delays (animation-delay: 0.1s, 0.2s, etc.)
 - Hover states: subtle transforms, color shifts, or underline reveals
@@ -120,12 +111,10 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 - Proper heading hierarchy (h1 → h2 → h3)
 - Color contrast ratio 4.5:1 minimum
 - Focus states for keyboard navigation
-- All images have alt text
 
 **What to AVOID** (AI red flags):
 - Generic fonts: Inter, Roboto, Arial, system-ui
 - Purple gradient on white background
-- Emojis as image/icon placeholders
 - Buzzwords without specifics ("revolutionary", "cutting-edge", "seamless")
 - Cookie-cutter layouts with no personality
 - Walls of text with identical paragraph lengths
@@ -145,19 +134,15 @@ export function buildPolishPrompt(description: string): string {
 
 Check and fix if needed:
 
-1. **Images**: Ensure ALL images use Picsum URLs (NOT source.unsplash.com which is broken!)
-   - Example: <img src="https://picsum.photos/seed/relevant/800/600" alt="descriptive text">
-   - For variety use different seeds: seed/image1, seed/image2, seed/image3
+1. **Typography**: Verify Google Fonts are loaded and applied correctly
 
-2. **Typography**: Verify Google Fonts are loaded and applied correctly
+2. **Mobile**: Test that layout works on small screens (use media queries if missing)
 
-3. **Mobile**: Test that layout works on small screens (use media queries if missing)
-
-4. **Animations**: Add subtle entrance animations if missing:
+3. **Animations**: Add subtle entrance animations if missing:
    - @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
    - Apply with animation: fadeIn 0.6s ease-out forwards;
 
-5. **Polish**: Smooth hover transitions (transition: all 0.3s ease)
+4. **Polish**: Smooth hover transitions (transition: all 0.3s ease)
 
 Output the enhanced file:
 

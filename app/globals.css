@@ -46,6 +46,13 @@
   --sidebar-accent-foreground: #FFFFFF;
   --sidebar-border: #27272A;
   --sidebar-ring: #F59E0B;
+
+  /* Docs Specific Theme (Modern Technical Dark) */
+  --docs-bg: oklch(12% 0.01 260);
+  --docs-surface: oklch(18% 0.02 260);
+  --docs-surface-hover: oklch(22% 0.02 260);
+  --docs-border: oklch(25% 0.02 260);
+  --docs-border-bright: oklch(35% 0.03 260);
 }
 
 .dark {
@@ -173,6 +180,50 @@
   ::selection {
     background-color: var(--primary);
     color: var(--primary-foreground);
+  }
+}
+
+@layer components {
+  .tech-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--secondary-text);
+  }
+
+  .technical-border {
+    border: 1px solid var(--docs-border);
+  }
+
+  .technical-border-focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+  }
+
+  .code-block-container {
+    background-color: oklch(8% 0.01 260);
+    border: 1px solid var(--docs-border);
+    border-radius: 8px;
+    position: relative;
+  }
+
+  .sidebar-item {
+    transition: all 150ms ease-out;
+    border-left: 2px solid transparent;
+  }
+
+  .sidebar-item:hover {
+    background-color: var(--docs-surface-hover);
+    transform: translateX(4px);
+    color: var(--primary);
+  }
+
+  .sidebar-item.active {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--primary);
+    border-left-color: var(--primary);
   }
 }
 

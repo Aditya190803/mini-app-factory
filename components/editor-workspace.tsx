@@ -63,7 +63,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [newFileInFolderPath, setNewFileInFolderPath] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
-  const [polishDescription, setPolishDescription] = useState('images, typography, animations, mobile responsiveness');
+  const [polishDescription, setPolishDescription] = useState('typography, animations, mobile responsiveness');
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
@@ -897,7 +897,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           <DialogHeader>
             <DialogTitle className="font-mono uppercase text-sm tracking-tight">Polish Site</DialogTitle>
             <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Describe how to polish this site (images, typography, animations, mobile responsiveness).
+              Describe how to polish this site (typography, animations, mobile responsiveness).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
