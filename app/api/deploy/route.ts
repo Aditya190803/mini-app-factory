@@ -92,7 +92,9 @@ export async function POST(req: Request) {
         ? "github-only"
         : body.deployMode === "github-netlify"
           ? "github-netlify"
-          : "github-netlify";
+          : body.deployMode === "github-vercel"
+            ? "github-vercel"
+            : "github-netlify";
 
     const integrations = await getIntegrationTokens(user.id);
     if (!integrations?.githubAccessToken) {

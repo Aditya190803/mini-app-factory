@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import { cn } from '@/lib/utils';
-import { logout } from '@/lib/logout';
 
 type AccountMenuProps = {
   className?: string;
@@ -54,14 +53,6 @@ export default function AccountMenu({
       </button>
     );
   }
-
-  const handleLogout = async () => {
-    if (!user) return;
-    setIsOpen(false);
-    setIsLoggingOut(true);
-    await logout(user, redirectAfterLogout);
-    setIsLoggingOut(false);
-  };
 
   return (
     <div className={cn('relative', className)} ref={menuRef}>
