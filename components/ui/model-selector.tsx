@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, Cpu, Zap, Check, Settings2 } from 'lucide-react';
+import { ChevronDown, Cpu, Zap as ZapIcon, Check, Settings2, Eye } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ interface Model {
   fullName: string;
   provider: string;
   providerId: string;
+  hasVision?: boolean;
 }
 
 interface ModelSelectorProps {
@@ -70,17 +71,18 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
       <Popover.Trigger asChild>
         <button 
           className={cn(
-            "flex items-center gap-4 px-3 py-1 bg-[var(--background-surface)] border border-[var(--border)] transition-all hover:border-[var(--primary)] group text-left outline-none",
+            "flex items-center gap-3 px-4 py-2 bg-black/40 border border-[var(--border)] rounded-md transition-all hover:border-[var(--primary)] hover:bg-black/60 group text-left outline-none",
             className
           )}
         >
+          <Cpu size={14} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
           <div className="flex flex-col gap-0">
-            <span className="text-[8px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">Unit Core</span>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--foreground)] truncate max-w-[180px]">
+            <span className="text-[7px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)]">Engine</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--foreground)] truncate max-w-[150px]">
               {displayText}
             </span>
           </div>
-          <ChevronDown size={14} className={cn("ml-auto transition-transform duration-300 text-[var(--border-active)] group-hover:text-[var(--primary)]", open && "rotate-180")} />
+          <ChevronDown size={12} className={cn("ml-2 transition-transform duration-300 text-[var(--muted-text)] group-hover:text-[var(--primary)]", open && "rotate-180")} />
         </button>
       </Popover.Trigger>
       
@@ -93,7 +95,7 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
             <div className="p-1 border-b border-[var(--border)] bg-[var(--background-surface)] flex items-center justify-between px-3 py-2">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] animate-pulse" />
-                <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)]">Infrastructure Selection</span>
+                <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)]">Defaults</span>
               </div>
               <Cpu size={10} className="text-[var(--muted-text)]" />
             </div>
@@ -122,8 +124,8 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
               return (
                 <div key={pId}>
                   <div className="px-3 py-1.5 bg-[var(--background-surface)] border-b border-[var(--border)] flex items-center gap-2">
-                    <Zap size={10} className="text-[var(--primary)]" />
-                    <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--primary)] opacity-80">{pId} units</span>
+                    <ZapIcon size={10} className="text-[var(--primary)]" />
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--primary)] opacity-80">{pId} Models</span>
                   </div>
                   {providerModels.map((m) => {
                     const isSelected = m.id === selectedModelId && m.providerId === providerId;
@@ -140,7 +142,15 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
                         )}
                       >
                         <div className="flex flex-col">
-                          <span className="text-[10px] font-mono uppercase tracking-tight font-bold">{m.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-mono uppercase tracking-tight font-bold">{m.name}</span>
+                            {m.hasVision && (
+                              <div className="flex items-center gap-0.5 px-1 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-[2px]" title="Vision Capable">
+                                <Eye size={8} className="text-[var(--primary)]" />
+                                <span className="text-[7px] font-mono text-[var(--primary)] font-black uppercase">Vision</span>
+                              </div>
+                            )}
+                          </div>
                           {m.name !== m.id && (
                             <span className="text-[8px] font-mono opacity-70 uppercase truncate max-w-[200px] font-light">{m.id}</span>
                           )}

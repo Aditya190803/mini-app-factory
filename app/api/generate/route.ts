@@ -95,11 +95,15 @@ export async function runGeneration(
 
     const client = await getAIClient();
 
+    if (signal.aborted) return { error: 'Aborted' };
+
     // Design phase
+    const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
+
     const designSession = await client.createSession({
       model: project.selectedModel || MODEL,
       providerId: project.providerId,
-      systemMessage: { content: 'You are an expert web design architect. Create a detailed design spec for the requested site.' },
+      systemMessage: { content: architectSystemMsg },
     });
 
     let designSpec = '';
@@ -129,10 +133,7 @@ export async function runGeneration(
     if (signal.aborted) return { error: 'Aborted' };
 
     // HTML generation phase
-    const htmlSession = await client.createSession({
-      model: project.selectedModel || MODEL,
-      providerId: project.providerId,
-      systemMessage: { content: `You are an expert developer. Generate a complete multi-file website project. 
+    const developerSystemMsg = `You are an expert developer. Generate a complete multi-file website project. 
 Return files using code blocks with the format:
 \`\`\`html:filename.html
 Code here...
@@ -154,7 +155,12 @@ Mandatory requirements:
    - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
 
 You can also create sub-pages (e.g. about.html, gallery.html).
-Return ONLY code blocks. No explanations.` },
+Return ONLY code blocks. No explanations.`;
+
+    const htmlSession = await client.createSession({
+      model: project.selectedModel || MODEL,
+      providerId: project.providerId,
+      systemMessage: { content: developerSystemMsg },
     });
 
     let html = '';

@@ -50,7 +50,10 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { files, html, prompt, activeFile, polishDescription, modelId, providerId } = parsed.data;
+    const { 
+      files, html, prompt, activeFile, polishDescription, 
+      modelId, providerId
+    } = parsed.data;
 
     // Detect if there's a target element instruction to adjust focus
     let targetFile = activeFile;
@@ -67,6 +70,10 @@ export async function POST(request: Request) {
     }
 
     const client = await getAIClient();
+    
+    let effectiveModelId = modelId || process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+    let effectiveProviderId = providerId;
+
     const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
 You will be given the complete project context comprising all files.
 
@@ -118,8 +125,8 @@ Only return changes. No explanations.`;
     }
 
     const session = await client.createSession({
-      model: modelId || process.env.CEREBRAS_MODEL || 'zai-glm-4.7',
-      providerId: providerId,
+      model: effectiveModelId,
+      providerId: effectiveProviderId,
       systemMessage: { content: systemMessage },
     });
 

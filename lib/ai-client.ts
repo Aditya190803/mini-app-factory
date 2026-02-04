@@ -4,6 +4,7 @@
 
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, streamText } from 'ai';
+import type { ModelMessage, TextPart, ImagePart } from 'ai';
 
 export type SessionEvent = { 
   type: string; 
@@ -25,11 +26,13 @@ export interface AIClient {
 }
 
 export interface AIClientSession {
-  sendAndWait: (opts: { prompt: string }, timeout?: number) => Promise<{ data: { content: string } }>;
+  sendAndWait: (opts: { prompt: string, images?: Array<{ url: string }> }, timeout?: number) => Promise<{ data: { content: string } }>;
   stream: (opts: { prompt: string }) => Promise<AsyncIterable<string>>;
   on: (cb: (e: SessionEvent) => void) => () => void;
   destroy: () => Promise<void>;
 }
+
+type UserContentPart = TextPart | ImagePart;
 
 let singletonClient: AIClient | null = null;
 
@@ -73,22 +76,31 @@ function createCerebrasClient(): AIClient {
           };
         },
 
-        async sendAndWait({ prompt }: { prompt: string }, timeout = 120000) {
+        async sendAndWait({ prompt, images }: { prompt: string, images?: Array<{ url: string }> }, timeout = 120000) {
           const controller = new AbortController();
           controllers.add(controller);
           const timeoutId = setTimeout(() => controller.abort(), timeout);
 
           try {
-            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+            const messages: ModelMessage[] = [];
 
             if (systemMessage?.content) {
               messages.push({ role: 'system', content: systemMessage.content });
             }
-            messages.push({ role: 'user', content: prompt });
+            
+            if (images && images.length > 0) {
+              const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
+              images.forEach(img => {
+                userContent.push({ type: 'image', image: img.url });
+              });
+              messages.push({ role: 'user', content: userContent });
+            } else {
+              messages.push({ role: 'user', content: prompt });
+            }
 
             const result = await generateText({
               model: provider(modelName),
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              messages,
               abortSignal: controller.signal,
             });
 
@@ -177,22 +189,31 @@ function createGroqClient(): AIClient {
           };
         },
 
-        async sendAndWait({ prompt }: { prompt: string }, timeout = 120000) {
+        async sendAndWait({ prompt, images }: { prompt: string, images?: Array<{ url: string }> }, timeout = 120000) {
           const controller = new AbortController();
           controllers.add(controller);
           const timeoutId = setTimeout(() => controller.abort(), timeout);
 
           try {
-            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+            const messages: ModelMessage[] = [];
 
             if (systemMessage?.content) {
               messages.push({ role: 'system', content: systemMessage.content });
             }
-            messages.push({ role: 'user', content: prompt });
+            
+            if (images && images.length > 0) {
+              const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
+              images.forEach(img => {
+                userContent.push({ type: 'image', image: img.url });
+              });
+              messages.push({ role: 'user', content: userContent });
+            } else {
+              messages.push({ role: 'user', content: prompt });
+            }
 
             const result = await generateText({
               model: groq(modelName),
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
+              messages,
               abortSignal: controller.signal,
             });
 

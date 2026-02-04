@@ -23,6 +23,7 @@ type ModelEntry = {
   fullName: string;
   provider: string;
   providerId: string;
+  hasVision?: boolean;
 };
 
 export async function GET() {
@@ -55,13 +56,17 @@ export async function GET() {
       
       if (resp.ok) {
         const data = (await resp.json()) as ProviderResponse;
-        const providerModels = data.data.map((m) => ({
-          id: m.id,
-          name: `${m.id}`,
-          fullName: `${m.id} (${provider.name})`,
-          provider: provider.name,
-          providerId: provider.id
-        }));
+        const providerModels = data.data.map((m) => {
+          const isVision = m.id.toLowerCase().includes('vision');
+          return {
+            id: m.id,
+            name: `${m.id}`,
+            fullName: `${m.id} (${provider.name})`,
+            provider: provider.name,
+            providerId: provider.id,
+            hasVision: isVision
+          };
+        });
         models.push(...providerModels);
       } else {
         console.error(`Status ${resp.status} from ${provider.name}:`, await resp.text().catch(() => 'No body'));
