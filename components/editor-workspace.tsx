@@ -40,7 +40,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState('index.html');
-  const [selectedElement, setSelectedElement] = useState<{ path: string, html: string } | null>(null);
+  const [selectedElement, setSelectedElement] = useState<{ path: string, html: string, selector?: string } | null>(null);
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
@@ -258,7 +258,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           .replace(/ data-source-file="[^"]*"/g, '')
           .replace(/ style="display: contents;"/g, '');
         
-        finalPrompt = `Target element in ${selectedElement.path}:\n${cleanHtml}\n\nInstructions: ${transformPrompt}`;
+        const selectorLine = selectedElement.selector ? `CSS selector: ${selectedElement.selector}\n` : '';
+        finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${transformPrompt}`;
       }
 
       const response = await fetch('/api/transform', {
@@ -808,8 +809,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 setActiveTab('code');
                 if (html) setEditorSearchText(html);
               }}
-              onAttachToChat={(path, html) => {
-                setSelectedElement({ path, html });
+              onAttachToChat={(path, html, selector) => {
+                setSelectedElement({ path, html, selector });
               }}
             />
           )}
@@ -842,8 +843,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                     setActiveFilePath(path);
                     if (html) setEditorSearchText(html);
                   }}
-                  onAttachToChat={(path, html) => {
-                    setSelectedElement({ path, html });
+                  onAttachToChat={(path, html, selector) => {
+                    setSelectedElement({ path, html, selector });
                   }}
                 />
               </div>

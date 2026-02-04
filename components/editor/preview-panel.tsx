@@ -6,8 +6,8 @@ import { ProjectFile } from '@/lib/page-builder';
 interface PreviewPanelProps {
     previewHtml: string;
     files: ProjectFile[];
-    onOpenInEditor?: (path: string, elementHtml?: string) => void;
-    onAttachToChat?: (path: string, html: string) => void;
+    onOpenInEditor?: (path: string, elementHtml?: string, selector?: string) => void;
+    onAttachToChat?: (path: string, html: string, selector?: string) => void;
 }
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
@@ -16,9 +16,22 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
     const [mode, setMode] = useState<ViewportMode>('desktop');
     const [refreshKey, setRefreshKey] = useState(0);
     const [isSelectorActive, setIsSelectorActive] = useState(false);
-    const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, path: string, html: string } | null>(null);
+    const [selectionMenu, setSelectionMenu] = useState<{ x: number, y: number, path: string, html: string, selector?: string | null } | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const lastFilesRef = useRef<ProjectFile[]>(files);
+    const vfsVersionRef = useRef(0);
+    const vfsInitializedRef = useRef(false);
+
+    const buildVfsPayload = (inputFiles: ProjectFile[]) => {
+        return inputFiles.reduce<Record<string, { content: string; language: ProjectFile['language']; fileType: ProjectFile['fileType'] }>>((acc, file) => {
+            acc[file.path] = {
+                content: file.content,
+                language: file.language,
+                fileType: file.fileType
+            };
+            return acc;
+        }, {});
+    };
     
     // CSS HMR Logic
     useEffect(() => {
@@ -33,8 +46,25 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     content: styleFile.content
                 }, '*');
             });
+            // Also update VFS for the changed styles
+            const vfsPatch = buildVfsPayload(changedFiles);
+            iframeRef.current?.contentWindow?.postMessage({
+                type: 'update-vfs',
+                files: vfsPatch,
+                version: ++vfsVersionRef.current
+            }, '*');
+
             lastFilesRef.current = files;
             return; // Prevent full reload if only styles changed
+        }
+
+        if (changedFiles.length > 0 && iframeRef.current?.contentWindow && vfsInitializedRef.current) {
+            const vfsPatch = buildVfsPayload(changedFiles);
+            iframeRef.current?.contentWindow?.postMessage({
+                type: 'update-vfs',
+                files: vfsPatch,
+                version: ++vfsVersionRef.current
+            }, '*');
         }
 
         lastFilesRef.current = files;
@@ -44,7 +74,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (event.data.type === 'element-selected') {
-                const { path, elementHtml, x, y } = event.data;
+                const { path, elementHtml, x, y, selector } = event.data;
                 
                 // Convert iframe coordinates to parent coordinates
                 if (iframeRef.current) {
@@ -53,7 +83,8 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                         x: rect.left + x,
                         y: rect.top + y,
                         path,
-                        html: elementHtml
+                        html: elementHtml,
+                        selector
                     });
                 }
             }
@@ -87,9 +118,9 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
         if (!selectionMenu) return;
         
         if (action === 'open') {
-            onOpenInEditor?.(selectionMenu.path, selectionMenu.html);
+            onOpenInEditor?.(selectionMenu.path, selectionMenu.html, selectionMenu.selector ?? undefined);
         } else {
-            onAttachToChat?.(selectionMenu.path, selectionMenu.html);
+            onAttachToChat?.(selectionMenu.path, selectionMenu.html, selectionMenu.selector ?? undefined);
         }
         
         setSelectionMenu(null);
@@ -167,6 +198,14 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                         sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
                         title="Website Preview"
                         onLoad={() => {
+                            if (iframeRef.current?.contentWindow) {
+                                iframeRef.current.contentWindow.postMessage({
+                                    type: 'init-vfs',
+                                    files: buildVfsPayload(files),
+                                    version: ++vfsVersionRef.current
+                                }, '*');
+                                vfsInitializedRef.current = true;
+                            }
                             if (isSelectorActive && iframeRef.current?.contentWindow) {
                                 iframeRef.current.contentWindow.postMessage({
                                     type: 'toggle-selector',

@@ -12,8 +12,8 @@ interface EditorSidebarProps {
     setTransformPrompt: (val: string) => void;
     selectedModel: { id: string, providerId: string };
     setSelectedModel: (val: { id: string, providerId: string }) => void;
-    selectedElement: { path: string, html: string } | null;
-    setSelectedElement: (val: { path: string, html: string } | null) => void;
+    selectedElement: { path: string, html: string, selector?: string } | null;
+    setSelectedElement: (val: { path: string, html: string, selector?: string } | null) => void;
     runTransform: () => void;
     runPolish: () => void;
     isTransforming: boolean;
@@ -51,7 +51,8 @@ export default function EditorSidebar({
             const tag = el.tagName.toLowerCase();
             const classes = Array.from(el.classList).join('.');
             const className = classes ? `.${classes.split(' ').slice(0, 2).join('.')}` : '';
-            return `<${tag}${className}> in ${selectedElement.path}`;
+            const selectorSuffix = selectedElement.selector ? ` • ${selectedElement.selector}` : '';
+            return `<${tag}${className}> in ${selectedElement.path}${selectorSuffix}`;
         } catch {
             return selectedElement.path;
         }

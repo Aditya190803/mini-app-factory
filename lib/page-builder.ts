@@ -151,11 +151,44 @@ export function assembleFullPage(
     }
   });
 
-  // Inject Bridge Script for HMR and Visual Selector
+  // Inject Bridge Script for HMR, Virtual FS, and Visual Selector
   if (isEditorPreview) {
     const bridgeScript = `
 <script id="preview-bridge">
   (function() {
+    // Simple Virtual FS for preview (memfs-like API)
+    const vfsSubscribers = new Set();
+    const vfs = {
+      files: {},
+      version: 0,
+      readFile(path) {
+        return this.files[path]?.content ?? null;
+      },
+      getFile(path) {
+        return this.files[path] ?? null;
+      },
+      listFiles() {
+        return Object.keys(this.files);
+      },
+      onChange(cb) {
+        vfsSubscribers.add(cb);
+        return () => vfsSubscribers.delete(cb);
+      }
+    };
+    window.__VFS__ = vfs;
+
+    const applyVfsUpdate = (incoming, version) => {
+      if (incoming && typeof incoming === 'object') {
+        Object.keys(incoming).forEach((path) => {
+          vfs.files[path] = incoming[path];
+        });
+      }
+      vfs.version = typeof version === 'number' ? version : (vfs.version + 1);
+      vfsSubscribers.forEach((cb) => {
+        try { cb(incoming, vfs.version); } catch {}
+      });
+    };
+
     // Navigation handling
     document.addEventListener('click', (e) => {
       if (window.__SELECTOR_ACTIVE__) return; // Handled by selector logic below
@@ -193,6 +226,16 @@ export function assembleFullPage(
         style.textContent = content;
         console.log(\`[HMR] Updated \${file}\`);
       }
+
+      if (event.data.type === 'init-vfs') {
+        const { files, version } = event.data;
+        applyVfsUpdate(files, version);
+      }
+
+      if (event.data.type === 'update-vfs') {
+        const { files, version } = event.data;
+        applyVfsUpdate(files, version);
+      }
       
       if (event.data.type === 'toggle-selector') {
         window.__SELECTOR_ACTIVE__ = event.data.active;
@@ -204,6 +247,47 @@ export function assembleFullPage(
         }
       }
     });
+
+    const safeEscape = (value) => {
+      if (typeof value !== 'string') return '';
+      if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+      return value.replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+    };
+
+    const buildSelectorPath = (el) => {
+      if (!(el instanceof Element)) return null;
+      const parts = [];
+      let current = el;
+
+      while (current && current.nodeType === 1 && current !== document.documentElement) {
+        let part = current.tagName.toLowerCase();
+
+        if (current.id) {
+          part += \`#\${safeEscape(current.id)}\`;
+          parts.unshift(part);
+          break;
+        }
+
+        const classList = Array.from(current.classList || []).filter(Boolean).slice(0, 3);
+        if (classList.length > 0) {
+          part += '.' + classList.map(safeEscape).join('.');
+        }
+
+        const parent = current.parentElement;
+        if (parent) {
+          const siblings = Array.from(parent.children).filter((s) => s.tagName === current.tagName);
+          if (siblings.length > 1) {
+            const index = siblings.indexOf(current) + 1;
+            part += \`:nth-of-type(\${index})\`;
+          }
+        }
+
+        parts.unshift(part);
+        current = parent;
+      }
+
+      return parts.join(' > ');
+    };
 
     // Visual Selector interaction
     document.addEventListener('click', (e) => {
@@ -225,12 +309,15 @@ export function assembleFullPage(
       
       if (!sourceFile) sourceFile = document.body.getAttribute('data-source-file');
 
+      const selector = target instanceof HTMLElement ? buildSelectorPath(target) : null;
+
       window.parent.postMessage({
         type: 'element-selected',
         path: sourceFile,
         elementHtml: target instanceof HTMLElement ? target.outerHTML : null,
         elementText: target instanceof HTMLElement ? target.innerText : null,
         tagName: target instanceof HTMLElement ? target.tagName.toLowerCase() : null,
+        selector,
         x: e.clientX,
         y: e.clientY
       }, '*');
