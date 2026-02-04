@@ -1,4 +1,4 @@
-import { readStream } from "./stream-utils";
+import { readStream, StreamEvent } from "./stream-utils";
 
 export function normalizeDeployError(message: string) {
   if (/GitHub API error: 422/i.test(message)) {
@@ -45,6 +45,12 @@ export type DeployApiResult = {
   netlifySiteName?: string;
 };
 
+type DeployStreamEvent = StreamEvent & {
+  status: "progress" | "success" | "error";
+  data?: DeployApiResult;
+  message?: string;
+};
+
 export async function performDeploy(payload: DeployApiPayload, onStatus?: (status: string) => void): Promise<DeployApiResult> {
   const resp = await fetch("/api/deploy", {
     method: "POST",
@@ -66,11 +72,11 @@ export async function performDeploy(payload: DeployApiPayload, onStatus?: (statu
   await readStream(
     resp,
     () => {},
-    (event) => {
+    (event: DeployStreamEvent) => {
       if (event.status === "progress" && event.message) {
         onStatus?.(event.message);
-      } else if (event.status === "success" && (event as any).data) {
-        result = (event as any).data;
+      } else if (event.status === "success" && event.data) {
+        result = event.data;
       } else if (event.status === "error") {
         throw new Error(event.message || "Deploy failed");
       }

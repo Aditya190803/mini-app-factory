@@ -1,7 +1,15 @@
-export async function readStream(
+export type StreamEvent = {
+    status: string;
+    message?: string;
+    html?: string;
+    error?: string;
+    [key: string]: unknown;
+};
+
+export async function readStream<TEvent extends StreamEvent = StreamEvent>(
     response: Response,
     onChunk: (chunk: string) => void,
-    onEvent?: (event: { status: string; message?: string; html?: string; error?: string }) => void
+    onEvent?: (event: TEvent) => void
 ) {
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

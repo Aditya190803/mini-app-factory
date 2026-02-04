@@ -7,17 +7,17 @@ import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-conte
 function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
   const encoder = new TextEncoder();
   return {
-    write: (data: any) => {
+    write: (data: unknown) => {
       try {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      } catch (e) {
+      } catch (_err) {
         // Stream might be closed
       }
     },
     close: () => {
       try {
         controller.close();
-      } catch (e) {
+      } catch (_err) {
         // Already closed
       }
     }
