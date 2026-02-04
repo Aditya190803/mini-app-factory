@@ -1,0 +1,44 @@
+app/api/generate/route.ts
+  4c285bc49e7de289 98-99,102,106,158-163
+lib/ai-client.ts
+  4c285bc49e7de289 29,79,90-91,93-97,99,192,203-204,206-210,212
+components/ui/model-selector.tsx
+  4c285bc49e7de289 14,145-153
+app/api/transform/route.ts
+  4c285bc49e7de289 73-76,128-129
+app/api/ai/models/route.ts
+  4c285bc49e7de289 26,59-61,66-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.42",
+  "base_commit_sha": "f903194d0a1db07f21f55cc719beb4f8f7654962",
+  "prompts": {
+    "20ae31414e3c48b3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_3dd3d08ddffeySRvkFgc3u14Pd",
+        "model": "github-copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "4c285bc49e7de289": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_3ddb9d25cffeV5Yf2Hve42CEpI",
+        "model": "github-copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 1167,
+      "total_deletions": 249,
+      "accepted_lines": 512,
+      "overriden_lines": 9
+    }
+  }
+}
