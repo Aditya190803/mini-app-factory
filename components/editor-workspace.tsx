@@ -38,6 +38,17 @@ interface EditorWorkspaceProps {
   onBack: () => void;
 }
 
+const applyFileDelta = (currentFiles: ProjectFile[], updates: ProjectFile[], deletedPaths: string[] = []) => {
+  const map = new Map(currentFiles.map((file) => [file.path, file]));
+  for (const file of updates) {
+    map.set(file.path, file);
+  }
+  for (const path of deletedPaths) {
+    map.delete(path);
+  }
+  return Array.from(map.values());
+};
+
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -331,7 +342,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setHasLoaded(true);
       }
     }
-  }, [projectFiles, initialHTML, projectData?._id, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+  }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
 
   // Handle message from preview iframe
   useEffect(() => {
@@ -444,7 +455,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          files, 
+          projectName,
           activeFile: activeFilePath,
           prompt: finalPrompt,
           modelId: selectedModel.id || undefined,
@@ -454,22 +465,44 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Transform failed');
+        const code = data.code || 'TRANSFORM_ERROR';
+        const message = data.error || 'Transform failed';
+        const suggestion = code === 'INVALID_TOOL_CALL'
+          ? 'Try a simpler edit, or target a specific element with a clear selector.'
+          : code === 'RATE_LIMITED'
+            ? 'You are sending requests too quickly. Wait a moment and retry.'
+            : code === 'INVALID_FILE_STRUCTURE'
+              ? 'Ensure the project includes index.html and valid files before retrying.'
+              : code === 'UNAUTHORIZED'
+                ? 'Sign in again and retry the transform.'
+                : 'Check your prompt and try again.';
+
+        toast.error(message, { description: suggestion });
+        throw new Error(message);
       }
 
       // Transition to streaming multi-file parser
       // For now, assume it returns full files
       const result = await response.json();
-      if (result.files) {
-        setFiles(result.files);
-        addToHistory(result.files);
-        persistFiles(result.files);
+      if (result.full) {
+        const fullFiles = Array.isArray(result.files) ? result.files : [];
+        if (fullFiles.length === 0) {
+          console.error('Transform returned full=true but no files array');
+          toast.error('Transform returned no files', { description: 'The server indicated a full replacement but provided no files.' });
+        }
+        setFiles(fullFiles);
+        addToHistory(fullFiles);
+        persistFiles(fullFiles);
+      } else if (Array.isArray(result.files)) {
+        const nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
+        setFiles(nextFiles);
+        addToHistory(nextFiles);
+        persistFiles(nextFiles);
       }
       setTransformPrompt('');
       setSelectedElement(null);
     } catch (err) {
       console.error('Transform error', err);
-      alert(err instanceof Error ? err.message : 'Transform failed');
     } finally {
       setIsTransforming(false);
     }
@@ -809,15 +842,30 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       const resp = await fetch('/api/transform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files, polishDescription }),
+        body: JSON.stringify({ projectName, polishDescription }),
       });
-      if (!resp.ok) throw new Error('Polish failed');
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        const message = data.error || 'Polish failed';
+        toast.error(message, { description: 'Try a shorter polish request or retry shortly.' });
+        throw new Error(message);
+      }
 
       const result = await resp.json();
-      if (result.files) {
-        setFiles(result.files);
-        addToHistory(result.files);
-        persistFiles(result.files);
+      if (result.full) {
+        const fullFiles = Array.isArray(result.files) ? result.files : [];
+        if (fullFiles.length === 0) {
+          console.error('Polish returned full=true but no files array');
+          toast.error('Polish returned no files', { description: 'The server indicated a full replacement but provided no files.' });
+        }
+        setFiles(fullFiles);
+        addToHistory(fullFiles);
+        persistFiles(fullFiles);
+      } else if (Array.isArray(result.files)) {
+        const nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
+        setFiles(nextFiles);
+        addToHistory(nextFiles);
+        persistFiles(nextFiles);
       }
     } catch (err) {
       console.error(err);
@@ -960,7 +1008,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       const data = await performDeploy({
         projectName,
         prompt: initialPrompt,
-        files: files.map(f => ({ path: f.path, content: f.content })),
         repoVisibility,
         githubOrg: githubOrg === 'personal' ? null : githubOrg,
         deployMode: deployOption,

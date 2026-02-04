@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
@@ -125,7 +126,18 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
               </div>
               <div className="flex items-center gap-4 bg-[var(--background-overlay)] p-4 border border-[var(--border)] rounded-sm">
                 <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center bg-[var(--background)] border border-[var(--border)] rounded text-3xl shadow-inner">
-                  {favicon.startsWith('http') ? <img src={favicon} alt="favicon" className="w-10 h-10 object-contain" /> : favicon}
+                    {favicon.startsWith('http') ? (
+                      <Image
+                        src={favicon}
+                        alt="favicon"
+                        width={40}
+                        height={40}
+                        unoptimized
+                        className="w-10 h-10 object-contain"
+                      />
+                    ) : (
+                      favicon
+                    )}
                 </div>
                 <div className="flex-1 space-y-2">
                   <p className="text-[9px] text-[var(--muted-text)] uppercase font-bold tracking-tighter">Project Favicon (Emoji or URL)</p>

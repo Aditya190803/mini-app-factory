@@ -66,7 +66,7 @@ export default function CodePanel({ html, language = 'html', onChange, onReset, 
                 editor.focus();
             }
         }
-    }, [searchText, editorRef.current]);
+    }, [searchText]);
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: '#1e1e1e' }}>

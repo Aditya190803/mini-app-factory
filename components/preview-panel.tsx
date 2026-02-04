@@ -146,7 +146,20 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
         throw new Error(data.error || 'Transform failed');
       }
       const data = await response.json();
-      setEditableHtml(data.html);
+      let updated = false;
+      if (data.html) {
+        setEditableHtml(data.html);
+        updated = true;
+      } else if (Array.isArray(data.files)) {
+        const indexFile = data.files.find((file: { path: string; content: string }) => file.path === 'index.html');
+        if (indexFile?.content) {
+          setEditableHtml(indexFile.content);
+          updated = true;
+        }
+      }
+      if (!updated) {
+        throw new Error('Transform returned no HTML output');
+      }
       alert('Transformation applied ✅');
     } catch (err) {
       console.error('Transform error', err);
@@ -309,7 +322,20 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                         const resp = await fetch('/api/transform', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: editableHtml, polishDescription: desc }) });
                         if (!resp.ok) throw new Error('Polish failed');
                         const data = await resp.json();
-                        setEditableHtml(data.html);
+                        let polishedContent: string | null = null;
+                        if (data.html && typeof data.html === 'string' && data.html.trim()) {
+                          polishedContent = data.html;
+                        } else if (data.full && Array.isArray(data.files)) {
+                          const indexFile = data.files.find((file: { path: string; content: string }) => file.path === 'index.html');
+                          if (indexFile?.content && typeof indexFile.content === 'string' && indexFile.content.trim()) {
+                            polishedContent = indexFile.content;
+                          }
+                        }
+                        if (!polishedContent) {
+                          console.error('Polish returned no usable HTML content', data);
+                          throw new Error('Polish returned no content');
+                        }
+                        setEditableHtml(polishedContent);
                         alert('Polish applied ✅');
                       } catch (err) {
                         console.error(err);

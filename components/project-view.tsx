@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import EditorWorkspace from '@/components/editor-workspace';
 import { ProjectMetadata } from '@/lib/projects';
@@ -29,17 +29,12 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     { id: 'finalizing', label: 'Polishing and optimizing', status: 'pending' },
   ]);
   const [_currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [fallbackInfo, setFallbackInfo] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
-  useEffect(() => {
-    if (project.status === 'completed' || hasStarted.current) return;
-
-    startGeneration();
-  }, [project.status]);
-
   // Poll for project status as a fallback when stream fails
-  async function pollForCompletion(): Promise<boolean> {
+  const pollForCompletion = useCallback(async (): Promise<boolean> => {
     for (let i = 0; i < 60; i++) { // Poll for up to 5 minutes
       await new Promise(r => setTimeout(r, 5000));
       try {
@@ -51,7 +46,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
             return true;
           } else if (data.status === 'error') {
-            setError(data.error || 'Generation failed');
+            const code = typeof data.code === 'string' ? data.code : undefined;
+            setError({ message: data.error || 'Generation failed', code });
             return true;
           }
         }
@@ -60,11 +56,12 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       }
     }
     return false;
-  }
+  }, [projectName]);
 
-  async function startGeneration() {
+  const startGeneration = useCallback(async () => {
     hasStarted.current = true;
     setError(null);
+    setFallbackInfo(null);
 
     let streamFailed = false;
 
@@ -88,7 +85,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           if (data.status === 'ping') return;
 
           if (data.status === 'error') {
-            setError(data.error || 'Generation failed');
+            const code = typeof data.code === 'string' ? data.code : undefined;
+            setError({ message: data.error || 'Generation failed', code });
             setSteps(prev => prev.map((s, idx) => {
               if (idx < _currentStepIndex) return { ...s, status: 'completed' };
               if (idx === _currentStepIndex) return { ...s, status: 'error' };
@@ -98,6 +96,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           }
 
           if (data.status === 'fallback') {
+            setFallbackInfo(data.message || 'Main provider failed, a fallback model is being used.');
             toast.warning('Provider issue detected', {
               description: data.message || 'Main model failed, switching to fallback...',
               duration: 5000,
@@ -134,7 +133,10 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       const msg = e instanceof Error ? e.message : String(e);
 
       console.warn('Generation stream failed:', msg);
-      setError(isAbort ? 'Generation timed out (5m limit).' : `Stream interrupted: ${msg}`);
+      setError({
+        message: isAbort ? 'Generation timed out (5m limit).' : `Stream interrupted: ${msg}`,
+        code: isAbort ? 'AI_TIMEOUT' : 'STREAM_ERROR'
+      });
       streamFailed = true;
     }
 
@@ -144,10 +146,23 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       await new Promise(r => setTimeout(r, 2000));
       const completed = await pollForCompletion();
       if (!completed && !error) {
-        setError('Generation timed out. Please try again.');
+        setError({ message: 'Generation timed out. Please try again.', code: 'AI_TIMEOUT' });
       }
     }
-  }
+  }, [
+    _currentStepIndex,
+    error,
+    pollForCompletion,
+    project.status,
+    projectName,
+    project.prompt
+  ]);
+
+  useEffect(() => {
+    if (project.status === 'completed' || hasStarted.current) return;
+
+    startGeneration();
+  }, [project.status, startGeneration]);
 
   if (project.status === 'completed') {
     return (
@@ -224,6 +239,20 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           ))}
         </div>
 
+        {fallbackInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-6 p-4 border border-amber-500/40 bg-amber-500/10 text-amber-500 text-xs font-mono text-center"
+          >
+            <div className="font-mono font-bold mb-2">PROVIDER FALLBACK</div>
+            <div className="whitespace-pre-wrap">{fallbackInfo}</div>
+            <div className="mt-2 text-amber-200/80">
+              If the result looks off, you can retry generation to attempt the primary provider again.
+            </div>
+          </motion.div>
+        )}
+
         {error && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -231,7 +260,10 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             className="mt-8 p-4 border border-red-500/50 bg-red-500/10 text-red-500 text-sm font-mono text-center"
           >
             <div className="font-mono font-bold mb-2">ERROR</div>
-            <div className="whitespace-pre-wrap">{error}</div>
+            <div className="whitespace-pre-wrap">{error.message}</div>
+            {error.code && (
+              <div className="mt-2 text-[10px] text-red-300/70">Code: {error.code}</div>
+            )}
             <button
               onClick={() => { hasStarted.current = false; startGeneration(); }}
               className="block mx-auto mt-3 underline"
