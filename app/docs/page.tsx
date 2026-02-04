@@ -83,8 +83,9 @@ export default function DocsPage() {
       items: [
         { id: 'model-selection', label: 'Model Selection' },
         { id: 'editor-preview', label: 'Editor & Preview' },
-        { id: 'publish-export', label: 'Publish & Export' },
-        { id: 'metadata-seo', label: 'Metadata / SEO' }
+        { id: 'publish-export', label: 'Export' },
+        { id: 'deploy', label: 'Deploy to Netlify' },
+        { id: 'project-settings', label: 'Project Settings' }
       ]
     }
   ]), []);
@@ -410,22 +411,68 @@ Add data visualization cards in the main grid.`}
               <section id="publish-export" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
                   <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">09</span>
-                  Publish & Export
+                  Export ZIP
                 </h2>
                 <p className="text-slate-400 font-sans">
-                  Projects can be exported as a ZIP, or published to a shareable URL under the results route.
+                  Export your project as a ZIP with all files and a generated README.
                 </p>
               </section>
             )}
 
-            {visibleItemIds.has('metadata-seo') && (
-              <section id="metadata-seo" className="space-y-6 mt-12 scroll-mt-24">
+            {visibleItemIds.has('deploy') && (
+              <section id="deploy" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
                   <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">10</span>
-                  Metadata / SEO
+                  Deploy to Netlify
                 </h2>
                 <p className="text-slate-400 font-sans">
-                  The editor includes a metadata dashboard to set global SEO data and per-page metadata.
+                  Connect GitHub and Netlify via OAuth, then deploy your site directly from the editor. The deploy flow creates or reuses a linked GitHub repo, uploads your files, and triggers a Netlify deployment.
+                </p>
+                <p className="text-slate-500 text-sm font-sans">
+                  Required environment variables: GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, NETLIFY_CLIENT_ID, NETLIFY_CLIENT_SECRET. Add them to `.env.local` (or start from `.env.example`).
+                </p>
+                <p className="text-slate-500 text-sm font-sans">
+                  Workflow: open the editor, click Deploy, connect GitHub and Netlify, choose repo visibility and owner, then deploy. The modal returns the repo URL, live URL, and Netlify site name.
+                </p>
+                <p className="text-slate-500 text-sm font-sans">
+                  Deploy options include GitHub + Netlify (default), GitHub repo only, and a hosted-by-us option for the fastest path to a live URL. You can also redeploy from the dashboard without opening the editor.
+                </p>
+                <p className="text-slate-500 text-sm font-sans">
+                  Use the Netlify site name override if you want a custom subdomain that differs from the GitHub repo name.
+                </p>
+                <div className="space-y-3 text-slate-500 text-sm font-sans">
+                  <div className="font-semibold text-slate-300">OAuth Setup</div>
+                  <div>GitHub OAuth App:</div>
+                  <ul className="list-disc pl-6">
+                    <li>Create a GitHub OAuth App (Developer Settings → OAuth Apps → New OAuth App).</li>
+                    <li>Homepage URL: <code className="font-mono">http://localhost:3000</code></li>
+                    <li>Authorization callback URL:</li>
+                  </ul>
+                  <CodeBlock
+                    filename="GitHub_Callback.txt"
+                    code={`http://localhost:3000/api/integrations/github/callback`}
+                  />
+                  <div>Netlify OAuth App:</div>
+                  <ul className="list-disc pl-6">
+                    <li>Create a Netlify OAuth App (User Settings → Applications → OAuth applications → New OAuth app).</li>
+                    <li>Redirect URL:</li>
+                  </ul>
+                  <CodeBlock
+                    filename="Netlify_Callback.txt"
+                    code={`http://localhost:3000/api/integrations/netlify/callback`}
+                  />
+                </div>
+              </section>
+            )}
+
+            {visibleItemIds.has('project-settings') && (
+              <section id="project-settings" className="space-y-6 mt-12 scroll-mt-24">
+                <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">11</span>
+                  Project Settings
+                </h2>
+                <p className="text-slate-400 font-sans">
+                  Project settings live at <code className="font-mono">/edit/[projectName]/settings</code>, including deployment info, Netlify site details, and metadata/SEO controls.
                 </p>
               </section>
             )}

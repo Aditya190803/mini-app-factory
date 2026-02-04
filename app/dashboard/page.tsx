@@ -4,23 +4,51 @@ import { useUser } from "@stackframe/stack";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { 
   Trash2, 
   Settings2, 
   Calendar, 
   Layers, 
   Globe,
-  ArrowRight
+  ArrowRight,
+  Rocket
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
+import { extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from "@/lib/deploy-shared";
+import { normalizeDeployError, performDeploy } from "@/lib/deploy-client";
+import AccountMenu from "@/components/account-menu";
 
 export default function DashboardPage() {
   const user = useUser();
   const router = useRouter();
   const projects = useQuery(api.projects.getUserProjects, { userId: user?.id ?? "" });
   const deleteProject = useMutation(api.projects.deleteProject);
+  const saveProject = useMutation(api.projects.saveProject);
+  const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isRedeployDialogOpen, setIsRedeployDialogOpen] = useState(false);
+  const [redeployProject, setRedeployProject] = useState<NonNullable<typeof projects>[number] | null>(null);
+  const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only'>('github-netlify');
+  const [redeployRepoName, setRedeployRepoName] = useState('');
+  const [redeployNetlifySiteName, setRedeployNetlifySiteName] = useState('');
+  const [redeployResult, setRedeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
+  const [redeployError, setRedeployError] = useState<string | null>(null);
+  const [isRedeploying, setIsRedeploying] = useState(false);
+  const [isIntegrationLoading, setIsIntegrationLoading] = useState(false);
+  const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
+    githubConnected: false,
+    netlifyConnected: false,
+  });
+
+  const redeployFiles = useQuery(
+    api.files.getFilesByProject,
+    redeployProject?._id ? { projectId: redeployProject._id } : "skip"
+  );
 
   if (!user) {
     return (
@@ -58,6 +86,138 @@ export default function DashboardPage() {
     }
   };
 
+  const linkedRepoFullName = useMemo(
+    () => extractRepoFullNameFromUrl(redeployProject?.repoUrl),
+    [redeployProject?.repoUrl]
+  );
+  const linkedRepoName = useMemo(
+    () => extractRepoNameFromFullName(linkedRepoFullName),
+    [linkedRepoFullName]
+  );
+  const repoValidation = useMemo(() => validateRepoName(redeployRepoName), [redeployRepoName]);
+  const normalizedRepoName = repoValidation.normalized || normalizeRepoName(redeployProject?.projectName ?? "");
+  const normalizedNetlifySiteName = useMemo(
+    () => normalizeNetlifySiteName(redeployNetlifySiteName || normalizedRepoName),
+    [redeployNetlifySiteName, normalizedRepoName]
+  );
+
+  useEffect(() => {
+    if (!redeployProject) return;
+    const provider = redeployProject.deployProvider === 'github' ? 'github-only' : 'github-netlify';
+    setRedeployOption(provider);
+    setRedeployRepoName(linkedRepoName || redeployProject.projectName);
+    setRedeployNetlifySiteName(redeployProject.netlifySiteName || '');
+    setRedeployResult(null);
+    setRedeployError(null);
+  }, [redeployProject, linkedRepoName]);
+
+  useEffect(() => {
+    if (!isRedeployDialogOpen) return;
+    const loadStatus = async () => {
+      setIsIntegrationLoading(true);
+      try {
+        const resp = await fetch('/api/integrations/status');
+        if (!resp.ok) {
+          setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+          return;
+        }
+        const data = await resp.json();
+        setIntegrationStatus({
+          githubConnected: !!data.githubConnected,
+          netlifyConnected: !!data.netlifyConnected,
+        });
+      } finally {
+        setIsIntegrationLoading(false);
+      }
+    };
+    loadStatus();
+  }, [isRedeployDialogOpen]);
+
+  const openRedeploy = (project: NonNullable<typeof projects>[number]) => {
+    setRedeployProject(project);
+    setIsRedeployDialogOpen(true);
+  };
+
+  const startGithubConnect = () => {
+    window.location.href = `/api/integrations/github/start?returnTo=${encodeURIComponent('/dashboard')}`;
+  };
+
+  const startNetlifyConnect = () => {
+    window.location.href = `/api/integrations/netlify/start?returnTo=${encodeURIComponent('/dashboard')}`;
+  };
+
+  const handleRedeploy = async () => {
+    if (!user || !redeployProject) {
+      window.location.href = '/handler/sign-in';
+      return;
+    }
+    if (!redeployFiles || redeployFiles.length === 0) {
+      const message = 'Project files are still loading. Please try again in a moment.';
+      setRedeployError(message);
+      toast.error('Redeploy blocked', { description: message });
+      return;
+    }
+
+    setIsRedeploying(true);
+    setRedeployError(null);
+    setRedeployResult(null);
+    try {
+      const data = await performDeploy({
+        projectName: redeployProject.projectName,
+        prompt: redeployProject.prompt,
+        files: redeployFiles.map((file) => ({ path: file.path, content: file.content })),
+        repoVisibility: 'private',
+        githubOrg: null,
+        deployMode: redeployOption,
+        repoName: normalizedRepoName || redeployProject.projectName,
+        repoFullName: linkedRepoFullName,
+        netlifySiteName: redeployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+      });
+
+      setRedeployResult({
+        repoUrl: data.repoUrl,
+        deploymentUrl: data.deploymentUrl,
+        netlifySiteName: data.netlifySiteName,
+      });
+
+      await saveProject({
+        projectName: redeployProject.projectName,
+        prompt: redeployProject.prompt,
+        html: redeployProject.html,
+        status: redeployProject.status,
+        userId: user.id,
+        isPublished: redeployProject.isPublished,
+        isMultiPage: redeployProject.isMultiPage,
+        pageCount: redeployProject.pageCount,
+        description: redeployProject.description,
+        selectedModel: redeployProject.selectedModel,
+        providerId: redeployProject.providerId,
+        deploymentUrl: data.deploymentUrl ?? undefined,
+        repoUrl: data.repoUrl ?? undefined,
+        deployProvider: redeployOption === 'github-only' ? 'github' : 'netlify',
+        deployedAt: Date.now(),
+        netlifySiteName: data.netlifySiteName ?? undefined,
+      });
+
+      await addDeploymentHistory({
+        projectId: redeployProject._id,
+        provider: redeployOption === 'github-only' ? 'github' : 'netlify',
+        deploymentUrl: data.deploymentUrl ?? undefined,
+        repoUrl: data.repoUrl ?? undefined,
+        netlifySiteName: data.netlifySiteName ?? undefined,
+      });
+
+      toast.success('Redeploy complete', { description: data.deploymentUrl || 'Deployment finished.' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Deploy failed';
+      const normalized = normalizeDeployError(message);
+      setRedeployError(normalized);
+      toast.error('Redeploy failed', { description: normalized });
+    } finally {
+      setIsRedeploying(false);
+    }
+  };
+
   if (projects === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
@@ -77,7 +237,7 @@ export default function DashboardPage() {
       <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-[var(--primary)] opacity-[0.03] blur-[120px] pointer-events-none" />
 
       <div className="relative z-10 max-w-6xl mx-auto w-full px-6 py-8 flex-1">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 relative z-50">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
@@ -101,13 +261,7 @@ export default function DashboardPage() {
             >
               + Create New
             </button>
-            <button
-              onClick={() => user.signOut()}
-              className="px-4 py-2 text-[10px] font-mono border border-[var(--border)] uppercase hover:bg-[var(--background-surface)] transition-all"
-              style={{ color: 'var(--secondary-text)' }}
-            >
-              Log Out
-            </button>
+            <AccountMenu />
           </div>
         </div>
 
@@ -174,6 +328,51 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-1.5 opacity-50">
+                      <Globe className="w-2.5 h-2.5" />
+                      <span className="text-[8px] font-mono uppercase">Deployment</span>
+                    </div>
+                    <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                      {project.deploymentUrl ? (
+                        <>
+                          {project.deployProvider ? project.deployProvider.toUpperCase() : 'DEPLOYED'}
+                        </>
+                      ) : project.isPublished ? (
+                        <>HOSTED</>
+                      ) : (
+                        <>NOT DEPLOYED</>
+                      )}
+                    </div>
+                    {project.deploymentUrl && (
+                      <div className="text-[9px] font-mono text-[var(--muted-text)] break-all">
+                        {project.deploymentUrl}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {project.deploymentUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(project.deploymentUrl, '_blank')}
+                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                        >
+                          Open Live
+                        </Button>
+                      )}
+                      {project.repoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(project.repoUrl, '_blank')}
+                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                        >
+                          Repo
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
@@ -189,7 +388,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-3 border-t border-[var(--border)] bg-[var(--background)]/50 grid grid-cols-4 gap-2">
+                <div className="p-3 border-t border-[var(--border)] bg-[var(--background)]/50 grid grid-cols-5 gap-2">
                   <Button
                     onClick={() => router.push(`/edit/${project.projectName}`)}
                     className="col-span-2 h-9 bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 font-mono uppercase text-[10px] font-black rounded-none shadow-[2px_2px_0px_rgba(var(--primary-rgb),0.1)]"
@@ -198,16 +397,31 @@ export default function DashboardPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => router.push(`/dashboard/${project.projectName}/metadata`)}
+                    onClick={() => router.push(`/edit/${project.projectName}/settings`)}
                     className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none"
-                    title="Metadata & SEO"
+                    title="Project Settings"
                   >
                     <Settings2 className="w-3.5 h-3.5" />
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={!project.isPublished}
-                    onClick={() => window.open(`/results/${project.projectName}`, '_blank')}
+                    onClick={() => openRedeploy(project)}
+                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none"
+                    title="Redeploy"
+                    disabled={!project.repoUrl}
+                  >
+                    <Rocket className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!project.deploymentUrl && !project.isPublished}
+                    onClick={() => {
+                      if (project.deploymentUrl) {
+                        window.open(project.deploymentUrl, '_blank');
+                      } else {
+                        window.open(`/results/${project.projectName}`, '_blank');
+                      }
+                    }}
                     className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none disabled:opacity-20"
                     title="View Live Site"
                   >
@@ -219,6 +433,174 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={isRedeployDialogOpen}
+        onOpenChange={(open) => {
+          setIsRedeployDialogOpen(open);
+          if (!open) {
+            setRedeployProject(null);
+            setRedeployResult(null);
+            setRedeployError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
+              Redeploy {redeployProject?.projectName}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
+              Trigger a fresh deploy directly from the dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
+              <button
+                type="button"
+                onClick={() => setRedeployOption('github-netlify')}
+                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-netlify'
+                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
+                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
+                  }`}
+              >
+                GitHub + Netlify
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedeployOption('github-only')}
+                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-only'
+                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
+                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
+                  }`}
+              >
+                GitHub Repo Only
+              </button>
+            </div>
+
+            <div className="grid gap-2">
+              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
+              <Input
+                value={redeployRepoName}
+                onChange={(e) => setRedeployRepoName(e.target.value)}
+                placeholder={redeployProject?.projectName}
+                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+                disabled={!!linkedRepoFullName}
+              />
+              <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                {linkedRepoFullName && `Linked repo: ${linkedRepoFullName}. Repo name locked. `}
+                {normalizedRepoName && `Slug: ${normalizedRepoName}. `}
+                {!repoValidation.valid && repoValidation.message}
+              </div>
+            </div>
+
+            {redeployOption === 'github-netlify' && (
+              <div className="grid gap-2">
+                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
+                <Input
+                  value={redeployNetlifySiteName}
+                  onChange={(e) => setRedeployNetlifySiteName(e.target.value)}
+                  placeholder={normalizedRepoName || redeployProject?.projectName}
+                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+                />
+                <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                  Subdomain slug: {normalizedNetlifySiteName || '—'}.
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
+              <div>
+                <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
+                <div className="text-[11px] text-[var(--muted-text)]">
+                  {isIntegrationLoading ? 'Checking...' : integrationStatus.githubConnected ? 'Connected' : 'Not connected'}
+                </div>
+              </div>
+              <Button
+                onClick={startGithubConnect}
+                variant="outline"
+                className="font-mono uppercase text-[10px] border-[var(--border)]"
+              >
+                {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
+              </Button>
+            </div>
+
+            {redeployOption === 'github-netlify' && (
+              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
+                <div>
+                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
+                  <div className="text-[11px] text-[var(--muted-text)]">
+                    {isIntegrationLoading ? 'Checking...' : integrationStatus.netlifyConnected ? 'Connected' : 'Not connected'}
+                  </div>
+                </div>
+                <Button
+                  onClick={startNetlifyConnect}
+                  variant="outline"
+                  className="font-mono uppercase text-[10px] border-[var(--border)]"
+                >
+                  {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
+                </Button>
+              </div>
+            )}
+
+            {redeployResult?.repoUrl && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Repo: <span className="text-[var(--primary)]">{redeployResult.repoUrl}</span>
+                </div>
+              </div>
+            )}
+            {redeployResult?.deploymentUrl && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Live URL: <span className="text-[var(--primary)]">{redeployResult.deploymentUrl}</span>
+                </div>
+              </div>
+            )}
+            {redeployResult?.netlifySiteName && (
+              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
+                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
+                  Netlify Site: <span className="text-[var(--primary)]">{redeployResult.netlifySiteName}</span>
+                </div>
+              </div>
+            )}
+            {redeployFiles === undefined && (
+              <div className="text-[11px] text-[var(--muted-text)] font-mono flex items-center gap-2">
+                <Spinner className="text-[var(--primary)]" />
+                Loading project files...
+              </div>
+            )}
+            {redeployError && (
+              <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
+                {redeployError}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsRedeployDialogOpen(false)}
+              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleRedeploy}
+              disabled={
+                isRedeploying ||
+                !repoValidation.valid ||
+                (redeployOption === 'github-netlify' && !integrationStatus.netlifyConnected) ||
+                !integrationStatus.githubConnected ||
+                redeployFiles === undefined
+              }
+              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
+            >
+              {isRedeploying ? 'Deploying...' : 'Redeploy Now'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

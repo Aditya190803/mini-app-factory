@@ -8,6 +8,7 @@ import { FactoryIcon } from "@/components/ui/factory-icon";
 import { ModelSelector } from "@/components/ui/model-selector";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
+import AccountMenu from "@/components/account-menu";
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -24,6 +25,7 @@ export default function Home() {
       textareaRef.current.focus();
     }
   }, []);
+
 
   const handleStart = async () => {
     setError('');
@@ -117,7 +119,7 @@ export default function Home() {
 
       {/* Header */}
       <header
-        className="relative z-10 border-b backdrop-blur-xl"
+        className="relative z-50 border-b backdrop-blur-xl"
         style={{
           backgroundColor: 'rgba(10, 10, 10, 0.5)',
           borderColor: 'var(--border)'
@@ -166,26 +168,7 @@ export default function Home() {
 
             <div className="h-4 w-[1px] bg-[var(--border)] hidden md:block" />
 
-            {user ? (
-              <div className="flex items-center gap-4">
-                <div className="flex flex-col items-end">
-                   <span className="text-[10px] font-mono text-white opacity-40 uppercase truncate max-w-[100px]">{user.primaryEmail}</span>
-                </div>
-                <button
-                  onClick={() => user.signOut()}
-                  className="px-4 py-1.5 text-[9px] font-mono border border-[var(--border)] uppercase hover:bg-white hover:text-black transition-all"
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => router.push('/handler/sign-in')}
-                className="px-5 py-2 text-[9px] font-mono border border-[var(--primary)]/30 bg-[var(--primary)]/5 uppercase hover:bg-[var(--primary)] hover:text-black transition-all text-[var(--primary)]"
-              >
-                Login
-              </button>
-            )}
+            <AccountMenu />
 
           </div>
         </div>

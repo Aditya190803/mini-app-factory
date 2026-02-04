@@ -1,4 +1,5 @@
 import React from "react"
+import Link from "next/link";
 import { StackProvider, StackTheme } from "@stackframe/stack";
 import { stackClientApp } from "../stack/client";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
@@ -29,6 +30,27 @@ export default function RootLayout({
           <StackTheme>
             <ConvexClientProvider>
               {children}
+              <footer className="border-t border-[var(--border)] bg-[var(--background)]">
+                <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">
+                    Mini App Factory
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-[10px] font-mono uppercase">
+                    <Link href="/docs" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
+                      Documentation
+                    </Link>
+                    <Link href="/privacy" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
+                      Privacy Policy
+                    </Link>
+                    <Link href="/eula" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
+                      EULA
+                    </Link>
+                    <Link href="/support" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
+                      Support
+                    </Link>
+                  </div>
+                </div>
+              </footer>
               <Toaster position="bottom-right" theme="dark" />
               <Analytics />
             </ConvexClientProvider>
