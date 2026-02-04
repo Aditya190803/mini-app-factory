@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     await saveProject({
       name: normalizedName,
       prompt,
-      createdAt: new Date().toISOString(),
+      createdAt: Date.now(),
       status: 'pending',
       userId: user.id,
       selectedModel,

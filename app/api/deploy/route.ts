@@ -3,6 +3,8 @@ import { getIntegrationTokens } from "@/lib/integrations";
 import { buildGitHubContentPayload, normalizePath } from "@/lib/deploy-server";
 import { getRepoLookupTargets, normalizeNetlifySiteName, slugifyRepoName } from "@/lib/deploy-shared";
 import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-content";
+import { getProject, getFiles } from "@/lib/projects";
+import { getServerEnv } from "@/lib/env";
 
 function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
   const encoder = new TextEncoder();
@@ -10,14 +12,14 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
     write: (data: unknown) => {
       try {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      } catch (_err) {
+      } catch {
         // Stream might be closed
       }
     },
     close: () => {
       try {
         controller.close();
-      } catch (_err) {
+      } catch {
         // Already closed
       }
     }
@@ -32,7 +34,7 @@ type DeployFile = {
 type DeployRequest = {
   projectName: string;
   prompt?: string;
-  files: DeployFile[];
+  files?: DeployFile[];
   repoVisibility?: "private" | "public";
   githubOrg?: string | null;
   deployMode?: "github-vercel" | "github-netlify" | "github-only";
@@ -97,15 +99,44 @@ async function netlifyRequest<T>(url: string, token: string, init?: RequestInit)
 }
 
 export async function POST(req: Request) {
+  try {
+    getServerEnv();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid environment configuration";
+    return Response.json({ error: message }, { status: 500 });
+  }
+
   const user = await stackServerApp.getUser();
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = (await req.json()) as DeployRequest;
-  if (!body?.projectName || !Array.isArray(body.files)) {
+  if (!body?.projectName) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
+
+  const project = await getProject(body.projectName);
+  if (!project) {
+    return Response.json({ error: "Project not found" }, { status: 404 });
+  }
+  // Legacy/guest projects may not have a `userId`. We currently allow any authenticated
+  // user to deploy those, while deletion paths still enforce ownership—keep behavior in sync.
+  if (project.userId && project.userId !== user.id) {
+    return Response.json({ error: "Unauthorized to deploy this project" }, { status: 403 });
+  }
+
+  const storedFiles = await getFiles(body.projectName);
+  if (storedFiles.length === 0) {
+    return Response.json(
+      { error: "No files to deploy. Please generate or add files to the project first." },
+      { status: 400 }
+    );
+  }
+  const deployFiles: DeployFile[] = storedFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+  }));
 
   const deployMode =
     body.deployMode === "github-only"
@@ -182,7 +213,7 @@ export async function POST(req: Request) {
           const description = await generateRepoDescription({
             projectName: body.projectName,
             prompt: body.prompt,
-            files: body.files.map((file) => file.path),
+            files: deployFiles.map((file) => file.path),
           });
           const repoCreateUrl = targetOrg
             ? `https://api.github.com/orgs/${encodeURIComponent(targetOrg)}/repos`
@@ -206,7 +237,7 @@ export async function POST(req: Request) {
         const defaultBranch = repo.default_branch || "main";
         const owner = repo.owner?.login ?? viewer.login;
 
-        const uploadFiles = [...body.files];
+        const uploadFiles = [...deployFiles];
         const readmeExists = uploadFiles.some((f) => normalizePath(f.path).toLowerCase() === "readme.md");
         if (!readmeExists) {
           writer.write({ status: "progress", message: "GitHub: Generating README" });

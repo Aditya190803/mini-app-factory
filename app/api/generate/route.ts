@@ -1,11 +1,21 @@
+import { z } from 'zod';
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
 import { getProject, saveProject, saveFiles } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { getAIClient, SessionEvent } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
-import { ProjectFile } from '@/lib/page-builder';
+import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
+import { getServerEnv } from '@/lib/env';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
+import { withRetry } from '@/lib/ai-retry';
 
 const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+
+const generateSchema = z.object({
+  projectName: z.string().min(1),
+  prompt: z.string().optional(),
+});
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -50,26 +60,35 @@ function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>
   return { write, close, markClosed, isClosed };
 }
 
-function sanitizeErrorMessage(raw: unknown): string {
+function classifyGenerationError(raw: unknown): { code: string; message: string } {
   try {
     const rawMsg = typeof raw === 'string' ? raw : (raw instanceof Error ? raw.message : String(raw));
     const m = rawMsg.toLowerCase();
 
     if (m.includes('cerebras_api_key') || m.includes('cerebras api key') || m.includes('cerebras_api_key'.toLowerCase())) {
-      return 'Missing CEREBRAS_API_KEY. To enable AI features, set CEREBRAS_API_KEY in your environment or deployment variables and restart the server.';
+      return {
+        code: 'ENV_MISSING',
+        message: 'Missing CEREBRAS_API_KEY. To enable AI features, set CEREBRAS_API_KEY in your environment or deployment variables and restart the server.'
+      };
     }
 
     if (m.includes('cerebras') || m.includes('provider returned') || m.includes('rate-limited') || m.includes('glm') || m.includes('openinference')) {
-      return 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Add your CEREBRAS_API_KEY, switch providers, or try again shortly.';
+      return {
+        code: 'AI_PROVIDER_ERROR',
+        message: 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Add your CEREBRAS_API_KEY, switch providers, or try again shortly.'
+      };
     }
 
-    if (/timeout|timed out/.test(m)) return 'AI request timed out. Try again.';
-    if (/network|enotfound|eai_again|econnrefused|econnreset/.test(m)) return 'Network error contacting AI provider. Ensure server can reach the provider and try again.';
+    if (/timeout|timed out/.test(m)) return { code: 'AI_TIMEOUT', message: 'AI request timed out. Try again.' };
+    if (/network|enotfound|eai_again|econnrefused|econnreset/.test(m)) {
+      return { code: 'AI_NETWORK_ERROR', message: 'Network error contacting AI provider. Ensure server can reach the provider and try again.' };
+    }
 
     // Default to the raw string but keep it concise
-    return rawMsg.length > 800 ? rawMsg.slice(0, 800) + '…' : rawMsg;
+    const concise = rawMsg.length > 800 ? rawMsg.slice(0, 800) + '…' : rawMsg;
+    return { code: 'AI_ERROR', message: concise };
   } catch {
-    return 'Unknown error contacting AI provider';
+    return { code: 'AI_ERROR', message: 'Unknown error contacting AI provider' };
   }
 }
 
@@ -81,7 +100,8 @@ export async function runGeneration(
   projectName: string,
   finalPrompt: string,
   signal: AbortSignal,
-  onEvent?: (event: SessionEvent) => void
+  onEvent?: (event: SessionEvent) => void,
+  requestId?: string
 ): Promise<{ html: string; files: ProjectFile[] } | { error: string }> {
   const project = await getProject(projectName);
   if (!project) return { error: 'Project not found during generation' };
@@ -120,9 +140,19 @@ export async function runGeneration(
       });
 
       try {
-        const designResp = await designSession.sendAndWait({ prompt: finalPrompt }, 120000);
-        if (sessionError) throw sessionError;
-        designSpec = designResp?.data?.content || '';
+        const cacheKey = `${project.selectedModel || MODEL}:${project.providerId || ''}:${finalPrompt}`;
+        const cached = getCachedDesignSpec(cacheKey);
+        if (cached) {
+          designSpec = cached;
+        } else {
+          const designResp = await withRetry(
+            () => designSession.sendAndWait({ prompt: finalPrompt }, 120000),
+            { maxAttempts: 3, baseDelayMs: 800 }
+          );
+          if (sessionError) throw sessionError;
+          designSpec = designResp?.data?.content || '';
+          if (designSpec) setCachedDesignSpec(cacheKey, designSpec);
+        }
       } finally {
         unsubscribe();
       }
@@ -179,9 +209,12 @@ Return ONLY code blocks. No explanations.`;
 
       try {
         const mainPrompt = buildMainPrompt(finalPrompt);
-        const htmlResp = await htmlSession.sendAndWait({
-          prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
-        }, 120000);
+        const htmlResp = await withRetry(
+          () => htmlSession.sendAndWait({
+            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
+          }, 120000),
+          { maxAttempts: 3, baseDelayMs: 800 }
+        );
         if (sessionError) throw sessionError;
         
         const content = htmlResp?.data?.content || '';
@@ -200,6 +233,11 @@ Return ONLY code blocks. No explanations.`;
       }
     } finally {
       await htmlSession.destroy().catch(() => { });
+    }
+
+    const structure = validateFileStructure(files);
+    if (!structure.valid) {
+      return { error: `Invalid file structure: ${structure.errors.join(', ')}` };
     }
 
     // Always save the result to the database (even if client disconnected)
@@ -225,44 +263,68 @@ Return ONLY code blocks. No explanations.`;
     return { html, files };
   } catch (err) {
     const original = err instanceof Error ? err.message : String(err);
-    const errorMessage = sanitizeErrorMessage(original);
+    const errorInfo = classifyGenerationError(original);
 
     // Log original for debugging, save sanitized to project state
-    console.error('[Generation] error for', projectName, ':', original);
+    console.error(`[Generation ${requestId ?? 'unknown'}] error for`, projectName, ':', original);
 
     try {
       const proj = await getProject(projectName);
       if (proj) {
         proj.status = 'error';
-        proj.error = errorMessage;
+        proj.error = errorInfo.message;
         await saveProject(proj);
       }
     } catch { /* ignore */ }
 
-    return { error: errorMessage };
+    return { error: errorInfo.message };
   }
 }
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
   try {
-    const { prompt, projectName } = await request.json();
-
-    if (!projectName) {
-      return Response.json({ error: 'Project name is required' }, { status: 400 });
+    try {
+      getServerEnv();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid environment configuration';
+      return Response.json({ error: message, code: 'ENV_INVALID', requestId }, { status: 500 });
     }
+
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON payload', code: 'INVALID_JSON', requestId }, { status: 400 });
+    }
+    const parsed = generateSchema.safeParse(payload);
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
+    }
+
+    const { prompt, projectName } = parsed.data;
 
     const user = await stackServerApp.getUser();
     if (!user) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
+      return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
+    }
+
+    const rateLimit = checkRateLimit({ key: `${user.id}:generate`, limit: 10, windowMs: 60_000 });
+    if (!rateLimit.allowed) {
+      const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
+      return Response.json(
+        { error: 'Rate limit exceeded. Please wait before retrying.', code: 'RATE_LIMITED', retryAfter, requestId },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      );
     }
 
     const project = await getProject(projectName);
     if (!project) {
-      return Response.json({ error: 'Project not found' }, { status: 404 });
+      return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
     }
 
     if (project.userId && project.userId !== user.id) {
-      return Response.json({ error: 'Unauthorized to edit this project' }, { status: 403 });
+      return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
     }
 
     const finalPrompt = prompt || project.prompt;
@@ -322,14 +384,16 @@ export async function POST(request: Request) {
               if (event.type === 'provider.fallback') {
                 sse.write({ status: 'fallback', message: event.data.message });
               }
-            }
+            },
+            requestId
           );
 
           // Check stream state before any writes
           if (sse.isClosed()) return;
 
           if ('error' in result && result.error !== 'Aborted') {
-            sse.write({ status: 'error', error: result.error });
+            const errorInfo = classifyGenerationError(result.error);
+            sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
           } else if ('html' in result) {
             // Double-check stream state before each write
             if (!sse.write({ status: 'fabricating', message: 'Fabricating production code...' })) return;
@@ -337,15 +401,15 @@ export async function POST(request: Request) {
             if (!sse.write({ status: 'finalizing', message: 'Polishing and optimizing...' })) return;
             await new Promise(r => setTimeout(r, 300));
             if (!sse.isClosed()) {
-              sse.write({ status: 'completed', html: result.html, files: result.files });
+              sse.write({ status: 'completed', html: result.html, files: result.files, requestId });
             }
           }
         })()
           .catch((err) => {
-            const sanitized = sanitizeErrorMessage(err instanceof Error ? err.message : err);
-            console.error('Generation workflow error:', err);
+            const errorInfo = classifyGenerationError(err instanceof Error ? err.message : err);
+            console.error(`[Generation ${requestId}] workflow error:`, err);
             if (!sse.isClosed()) {
-              sse.write({ status: 'error', error: sanitized });
+              sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
             }
           })
           .finally(() => {
@@ -369,8 +433,8 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    const msg = sanitizeErrorMessage(error instanceof Error ? error.message : error);
-    console.error('Failed to initialize generation:', error);
-    return Response.json({ error: msg }, { status: 500 });
+    const errorInfo = classifyGenerationError(error instanceof Error ? error.message : error);
+    console.error(`[Generation ${requestId}] Failed to initialize:`, error);
+    return Response.json({ error: errorInfo.message, code: errorInfo.code, requestId }, { status: 500 });
   }
 }
