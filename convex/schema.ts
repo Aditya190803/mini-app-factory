@@ -7,6 +7,13 @@ export default defineSchema({
     projectName: v.string(),
     prompt: v.string(),
     html: v.optional(v.string()), // Kept for migration, will be removed later
+    pages: v.optional(v.array(v.object({
+      html: v.string(),
+      isHomePage: v.optional(v.boolean()),
+      order: v.optional(v.number()),
+      slug: v.optional(v.string()),
+      title: v.optional(v.string()),
+    }))),
     status: v.union(
       v.literal("pending"),
       v.literal("generating"),
@@ -25,7 +32,6 @@ export default defineSchema({
     globalJs: v.optional(v.string()),
     globalHeader: v.optional(v.string()),
     globalFooter: v.optional(v.string()),
-    pages: v.optional(v.any()),
     favicon: v.optional(v.string()), // URL or Emoji
     globalSeo: v.optional(v.object({
       siteName: v.optional(v.string()),
