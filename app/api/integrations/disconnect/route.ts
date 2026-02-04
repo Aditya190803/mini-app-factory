@@ -10,8 +10,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { provider?: "github" | "vercel" | "netlify" | "all" };
-  const provider = body?.provider ?? "all";
+  let provider: "github" | "vercel" | "netlify" | "all" = "all";
+  try {
+    const body = (await req.json()) as { provider?: string };
+    if (body?.provider) {
+      if (!["github", "vercel", "netlify", "all"].includes(body.provider)) {
+        return Response.json({ error: "Invalid provider" }, { status: 400 });
+      }
+      provider = body.provider as typeof provider;
+    }
+  } catch {
+    return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+  }
 
   await convex.mutation(api.integrations.clearIntegration, {
     userId: user.id,

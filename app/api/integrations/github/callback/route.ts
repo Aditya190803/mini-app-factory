@@ -48,7 +48,15 @@ export async function GET(req: Request) {
     return Response.json({ error: "GitHub token exchange failed", details: errorText }, { status: 500 });
   }
 
-  const tokenData = (await tokenResp.json()) as { access_token?: string };
+  const tokenData = (await tokenResp.json()) as {
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+  if (tokenData.error) {
+    console.error("GitHub OAuth error:", tokenData.error, tokenData.error_description);
+    return Response.json({ error: "GitHub token exchange failed" }, { status: 500 });
+  }
   if (!tokenData.access_token) {
     return Response.json({ error: "Missing access token" }, { status: 500 });
   }

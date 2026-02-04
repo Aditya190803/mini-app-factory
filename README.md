@@ -70,13 +70,16 @@ A powerful AI-powered web application that generates production-ready multi-page
    GITHUB_CLIENT_ID=your_github_oauth_client_id
    GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 
-# Netlify OAuth (Deployments)
-NETLIFY_CLIENT_ID=your_netlify_oauth_client_id
-NETLIFY_CLIENT_SECRET=your_netlify_oauth_client_secret
+   # Netlify OAuth (Deployments)
+   NETLIFY_CLIENT_ID=your_netlify_oauth_client_id
+   NETLIFY_CLIENT_SECRET=your_netlify_oauth_client_secret
 
-# Vercel OAuth (Legacy/Hidden)
-VERCEL_CLIENT_ID=your_vercel_oauth_client_id
-VERCEL_CLIENT_SECRET=your_vercel_oauth_client_secret
+   # Vercel OAuth (Legacy/Hidden)
+   VERCEL_CLIENT_ID=your_vercel_oauth_client_id
+   VERCEL_CLIENT_SECRET=your_vercel_oauth_client_secret
+
+   # Integration Token Encryption
+   INTEGRATION_TOKEN_SECRET=your_32+_char_secret
    ```
 
 ### One-Click Deploy (GitHub + Netlify)
