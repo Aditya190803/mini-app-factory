@@ -20,6 +20,11 @@ export interface ProjectMetadata {
   selectedModel?: string;
   providerId?: string;
   favicon?: string;
+  deploymentUrl?: string;
+  repoUrl?: string;
+  deployProvider?: string;
+  deployedAt?: number;
+  netlifySiteName?: string;
   globalSeo?: {
     siteName?: string;
     description?: string;
@@ -47,6 +52,11 @@ export async function saveProject(metadata: ProjectMetadata) {
     description: metadata.description,
     selectedModel: metadata.selectedModel,
     providerId: metadata.providerId,
+    deploymentUrl: metadata.deploymentUrl,
+    repoUrl: metadata.repoUrl,
+    deployProvider: metadata.deployProvider,
+    deployedAt: metadata.deployedAt,
+    netlifySiteName: metadata.netlifySiteName,
   });
 }
 
@@ -68,6 +78,11 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
     selectedModel: project.selectedModel,
     providerId: project.providerId,
     favicon: project.favicon,
+    deploymentUrl: project.deploymentUrl,
+    repoUrl: project.repoUrl,
+    deployProvider: project.deployProvider,
+    deployedAt: project.deployedAt,
+    netlifySiteName: project.netlifySiteName,
     seoData: project.seoData,
   };
 }

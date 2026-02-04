@@ -29,6 +29,11 @@ export const saveProject = mutation({
     description: v.optional(v.string()),
     selectedModel: v.optional(v.string()),
     providerId: v.optional(v.string()),
+    deploymentUrl: v.optional(v.string()),
+    repoUrl: v.optional(v.string()),
+    deployProvider: v.optional(v.string()),
+    deployedAt: v.optional(v.number()),
+    netlifySiteName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -52,6 +57,11 @@ export const saveProject = mutation({
         description: args.description ?? existing.description,
         selectedModel: args.selectedModel ?? existing.selectedModel,
         providerId: args.providerId ?? existing.providerId,
+        deploymentUrl: args.deploymentUrl ?? existing.deploymentUrl,
+        repoUrl: args.repoUrl ?? existing.repoUrl,
+        deployProvider: args.deployProvider ?? existing.deployProvider,
+        deployedAt: args.deployedAt ?? existing.deployedAt,
+        netlifySiteName: args.netlifySiteName ?? existing.netlifySiteName,
         updatedAt: now,
       });
       return existing._id;
@@ -68,6 +78,11 @@ export const saveProject = mutation({
         description: args.description,
         selectedModel: args.selectedModel,
         providerId: args.providerId,
+        deploymentUrl: args.deploymentUrl,
+        repoUrl: args.repoUrl,
+        deployProvider: args.deployProvider,
+        deployedAt: args.deployedAt,
+        netlifySiteName: args.netlifySiteName,
         createdAt: now,
         updatedAt: now,
       });

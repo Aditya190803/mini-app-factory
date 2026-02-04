@@ -8,7 +8,9 @@
  * @module
  */
 
+import type * as deployments from "../deployments.js";
 import type * as files from "../files.js";
+import type * as integrations from "../integrations.js";
 import type * as projects from "../projects.js";
 import type * as uploads from "../uploads.js";
 
@@ -19,7 +21,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  deployments: typeof deployments;
   files: typeof files;
+  integrations: typeof integrations;
   projects: typeof projects;
   uploads: typeof uploads;
 }>;

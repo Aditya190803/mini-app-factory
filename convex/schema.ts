@@ -38,6 +38,11 @@ export default defineSchema({
       description: v.optional(v.string()),
       ogImage: v.optional(v.string()),
     }))),
+    deploymentUrl: v.optional(v.string()),
+    repoUrl: v.optional(v.string()),
+    deployProvider: v.optional(v.string()),
+    deployedAt: v.optional(v.number()),
+    netlifySiteName: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -77,5 +82,29 @@ export default defineSchema({
     userId: v.optional(v.string()),
   })
     .index("by_file", ["fileId"])
+    .index("by_project_time", ["projectId", "createdAt"]),
+
+  userIntegrations: defineTable({
+    userId: v.string(),
+    githubAccessToken: v.optional(v.string()),
+    vercelAccessToken: v.optional(v.string()),
+    netlifyAccessToken: v.optional(v.string()),
+    githubConnectedAt: v.optional(v.number()),
+    vercelConnectedAt: v.optional(v.number()),
+    netlifyConnectedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"]),
+
+  deploymentHistory: defineTable({
+    projectId: v.id("projects"),
+    provider: v.string(),
+    deploymentUrl: v.optional(v.string()),
+    repoUrl: v.optional(v.string()),
+    netlifySiteName: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
     .index("by_project_time", ["projectId", "createdAt"]),
 });
