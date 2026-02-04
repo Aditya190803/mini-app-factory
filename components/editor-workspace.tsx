@@ -50,6 +50,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isExporting, setIsExporting] = useState(false);
   const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [deployStatus, setDeployStatus] = useState<string | null>(null);
   const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
     githubConnected: false,
     netlifyConnected: false,
@@ -951,6 +952,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
 
     setIsDeploying(true);
+    setDeployStatus('Starting deployment...');
     setDeployError(null);
     setDeployResult(null);
     setDeployNotice(null);
@@ -965,6 +967,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         repoName: normalizedRepoName || projectName,
         repoFullName: linkedRepoFullName,
         netlifySiteName: deployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+      }, (status) => {
+        setDeployStatus(status);
       });
       setDeployResult({ repoUrl: data.repoUrl, deploymentUrl: data.deploymentUrl, netlifySiteName: data.netlifySiteName });
       await saveProject({
@@ -1510,6 +1514,17 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             {deployError && (
               <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
                 {deployError}
+              </div>
+            )}
+            {isDeploying && deployStatus && (
+              <div className="p-3 border border-[var(--border)] rounded-md bg-[var(--background-overlay)]/30 space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] tracking-wider">Deployment Status</span>
+                </div>
+                <div className="text-[12px] font-mono text-[var(--foreground)] pl-4 border-l-2 border-[var(--primary)]/30 py-1">
+                  {deployStatus}
+                </div>
               </div>
             )}
           </div>

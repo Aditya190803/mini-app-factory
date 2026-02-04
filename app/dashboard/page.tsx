@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [redeployResult, setRedeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
   const [redeployError, setRedeployError] = useState<string | null>(null);
   const [isRedeploying, setIsRedeploying] = useState(false);
+  const [redeployStatus, setRedeployStatus] = useState<string | null>(null);
   const [isIntegrationLoading, setIsIntegrationLoading] = useState(false);
   const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
     githubConnected: false,
@@ -159,6 +160,7 @@ export default function DashboardPage() {
     }
 
     setIsRedeploying(true);
+    setRedeployStatus('Starting redeployment...');
     setRedeployError(null);
     setRedeployResult(null);
     try {
@@ -172,6 +174,8 @@ export default function DashboardPage() {
         repoName: normalizedRepoName || redeployProject.projectName,
         repoFullName: linkedRepoFullName,
         netlifySiteName: redeployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+      }, (status) => {
+        setRedeployStatus(status);
       });
 
       setRedeployResult({
@@ -574,6 +578,17 @@ export default function DashboardPage() {
             {redeployError && (
               <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
                 {redeployError}
+              </div>
+            )}
+            {isRedeploying && redeployStatus && (
+              <div className="p-3 border border-[var(--border)] rounded-md bg-[var(--background-overlay)]/30 space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
+                  <span className="text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] tracking-wider">Redeployment Status</span>
+                </div>
+                <div className="text-[12px] font-mono text-[var(--foreground)] pl-4 border-l-2 border-[var(--primary)]/30 py-1">
+                  {redeployStatus}
+                </div>
               </div>
             )}
           </div>

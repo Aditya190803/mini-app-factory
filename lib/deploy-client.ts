@@ -1,3 +1,5 @@
+import { readStream } from "./stream-utils";
+
 export function normalizeDeployError(message: string) {
   if (/GitHub API error: 422/i.test(message)) {
     const details = message.replace(/GitHub API error: 422\s*/i, "").trim();
@@ -43,7 +45,7 @@ export type DeployApiResult = {
   netlifySiteName?: string;
 };
 
-export async function performDeploy(payload: DeployApiPayload) {
+export async function performDeploy(payload: DeployApiPayload, onStatus?: (status: string) => void): Promise<DeployApiResult> {
   const resp = await fetch("/api/deploy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -58,5 +60,26 @@ export async function performDeploy(payload: DeployApiPayload) {
       throw new Error(errText || "Deploy failed");
     }
   }
-  return (await resp.json()) as DeployApiResult;
+
+  let result: DeployApiResult | null = null;
+  
+  await readStream(
+    resp,
+    () => {},
+    (event) => {
+      if (event.status === "progress" && event.message) {
+        onStatus?.(event.message);
+      } else if (event.status === "success" && (event as any).data) {
+        result = (event as any).data;
+      } else if (event.status === "error") {
+        throw new Error(event.message || "Deploy failed");
+      }
+    }
+  );
+
+  if (!result) {
+    throw new Error("Deployment failed to complete");
+  }
+
+  return result;
 }
