@@ -157,3 +157,19 @@ export const deleteProject = mutation({
     await ctx.db.delete(project._id);
   },
 });
+
+export const cleanupLegacyFields = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const projects = await ctx.db.query("projects").collect();
+    for (const project of projects) {
+      await ctx.db.patch(project._id, {
+        // Remove legacy visual reference fields that are no longer in schema
+        visualReferences: undefined,
+        visualAnalysis: undefined,
+        isStrictRecreation: undefined,
+      } as Record<string, undefined>);
+    }
+    return { updated: projects.length };
+  },
+});

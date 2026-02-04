@@ -10,6 +10,7 @@
 
 import type * as files from "../files.js";
 import type * as projects from "../projects.js";
+import type * as uploads from "../uploads.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   files: typeof files;
   projects: typeof projects;
+  uploads: typeof uploads;
 }>;
 
 /**
