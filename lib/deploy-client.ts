@@ -29,7 +29,7 @@ export function normalizeDeployError(message: string) {
 export type DeployApiPayload = {
   projectName: string;
   prompt?: string;
-  files: Array<{ path: string; content: string }>;
+  files?: Array<{ path: string; content: string }>;
   repoVisibility?: "private" | "public";
   githubOrg?: string | null;
   deployMode?: "github-netlify" | "github-only";

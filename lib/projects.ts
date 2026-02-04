@@ -3,12 +3,24 @@ import { api } from "@/convex/_generated/api";
 
 import { ProjectFile } from "./page-builder";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+// Lazy-initialize the convex client to avoid errors when running tests
+let _convex: ConvexHttpClient | null = null;
+function getConvex(): ConvexHttpClient {
+  if (!_convex) {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) {
+      throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
+    }
+    _convex = new ConvexHttpClient(url);
+  }
+  return _convex;
+}
 
 export interface ProjectMetadata {
   name: string;
   prompt: string;
-  createdAt: string;
+  createdAt: number;
+  updatedAt?: number;
   status: 'pending' | 'generating' | 'completed' | 'error';
   html?: string;
   error?: string;
@@ -35,12 +47,12 @@ export interface ProjectMetadata {
 }
 
 export async function projectExists(name: string): Promise<boolean> {
-  const project = await convex.query(api.projects.getProject, { projectName: name });
+  const project = await getConvex().query(api.projects.getProject, { projectName: name });
   return !!project;
 }
 
 export async function saveProject(metadata: ProjectMetadata) {
-  await convex.mutation(api.projects.saveProject, {
+  await getConvex().mutation(api.projects.saveProject, {
     projectName: metadata.name,
     prompt: metadata.prompt,
     html: metadata.html,
@@ -61,13 +73,14 @@ export async function saveProject(metadata: ProjectMetadata) {
 }
 
 export async function getProject(name: string): Promise<ProjectMetadata | null> {
-  const project = await convex.query(api.projects.getProject, { projectName: name });
+  const project = await getConvex().query(api.projects.getProject, { projectName: name });
   if (!project) return null;
   
   return {
     name: project.projectName,
     prompt: project.prompt,
-    createdAt: new Date(project.createdAt).toISOString(),
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
     status: project.status as ProjectMetadata['status'],
     html: project.html,
     isPublished: project.isPublished,
@@ -88,18 +101,21 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
 }
 
 export async function getFiles(projectName: string) {
+  const convex = getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return [];
   return await convex.query(api.files.getFilesByProject, { projectId: project._id });
 }
 
 export async function getFile(projectName: string, path: string) {
+  const convex = getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return null;
   return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
 }
 
 export async function saveFiles(projectName: string, files: ProjectFile[]) {
+  const convex = getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) throw new Error("Project not found");
   await convex.mutation(api.files.saveFiles, {

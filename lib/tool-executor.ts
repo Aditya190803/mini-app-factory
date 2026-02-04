@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import * as csstree from 'css-tree';
+import path from 'path';
 import { ProjectFile } from './page-builder';
 
 export interface ToolResult {
@@ -9,6 +10,154 @@ export interface ToolResult {
   deletedPaths?: string[];
 }
 
+type ToolValidationResult =
+  | { success: true; args: Record<string, unknown> }
+  | { success: false; message: string };
+
+const ALLOWED_TOOLS = new Set([
+  'updateFile',
+  'replaceContent',
+  'replaceElement',
+  'insertContent',
+  'deleteContent',
+  'createFile',
+  'deleteFile',
+  'renameFile',
+  'updateStyle',
+  'batchEdit',
+]);
+
+function normalizeToolPath(input: string): string | null {
+  if (!input || typeof input !== 'string') return null;
+  let sanitized = input.replace(/\\/g, '/').trim();
+  if (!sanitized) return null;
+  sanitized = sanitized.replace(/^\.\/+/, '');
+  sanitized = sanitized.replace(/^\/+/, '');
+  const normalized = path.posix.normalize(sanitized);
+  if (normalized === '.' || normalized.startsWith('..') || normalized.includes('/../')) return null;
+  return normalized;
+}
+
+export function validateToolCall(toolName: string, args: Record<string, unknown>): ToolValidationResult {
+  if (!ALLOWED_TOOLS.has(toolName)) {
+    return { success: false, message: `Tool not allowed: ${toolName}` };
+  }
+
+  const normalizedArgs: Record<string, unknown> = { ...args };
+
+  const normalizeFileTypeValue = (value: unknown): ProjectFile['fileType'] | null => {
+    const raw = String(value ?? '').toLowerCase();
+    if (raw === 'html') return 'page';
+    if (raw === 'css') return 'style';
+    if (raw === 'js' || raw === 'javascript') return 'script';
+    if (raw === 'page' || raw === 'partial' || raw === 'style' || raw === 'script') {
+      return raw as ProjectFile['fileType'];
+    }
+    return null;
+  };
+
+  const normalizeField = (key: string) => {
+    const value = normalizedArgs[key];
+    if (typeof value !== 'string') return null;
+    const normalized = normalizeToolPath(value);
+    if (!normalized) return null;
+    normalizedArgs[key] = normalized;
+    return normalized;
+  };
+
+  switch (toolName) {
+    case 'updateFile': {
+      if (!normalizeField('file')) return { success: false, message: 'Invalid file path' };
+      if (typeof normalizedArgs.content !== 'string') {
+        return { success: false, message: 'Invalid content' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'replaceContent': {
+      if (!normalizeField('file')) return { success: false, message: 'Invalid file path' };
+      if (typeof normalizedArgs.selector !== 'string' || typeof normalizedArgs.newContent !== 'string') {
+        return { success: false, message: 'Invalid selector or newContent' };
+      }
+      if (normalizedArgs.oldContent && typeof normalizedArgs.oldContent !== 'string') {
+        return { success: false, message: 'Invalid oldContent' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'replaceElement': {
+      if (!normalizeField('file')) return { success: false, message: 'Invalid file path' };
+      if (typeof normalizedArgs.selector !== 'string' || typeof normalizedArgs.newContent !== 'string') {
+        return { success: false, message: 'Invalid selector or newContent' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'insertContent': {
+      if (!normalizeField('file')) return { success: false, message: 'Invalid file path' };
+      if (typeof normalizedArgs.selector !== 'string' || typeof normalizedArgs.content !== 'string') {
+        return { success: false, message: 'Invalid selector or content' };
+      }
+      if (!['before', 'after', 'prepend', 'append'].includes(String(normalizedArgs.position))) {
+        return { success: false, message: 'Invalid position' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'deleteContent': {
+      if (!normalizeField('file')) return { success: false, message: 'Invalid file path' };
+      if (typeof normalizedArgs.selector !== 'string') {
+        return { success: false, message: 'Invalid selector' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'createFile': {
+      if (!normalizeField('path')) return { success: false, message: 'Invalid path' };
+      if (typeof normalizedArgs.content !== 'string') return { success: false, message: 'Invalid content' };
+      const normalizedFileType = normalizeFileTypeValue(normalizedArgs.fileType);
+      if (!normalizedFileType) {
+        return { success: false, message: 'Invalid fileType' };
+      }
+      normalizedArgs.fileType = normalizedFileType;
+      return { success: true, args: normalizedArgs };
+    }
+    case 'deleteFile': {
+      if (!normalizeField('path')) return { success: false, message: 'Invalid path' };
+      return { success: true, args: normalizedArgs };
+    }
+    case 'renameFile': {
+      if (!normalizeField('from') || !normalizeField('to')) return { success: false, message: 'Invalid rename paths' };
+      return { success: true, args: normalizedArgs };
+    }
+    case 'updateStyle': {
+      if (typeof normalizedArgs.selector !== 'string') return { success: false, message: 'Invalid selector' };
+      if (typeof normalizedArgs.properties !== 'object' || !normalizedArgs.properties) {
+        return { success: false, message: 'Invalid properties' };
+      }
+      for (const value of Object.values(normalizedArgs.properties as Record<string, unknown>)) {
+        if (typeof value !== 'string') return { success: false, message: 'CSS properties must be strings' };
+      }
+      if (normalizedArgs.action && !['merge', 'replace'].includes(String(normalizedArgs.action))) {
+        return { success: false, message: 'Invalid action' };
+      }
+      return { success: true, args: normalizedArgs };
+    }
+    case 'batchEdit': {
+      if (!Array.isArray(normalizedArgs.operations)) {
+        return { success: false, message: 'Invalid operations list' };
+      }
+      const normalizedOperations = [] as Array<{ name: string; arguments: Record<string, unknown> }>;
+      for (const op of normalizedArgs.operations as Array<Record<string, unknown>>) {
+        if (!op || typeof op.name !== 'string' || typeof op.arguments !== 'object' || !op.arguments) {
+          return { success: false, message: 'Invalid batch operation structure' };
+        }
+        const validated = validateToolCall(op.name, op.arguments as Record<string, unknown>);
+        if (!validated.success) return validated;
+        normalizedOperations.push({ name: op.name, arguments: validated.args });
+      }
+      return { success: true, args: { operations: normalizedOperations } };
+    }
+    default:
+      return { success: false, message: `Unknown tool: ${toolName}` };
+  }
+}
+
 export async function executeTool(
   toolName: string,
   args: Record<string, unknown>,
@@ -16,28 +165,60 @@ export async function executeTool(
 ): Promise<ToolResult> {
   const fileList = [...files];
 
+  const validated = validateToolCall(toolName, args);
+  if (!validated.success) {
+    return { success: false, message: validated.message };
+  }
+  const safeArgs = validated.args;
+
+  if (process.env.NODE_ENV === 'development') {
+    const payloadPreview = JSON.stringify(safeArgs).slice(0, 400);
+    const suffix = payloadPreview.length >= 400 ? '…' : '';
+    console.log(`[Tool Executor] ${toolName} ${payloadPreview}${suffix}`);
+  }
+
   switch (toolName) {
+    case 'updateFile':
+      return handleUpdateFile(safeArgs as Parameters<typeof handleUpdateFile>[0], fileList);
     case 'replaceContent':
-      return handleReplaceContent(args as Parameters<typeof handleReplaceContent>[0], fileList);
+      return handleReplaceContent(safeArgs as Parameters<typeof handleReplaceContent>[0], fileList);
     case 'replaceElement':
-      return handleReplaceElement(args as Parameters<typeof handleReplaceElement>[0], fileList);
+      return handleReplaceElement(safeArgs as Parameters<typeof handleReplaceElement>[0], fileList);
     case 'insertContent':
-      return handleInsertContent(args as Parameters<typeof handleInsertContent>[0], fileList);
+      return handleInsertContent(safeArgs as Parameters<typeof handleInsertContent>[0], fileList);
     case 'deleteContent':
-      return handleDeleteContent(args as Parameters<typeof handleDeleteContent>[0], fileList);
+      return handleDeleteContent(safeArgs as Parameters<typeof handleDeleteContent>[0], fileList);
     case 'createFile':
-      return handleCreateFile(args as Parameters<typeof handleCreateFile>[0], fileList);
+      return handleCreateFile(safeArgs as Parameters<typeof handleCreateFile>[0], fileList);
     case 'deleteFile':
-      return handleDeleteFile(args as Parameters<typeof handleDeleteFile>[0], fileList);
+      return handleDeleteFile(safeArgs as Parameters<typeof handleDeleteFile>[0], fileList);
     case 'renameFile':
-      return handleRenameFile(args as Parameters<typeof handleRenameFile>[0], fileList);
+      return handleRenameFile(safeArgs as Parameters<typeof handleRenameFile>[0], fileList);
     case 'updateStyle':
-      return handleUpdateStyle(args as Parameters<typeof handleUpdateStyle>[0], fileList);
+      return handleUpdateStyle(safeArgs as Parameters<typeof handleUpdateStyle>[0], fileList);
     case 'batchEdit':
-      return handleBatchEdit(args as Parameters<typeof handleBatchEdit>[0], fileList);
+      return handleBatchEdit(safeArgs as Parameters<typeof handleBatchEdit>[0], fileList);
     default:
       return { success: false, message: `Unknown tool: ${toolName}` };
   }
+}
+
+function handleUpdateFile(args: { file: string; content: string }, files: ProjectFile[]): ToolResult {
+  const { file: path, content } = args;
+  const existing = files.find(f => f.path === path);
+
+  if (existing) {
+    existing.content = content;
+    return { success: true, message: 'File updated', updatedFiles: [existing] };
+  }
+
+  const language = path.endsWith('.html') ? 'html' :
+    path.endsWith('.css') ? 'css' :
+      path.endsWith('.js') ? 'javascript' : 'html';
+
+  const fileType = path.endsWith('.css') ? 'style' : path.endsWith('.js') ? 'script' : 'page';
+  const newFile: ProjectFile = { path, content, language, fileType };
+  return { success: true, message: 'File created', updatedFiles: [newFile] };
 }
 
 function handleReplaceContent(args: { file: string; selector: string; oldContent?: string; newContent: string }, files: ProjectFile[]): ToolResult {
@@ -177,25 +358,32 @@ function handleUpdateStyle(args: { selector: string; properties: Record<string, 
   if (!file) return { success: false, message: 'Style file not found (create styles.css first)' };
 
   try {
-    const ast = csstree.parse(file.content);
+    const ast = csstree.parse(file.content, { context: 'stylesheet' }) as csstree.StyleSheet;
     let ruleFound = false;
 
     csstree.walk(ast, {
       visit: 'Rule',
       enter(node) {
-        if (csstree.generate(node.prelude) === selector) {
+        const rule = node as csstree.Rule;
+        if (csstree.generate(rule.prelude) === selector) {
           ruleFound = true;
+          const children = rule.block.children as csstree.List<csstree.CssNode>;
+          
           if (action === 'replace') {
-            // @ts-ignore
-            node.block.children.clear();
+            children.clear();
+          } else {
+            // For merge action, filter out existing properties that we're about to update
+            const propsToUpdate = new Set(Object.keys(properties));
+            const filtered = children.filter((child) => {
+              return !(child.type === 'Declaration' && propsToUpdate.has(child.property));
+            });
+            children.clear();
+            filtered.forEach((node) => children.appendData(node));
           }
           
           Object.entries(properties).forEach(([prop, value]) => {
-            // This is a simplified CSS property update
-            // A more robust implementation would use csstree to parse and replace declarations
             const decl = csstree.parse(`${prop}: ${value}`, { context: 'declaration' });
-            // @ts-ignore
-            node.block.children.appendData(decl);
+            children.appendData(decl as csstree.CssNode);
           });
         }
       }
@@ -205,8 +393,7 @@ function handleUpdateStyle(args: { selector: string; properties: Record<string, 
       // Create new rule
       const decls = Object.entries(properties).map(([p, v]) => `${p}: ${v};`).join(' ');
       const newRule = csstree.parse(`${selector} { ${decls} }`, { context: 'rule' });
-      // @ts-ignore
-      ast.children.push(newRule);
+      ast.children.appendData(newRule as csstree.CssNode);
     }
 
     file.content = csstree.generate(ast);
