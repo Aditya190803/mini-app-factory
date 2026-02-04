@@ -51,27 +51,6 @@ export default function DashboardPage() {
     redeployProject?._id ? { projectId: redeployProject._id } : "skip"
   );
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
-        <div className="text-center">
-          <h1 className="text-lg font-mono uppercase tracking-widest" style={{ color: 'var(--foreground)' }}>
-            Sign in required
-          </h1>
-          <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>
-            Please sign in to view your dashboard.
-          </p>
-          <button
-            onClick={() => router.push('/handler/sign-in')}
-            className="mt-4 px-4 py-2 text-[10px] font-mono uppercase border border-[var(--border)] text-[var(--primary)] hover:border-[var(--primary)]"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const handleDelete = async (projectName: string) => {
     if (!user) return;
     if (confirm(`Are you sure you want to delete "${projectName}"?`)) {
@@ -167,7 +146,6 @@ export default function DashboardPage() {
       const data = await performDeploy({
         projectName: redeployProject.projectName,
         prompt: redeployProject.prompt,
-        files: redeployFiles.map((file) => ({ path: file.path, content: file.content })),
         repoVisibility: 'private',
         githubOrg: null,
         deployMode: redeployOption,
@@ -230,6 +208,25 @@ export default function DashboardPage() {
           <div className="text-[10px] font-mono uppercase tracking-[0.2em] animate-pulse" style={{ color: 'var(--muted-text)' }}>
             Retrieving Fabrication Units...
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-bold">Unauthorized</h1>
+          <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>
+            Please sign in to view your dashboard.
+          </p>
+          <button
+            onClick={() => router.push('/handler/sign-in')}
+            className="mt-4 px-4 py-2 text-[10px] font-mono uppercase border border-[var(--border)] text-[var(--primary)] hover:border-[var(--primary)]"
+          >
+            Sign In
+          </button>
         </div>
       </div>
     );

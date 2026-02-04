@@ -12,6 +12,12 @@ describe('tool-executor', () => {
         content: '<html><body><div id="target">Old</div></body></html>',
         language: 'html',
         fileType: 'page'
+      },
+      {
+        path: 'styles.css',
+        content: '.title { color: red; }',
+        language: 'css',
+        fileType: 'style'
       }
     ];
   });
@@ -68,5 +74,52 @@ describe('tool-executor', () => {
     expect(result.success).toBe(true);
     expect(result.updatedFiles?.some(f => f.path === 'style.css')).toBe(true);
     expect(result.updatedFiles?.find(f => f.path === 'index.html')?.content).toContain('Updated');
+  });
+
+  test('replaceContent fails on missing selector', async () => {
+    const result = await executeTool('replaceContent', {
+      file: 'index.html',
+      selector: '.does-not-exist',
+      newContent: 'Nope'
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/Selector not found/i);
+  });
+
+  test('replaceContent fails on non-html file', async () => {
+    const result = await executeTool('replaceContent', {
+      file: 'styles.css',
+      selector: '.title',
+      newContent: 'Updated'
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/not supported/i);
+  });
+
+  test('updateStyle updates existing rule', async () => {
+    const result = await executeTool('updateStyle', {
+      selector: '.title',
+      properties: { color: 'blue', 'font-weight': '700' }
+    }, initialFiles);
+
+    expect(result.message).not.toMatch(/error/i);
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles?.[0].content).toMatch(/color:\s*blue/);
+    expect(result.updatedFiles?.[0].content).toMatch(/font-weight:\s*700/);
+    // Ensure the old 'color: red' is removed (not duplicated)
+    expect(result.updatedFiles?.[0].content).not.toMatch(/color:\s*red/);
+  });
+
+  test('createFile rejects unsafe paths', async () => {
+    const result = await executeTool('createFile', {
+      path: '../secrets.txt',
+      content: 'nope',
+      fileType: 'page'
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/invalid path/i);
   });
 });

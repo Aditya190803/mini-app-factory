@@ -74,7 +74,8 @@ export default function DocsPage() {
       items: [
         { id: 'cmd-generate', label: '/generate' },
         { id: 'cmd-transform', label: '/transform' },
-        { id: 'cmd-polish', label: '/polish' }
+        { id: 'cmd-polish', label: '/polish' },
+        { id: 'tool-schema', label: 'Tool Call Schema' }
       ]
     },
     {
@@ -84,7 +85,7 @@ export default function DocsPage() {
         { id: 'model-selection', label: 'Model Selection' },
         { id: 'editor-preview', label: 'Editor & Preview' },
         { id: 'publish-export', label: 'Export' },
-        { id: 'deploy', label: 'Deploy to Netlify' },
+        { id: 'deploy', label: 'Deploy' },
         { id: 'project-settings', label: 'Project Settings' }
       ]
     }
@@ -380,10 +381,38 @@ Add data visualization cards in the main grid.`}
               </section>
             )}
 
+            {visibleItemIds.has('tool-schema') && (
+              <section id="tool-schema" className="space-y-6 mt-12 scroll-mt-24">
+                <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">07</span>
+                  Tool Call Schema
+                </h2>
+                <p className="text-slate-400 font-sans">
+                  Transform operations are executed through structured tool calls. Each call must be a JSON object with a tool name and args.
+                </p>
+                <CodeBlock
+                  filename="Tool_Call_Example.json"
+                  code={`[
+  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello" } },
+  { "tool": "updateStyle", "args": { "selector": ".hero", "properties": { "gap": "24px" }, "action": "merge" } }
+]`}
+                />
+                <div className="space-y-2 text-slate-500 text-sm font-sans">
+                  <div className="font-semibold text-slate-300">Constraints</div>
+                  <ul className="list-disc pl-6">
+                    <li>File paths must be relative (no leading slash, no <code className="font-mono">..</code> segments).</li>
+                    <li>Supported file types: <code className="font-mono">.html</code>, <code className="font-mono">.css</code>, <code className="font-mono">.js</code>.</li>
+                    <li>Use partials for shared layout: <code className="font-mono">header.html</code> and <code className="font-mono">footer.html</code>.</li>
+                    <li>Selectors should be specific (IDs/classes over tag names).</li>
+                  </ul>
+                </div>
+              </section>
+            )}
+
             {visibleItemIds.has('model-selection') && (
               <section id="model-selection" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">07</span>
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">08</span>
                   Model Selection
                 </h2>
                 <p className="text-slate-400 font-sans">
@@ -395,7 +424,7 @@ Add data visualization cards in the main grid.`}
             {visibleItemIds.has('editor-preview') && (
               <section id="editor-preview" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">08</span>
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">09</span>
                   Editor & Preview
                 </h2>
                 <p className="text-slate-400 font-sans">
@@ -410,7 +439,7 @@ Add data visualization cards in the main grid.`}
             {visibleItemIds.has('publish-export') && (
               <section id="publish-export" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">09</span>
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">10</span>
                   Export ZIP
                 </h2>
                 <p className="text-slate-400 font-sans">
@@ -422,57 +451,29 @@ Add data visualization cards in the main grid.`}
             {visibleItemIds.has('deploy') && (
               <section id="deploy" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">10</span>
-                  Deploy to Netlify
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">11</span>
+                  Deploy
                 </h2>
                 <p className="text-slate-400 font-sans">
-                  Connect GitHub and Netlify via OAuth, then deploy your site directly from the editor. The deploy flow creates or reuses a linked GitHub repo, uploads your files, and triggers a Netlify deployment.
+                  Deployment lets you publish a live URL directly from the editor. Choose the deploy option that fits your workflow, then follow the prompts to connect any required accounts and confirm your publish settings.
                 </p>
                 <p className="text-slate-500 text-sm font-sans">
-                  Required environment variables: GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, NETLIFY_CLIENT_ID, NETLIFY_CLIENT_SECRET. Add them to `.env.local` (or start from `.env.example`).
+                  After a successful deploy, the editor displays the live URL and repository link (when applicable) so you can share or continue iterating.
                 </p>
                 <p className="text-slate-500 text-sm font-sans">
-                  Workflow: open the editor, click Deploy, connect GitHub and Netlify, choose repo visibility and owner, then deploy. The modal returns the repo URL, live URL, and Netlify site name.
+                  Use the dashboard to redeploy or export at any time without re-opening the editor.
                 </p>
-                <p className="text-slate-500 text-sm font-sans">
-                  Deploy options include GitHub + Netlify (default), GitHub repo only, and a hosted-by-us option for the fastest path to a live URL. You can also redeploy from the dashboard without opening the editor.
-                </p>
-                <p className="text-slate-500 text-sm font-sans">
-                  Use the Netlify site name override if you want a custom subdomain that differs from the GitHub repo name.
-                </p>
-                <div className="space-y-3 text-slate-500 text-sm font-sans">
-                  <div className="font-semibold text-slate-300">OAuth Setup</div>
-                  <div>GitHub OAuth App:</div>
-                  <ul className="list-disc pl-6">
-                    <li>Create a GitHub OAuth App (Developer Settings → OAuth Apps → New OAuth App).</li>
-                    <li>Homepage URL: <code className="font-mono">http://localhost:3000</code></li>
-                    <li>Authorization callback URL:</li>
-                  </ul>
-                  <CodeBlock
-                    filename="GitHub_Callback.txt"
-                    code={`http://localhost:3000/api/integrations/github/callback`}
-                  />
-                  <div>Netlify OAuth App:</div>
-                  <ul className="list-disc pl-6">
-                    <li>Create a Netlify OAuth App (User Settings → Applications → OAuth applications → New OAuth app).</li>
-                    <li>Redirect URL:</li>
-                  </ul>
-                  <CodeBlock
-                    filename="Netlify_Callback.txt"
-                    code={`http://localhost:3000/api/integrations/netlify/callback`}
-                  />
-                </div>
               </section>
             )}
 
             {visibleItemIds.has('project-settings') && (
               <section id="project-settings" className="space-y-6 mt-12 scroll-mt-24">
                 <h2 className="text-2xl font-bold flex items-center gap-3 font-display">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">11</span>
+                  <span className="w-6 h-6 rounded flex items-center justify-center bg-amber-500/10 text-amber-500 text-xs font-mono">12</span>
                   Project Settings
                 </h2>
                 <p className="text-slate-400 font-sans">
-                  Project settings live at <code className="font-mono">/edit/[projectName]/settings</code>, including deployment info, Netlify site details, and metadata/SEO controls.
+                  Project settings live at <code className="font-mono">/edit/[projectName]/settings</code>, including deployment info and metadata/SEO controls.
                 </p>
               </section>
             )}
