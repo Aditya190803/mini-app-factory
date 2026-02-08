@@ -90,7 +90,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="zai-glm-4.7">GLM 4.7 (Cerebras)</option>
+              <option value="gpt-oss-120b">GPT OSS 120B (Cerebras)</option>
               <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2</option>
             </select>
           </div>

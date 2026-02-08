@@ -10,7 +10,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import { withRetry } from '@/lib/ai-retry';
 
-const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+const MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b';
 
 const generateSchema = z.object({
   projectName: z.string().min(1),
