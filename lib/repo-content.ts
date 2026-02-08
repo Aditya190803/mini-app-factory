@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { createOpenRouter } from "@ai-sdk/openrouter";
+import { openrouter } from "@openrouter/ai-sdk-provider";
 import { createGroq } from "@ai-sdk/groq";
 import { buildReadmePrompt } from "@/lib/site-builder";
 
@@ -19,7 +19,6 @@ async function generateWithFallback(prompt: string): Promise<string> {
   const groqKey = process.env.GROQ_API_KEY;
 
   if (openrouterKey) {
-    const openrouter = createOpenRouter({ apiKey: openrouterKey });
     const { text } = await generateText({
       model: openrouter(process.env.OPENROUTER_MODEL || "openai/gpt-oss-120b:free"),
       prompt,

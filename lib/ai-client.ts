@@ -2,7 +2,7 @@
 // Primary: openai/gpt-oss-120b:free via OpenRouter
 // Fallback: qwen-32b via Groq
 
-import { createOpenRouter } from '@ai-sdk/openrouter';
+import { openrouter } from '@openrouter/ai-sdk-provider';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
@@ -58,7 +58,6 @@ function createOpenRouterClient(): AIClient {
     throw new Error('OPENROUTER_API_KEY is not set. Add it to your environment or .env.local');
   }
 
-  const provider = createOpenRouter({ apiKey: key });
   const primaryModel = process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b:free'; // Prefer env or sensible default
 
   return {
@@ -99,7 +98,7 @@ function createOpenRouterClient(): AIClient {
             }
 
             const result = await generateText({
-              model: provider(modelName),
+              model: openrouter(modelName),
               messages,
               abortSignal: controller.signal,
             });
@@ -140,7 +139,7 @@ function createOpenRouterClient(): AIClient {
             messages.push({ role: 'user', content: prompt });
 
             const result = await streamText({
-              model: provider(modelName),
+              model: openrouter(modelName),
               messages: messages.map(m => ({ role: m.role, content: m.content })),
               abortSignal: controller.signal,
             });
