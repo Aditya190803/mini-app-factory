@@ -1,5 +1,5 @@
 // AI client with Cerebras as primary, Groq + Moonshot AI as fallback
-// Primary: zai-glm-4.7 via Cerebras SDK
+// Primary: gpt-oss-120b via Cerebras SDK
 // Fallback: moonshotai/kimi-k2-instruct-0905 via Groq
 
 import { createGroq } from '@ai-sdk/groq';
