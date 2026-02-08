@@ -191,7 +191,7 @@ export async function POST(request: Request) {
 
     const client = await getAIClient();
     
-    let effectiveModelId = modelId || process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+    let effectiveModelId = modelId || process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
     let effectiveProviderId = providerId;
 
     const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 

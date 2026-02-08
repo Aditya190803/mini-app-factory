@@ -28,8 +28,8 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Database & Backend**: [Convex](https://convex.dev/)
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
-  - **Primary**: Cerebras SDK with `zai-glm-4.7`
-  - **Fallback**: Groq with `moonshotai/kimi-k2-instruct-0905`
+  - **Primary**: OpenRouter with `meta-llama/llama-3.1-70b-instruct`
+  - **Fallback**: Groq with `llama-3.3-70b-versatile`
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
 - **Runtime & Package Manager**: [Bun](https://bun.sh/)
@@ -52,10 +52,10 @@ A powerful AI-powered web application that generates production-ready multi-page
    
    ```bash
    # AI Providers
-   CEREBRAS_API_KEY=your_cerebras_api_key
-   CEREBRAS_MODEL=zai-glm-4.7
+   OPENROUTER_API_KEY=your_openrouter_api_key
+   OPENROUTER_MODEL=meta-llama/llama-3.1-70b-instruct
    GROQ_API_KEY=your_groq_api_key
-   GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
+   GROQ_MODEL=llama-3.3-70b-versatile
    
    # Convex
    CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev

@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { createCerebras } from "@ai-sdk/cerebras";
+import { createOpenRouter } from "@ai-sdk/openrouter";
 import { createGroq } from "@ai-sdk/groq";
 import { buildReadmePrompt } from "@/lib/site-builder";
 
@@ -15,13 +15,13 @@ function cleanRepoDescription(text: string, maxLength = 160): string {
 }
 
 async function generateWithFallback(prompt: string): Promise<string> {
-  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
 
-  if (cerebrasKey) {
-    const cerebras = createCerebras({ apiKey: cerebrasKey });
+  if (openrouterKey) {
+    const openrouter = createOpenRouter({ apiKey: openrouterKey });
     const { text } = await generateText({
-      model: cerebras(process.env.CEREBRAS_MODEL || "llama-3.3-70b"),
+      model: openrouter(process.env.OPENROUTER_MODEL || "meta-llama/llama-3.1-70b-instruct"),
       prompt,
     });
     return text;

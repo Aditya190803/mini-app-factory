@@ -19,7 +19,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
     await onGenerate(prompt, model);
   };
 
-  const isCerebrasIssue = /Cerebras|CEREBRAS|CEREBRAS_API_KEY/i.test(error || '');
+  const isOpenRouterIssue = /OpenRouter|OPENROUTER|OPENROUTER_API_KEY/i.test(error || '');
 
   const examplePrompts = [
     'A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA',
@@ -47,7 +47,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           >
             <div className="font-mono font-semibold text-xs uppercase">Configuration Error</div>
             <p className="text-xs leading-relaxed">{error}</p>
-            {isCerebrasIssue && (
+            {isOpenRouterIssue && (
               <div
                 className="text-xs p-3 border mt-3 space-y-2"
                 style={{
@@ -56,10 +56,10 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
                   color: 'var(--secondary-text)',
                 }}
               >
-                <p className="font-mono font-semibold">CEREBRAS SETUP:</p>
+                <p className="font-mono font-semibold">OPENROUTER SETUP:</p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">CEREBRAS_API_KEY</code> in your environment (or your deployment variables)</li>
-                  <li>Get your key from the Cerebras Cloud Console</li>
+                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">OPENROUTER_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Get your key from <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>openrouter.ai</a></li>
                   <li>Restart your dev server after adding the variable</li>
                 </ol>
               </div>
@@ -90,8 +90,8 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="zai-glm-4.7">GLM 4.7 (Cerebras)</option>
-              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2</option>
+              <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B (OpenRouter)</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo (OpenRouter)</option>
             </select>
           </div>
         </div>

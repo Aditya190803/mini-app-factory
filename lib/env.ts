@@ -4,9 +4,9 @@ import { z } from "zod";
 
 const serverEnvSchema = z
   .object({
-    CEREBRAS_API_KEY: z.string().optional(),
+    OPENROUTER_API_KEY: z.string().optional(),
     GROQ_API_KEY: z.string().optional(),
-    CEREBRAS_MODEL: z.string().optional(),
+    OPENROUTER_MODEL: z.string().optional(),
     GROQ_MODEL: z.string().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1, "NEXT_PUBLIC_CONVEX_URL is required"),
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1, "NEXT_PUBLIC_STACK_PROJECT_ID is required"),
@@ -19,9 +19,9 @@ const serverEnvSchema = z
       .min(32, "INTEGRATION_TOKEN_SECRET must be at least 32 characters")
       .optional(),
   })
-  .refine((data) => data.CEREBRAS_API_KEY || data.GROQ_API_KEY, {
-    message: "At least one AI provider key must be configured (CEREBRAS_API_KEY or GROQ_API_KEY).",
-    path: ["CEREBRAS_API_KEY"],
+  .refine((data) => data.OPENROUTER_API_KEY || data.GROQ_API_KEY, {
+    message: "At least one AI provider key must be configured (OPENROUTER_API_KEY or GROQ_API_KEY).",
+    path: ["OPENROUTER_API_KEY"],
   });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

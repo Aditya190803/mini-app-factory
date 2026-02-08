@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 type ProviderConfig = {
-  id: 'cerebras' | 'groq';
+  id: 'openrouter' | 'groq';
   name: string;
-  envKey: 'CEREBRAS_API_KEY' | 'GROQ_API_KEY';
+  envKey: 'OPENROUTER_API_KEY' | 'GROQ_API_KEY';
   url: string;
 };
 
@@ -31,10 +31,10 @@ export async function GET() {
   
   const providers: ProviderConfig[] = [
     {
-      id: 'cerebras',
-      name: 'Cerebras',
-      envKey: 'CEREBRAS_API_KEY',
-      url: 'https://api.cerebras.ai/v1/models'
+      id: 'openrouter',
+      name: 'OpenRouter',
+      envKey: 'OPENROUTER_API_KEY',
+      url: 'https://openrouter.ai/api/v1/models'
     },
     {
       id: 'groq',

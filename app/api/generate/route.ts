@@ -10,7 +10,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import { withRetry } from '@/lib/ai-retry';
 
-const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+const MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
 
 const generateSchema = z.object({
   projectName: z.string().min(1),
@@ -65,17 +65,17 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
     const rawMsg = typeof raw === 'string' ? raw : (raw instanceof Error ? raw.message : String(raw));
     const m = rawMsg.toLowerCase();
 
-    if (m.includes('cerebras_api_key') || m.includes('cerebras api key') || m.includes('cerebras_api_key'.toLowerCase())) {
+    if (m.includes('openrouter_api_key') || m.includes('openrouter api key') || m.includes('openrouter_api_key'.toLowerCase())) {
       return {
         code: 'ENV_MISSING',
-        message: 'Missing CEREBRAS_API_KEY. To enable AI features, set CEREBRAS_API_KEY in your environment or deployment variables and restart the server.'
+        message: 'Missing OPENROUTER_API_KEY. To enable AI features, set OPENROUTER_API_KEY in your environment or deployment variables and restart the server.'
       };
     }
 
-    if (m.includes('cerebras') || m.includes('provider returned') || m.includes('rate-limited') || m.includes('glm') || m.includes('openinference')) {
+    if (m.includes('openrouter') || m.includes('provider returned') || m.includes('rate-limited') || m.includes('llama') || m.includes('openinference')) {
       return {
         code: 'AI_PROVIDER_ERROR',
-        message: 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Add your CEREBRAS_API_KEY, switch providers, or try again shortly.'
+        message: 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Add your OPENROUTER_API_KEY, switch providers, or try again shortly.'
       };
     }
 

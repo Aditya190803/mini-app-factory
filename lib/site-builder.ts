@@ -53,7 +53,7 @@ export function createJob(jobId: string, description: string): BuildJob {
   return job;
 }
 
-const MODEL = process.env.CEREBRAS_MODEL || 'zai-glm-4.7';
+const MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
 
 export function buildMainPrompt(description: string): string {
   return `Create a complete, production-ready multi-page site for: ${description}

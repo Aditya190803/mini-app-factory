@@ -1,7 +1,8 @@
-// AI client with Cerebras as primary, Groq + Moonshot AI as fallback
-// Primary: zai-glm-4.7 via Cerebras SDK
-// Fallback: moonshotai/kimi-k2-instruct-0905 via Groq
+// AI client with OpenRouter as primary, Groq as fallback
+// Primary: meta-llama/llama-3.1-70b-instruct via OpenRouter
+// Fallback: qwen-32b via Groq
 
+import { createOpenRouter } from '@ai-sdk/openrouter';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
@@ -49,17 +50,16 @@ function loadEnv() {
 }
 
 /**
- * Create Cerebras client as primary
+ * Create OpenRouter client as primary
  */
-function createCerebrasClient(): AIClient {
-  const { createCerebras } = require('@ai-sdk/cerebras');
-  const key = process.env.CEREBRAS_API_KEY;
+function createOpenRouterClient(): AIClient {
+  const key = process.env.OPENROUTER_API_KEY;
   if (!key) {
-    throw new Error('CEREBRAS_API_KEY is not set. Add it to your environment or .env.local');
+    throw new Error('OPENROUTER_API_KEY is not set. Add it to your environment or .env.local');
   }
 
-  const provider = createCerebras({ apiKey: key });
-  const primaryModel = process.env.CEREBRAS_MODEL || 'gpt-oss-120b'; // Prefer env or sensible default
+  const provider = createOpenRouter({ apiKey: key });
+  const primaryModel = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct'; // Prefer env or sensible default
 
   return {
     createSession: async ({ model, systemMessage } = {}) => {
@@ -112,11 +112,11 @@ function createCerebrasClient(): AIClient {
             const isAbortError = err instanceof Error && err.name === 'AbortError';
 
             if (isAbortError || /timed out|timeout/i.test(m)) {
-              m = 'Request to Cerebras timed out.';
+              m = 'Request to OpenRouter timed out.';
             } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
-              m = 'Network error contacting Cerebras.';
+              m = 'Network error contacting OpenRouter.';
             } else if (/401|403|authentication|unauthorized/i.test(m)) {
-              m = `Cerebras authentication failed. Check CEREBRAS_API_KEY.`;
+              m = `OpenRouter authentication failed. Check OPENROUTER_API_KEY.`;
             }
 
             listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
@@ -276,21 +276,21 @@ function createGroqClient(): AIClient {
 }
 
 /**
- * Get the AI client that handles Cerebras as primary and Groq as fallback
+ * Get the AI client that handles OpenRouter as primary and Groq as fallback
  */
 export async function getAIClient(): Promise<AIClient> {
   if (singletonClient && process.env.NODE_ENV !== 'test') return singletonClient;
 
   loadEnv();
 
-  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
 
-  if (!cerebrasKey && !groqKey) {
-    throw new Error('Neither CEREBRAS_API_KEY nor GROQ_API_KEY is set. Please configure at least one AI provider.');
+  if (!openrouterKey && !groqKey) {
+    throw new Error('Neither OPENROUTER_API_KEY nor GROQ_API_KEY is set. Please configure at least one AI provider.');
   }
 
-  const cerebrasClient = cerebrasKey ? createCerebrasClient() : null;
+  const openrouterClient = openrouterKey ? createOpenRouterClient() : null;
   const groqClient = groqKey ? createGroqClient() : null;
 
   const client: AIClient = {
@@ -298,11 +298,11 @@ export async function getAIClient(): Promise<AIClient> {
       const { providerId } = opts || {};
       let primarySession: AIClientSession | null = null;
       let fallbackClient: AIClient | null = null;
-      let fallbackProviderId: 'cerebras' | 'groq' | null = null;
+      let fallbackProviderId: 'openrouter' | 'groq' | null = null;
 
       // Keep the caller's model only for the intended provider.
       // When switching providers, drop the model so that provider-specific defaults apply.
-      const buildSessionOpts = (targetProviderId: 'cerebras' | 'groq', isPrimary: boolean) => {
+      const buildSessionOpts = (targetProviderId: 'openrouter' | 'groq', isPrimary: boolean) => {
         const explicitProviderId = opts?.providerId;
         const shouldKeepModel = explicitProviderId
           ? explicitProviderId === targetProviderId
@@ -316,18 +316,18 @@ export async function getAIClient(): Promise<AIClient> {
       };
 
       if (providerId === 'groq' && groqClient) {
-        fallbackProviderId = cerebrasClient ? 'cerebras' : null;
+        fallbackProviderId = openrouterClient ? 'openrouter' : null;
         primarySession = await groqClient.createSession(buildSessionOpts('groq', true));
-        fallbackClient = cerebrasClient; // Fallback to Cerebras if Groq was explicitly chosen and fails
-      } else if (providerId === 'cerebras' && cerebrasClient) {
+        fallbackClient = openrouterClient; // Fallback to OpenRouter if Groq was explicitly chosen and fails
+      } else if (providerId === 'openrouter' && openrouterClient) {
         fallbackProviderId = groqClient ? 'groq' : null;
-        primarySession = await cerebrasClient.createSession(buildSessionOpts('cerebras', true));
+        primarySession = await openrouterClient.createSession(buildSessionOpts('openrouter', true));
         fallbackClient = groqClient;
       } else {
         // Default behavior
         fallbackProviderId = groqClient ? 'groq' : null;
-        primarySession = (cerebrasClient && cerebrasClient.createSession)
-          ? await cerebrasClient.createSession(buildSessionOpts('cerebras', true))
+        primarySession = (openrouterClient && openrouterClient.createSession)
+          ? await openrouterClient.createSession(buildSessionOpts('openrouter', true))
           : null;
         fallbackClient = groqClient;
       }
@@ -364,7 +364,7 @@ export async function getAIClient(): Promise<AIClient> {
               return await primarySession.sendAndWait(sendOpts, timeout);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
+              const target = fallbackClient === groqClient ? 'Groq' : 'OpenRouter';
               const source = providerId || 'Primary';
 
               console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}):`, message);
@@ -401,7 +401,7 @@ export async function getAIClient(): Promise<AIClient> {
               return await primarySession.stream(sendOpts);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
-              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
+              const target = fallbackClient === groqClient ? 'Groq' : 'OpenRouter';
               const source = providerId || 'Primary';
 
               console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}) for stream:`, message);
