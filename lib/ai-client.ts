@@ -298,16 +298,37 @@ export async function getAIClient(): Promise<AIClient> {
       const { providerId } = opts || {};
       let primarySession: AIClientSession | null = null;
       let fallbackClient: AIClient | null = null;
+      let fallbackProviderId: 'cerebras' | 'groq' | null = null;
+
+      // Keep the caller's model only for the intended provider.
+      // When switching providers, drop the model so that provider-specific defaults apply.
+      const buildSessionOpts = (targetProviderId: 'cerebras' | 'groq', isPrimary: boolean) => {
+        const explicitProviderId = opts?.providerId;
+        const shouldKeepModel = explicitProviderId
+          ? explicitProviderId === targetProviderId
+          : isPrimary;
+
+        return {
+          ...opts,
+          providerId: targetProviderId,
+          model: shouldKeepModel ? opts?.model : undefined,
+        };
+      };
 
       if (providerId === 'groq' && groqClient) {
-        primarySession = await groqClient.createSession(opts);
+        fallbackProviderId = cerebrasClient ? 'cerebras' : null;
+        primarySession = await groqClient.createSession(buildSessionOpts('groq', true));
         fallbackClient = cerebrasClient; // Fallback to Cerebras if Groq was explicitly chosen and fails
       } else if (providerId === 'cerebras' && cerebrasClient) {
-        primarySession = await cerebrasClient.createSession(opts);
+        fallbackProviderId = groqClient ? 'groq' : null;
+        primarySession = await cerebrasClient.createSession(buildSessionOpts('cerebras', true));
         fallbackClient = groqClient;
       } else {
         // Default behavior
-        primarySession = (cerebrasClient && cerebrasClient.createSession) ? await cerebrasClient.createSession(opts) : null;
+        fallbackProviderId = groqClient ? 'groq' : null;
+        primarySession = (cerebrasClient && cerebrasClient.createSession)
+          ? await cerebrasClient.createSession(buildSessionOpts('cerebras', true))
+          : null;
         fallbackClient = groqClient;
       }
 
@@ -355,12 +376,14 @@ export async function getAIClient(): Promise<AIClient> {
 
               if (!fallbackClient) throw err;
 
-              fallbackSession = await fallbackClient.createSession(opts);
+              if (!fallbackProviderId) throw err;
+              fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
               attachSession(fallbackSession);
               return await fallbackSession.sendAndWait(sendOpts, timeout);
             }
           } else if (fallbackClient) {
-            fallbackSession = await fallbackClient.createSession(opts);
+            if (!fallbackProviderId) throw new Error('No AI providers available');
+            fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
             attachSession(fallbackSession);
             return await fallbackSession.sendAndWait(sendOpts, timeout);
           } else {
@@ -390,12 +413,14 @@ export async function getAIClient(): Promise<AIClient> {
 
               if (!fallbackClient) throw err;
 
-              fallbackSession = await fallbackClient.createSession(opts);
+              if (!fallbackProviderId) throw err;
+              fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
               attachSession(fallbackSession);
               return await fallbackSession.stream(sendOpts);
             }
           } else if (fallbackClient) {
-            fallbackSession = await fallbackClient.createSession(opts);
+            if (!fallbackProviderId) throw new Error('No AI providers available');
+            fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
             attachSession(fallbackSession);
             return await fallbackSession.stream(sendOpts);
           } else {
