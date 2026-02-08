@@ -90,8 +90,8 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
+              <option value="openai/gpt-oss-120b:free">GPT-OSS 120B Free (OpenRouter)</option>
               <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B (OpenRouter)</option>
-              <option value="gpt-4-turbo">GPT-4 Turbo (OpenRouter)</option>
             </select>
           </div>
         </div>

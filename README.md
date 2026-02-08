@@ -28,7 +28,7 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Database & Backend**: [Convex](https://convex.dev/)
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
-  - **Primary**: OpenRouter with `meta-llama/llama-3.1-70b-instruct`
+  - **Primary**: OpenRouter with `openai/gpt-oss-120b:free`
   - **Fallback**: Groq with `llama-3.3-70b-versatile`
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
@@ -53,7 +53,7 @@ A powerful AI-powered web application that generates production-ready multi-page
    ```bash
    # AI Providers
    OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL=meta-llama/llama-3.1-70b-instruct
+   OPENROUTER_MODEL=openai/gpt-oss-120b:free
    GROQ_API_KEY=your_groq_api_key
    GROQ_MODEL=llama-3.3-70b-versatile
    

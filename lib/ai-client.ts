@@ -1,5 +1,5 @@
 // AI client with OpenRouter as primary, Groq as fallback
-// Primary: meta-llama/llama-3.1-70b-instruct via OpenRouter
+// Primary: openai/gpt-oss-120b:free via OpenRouter
 // Fallback: qwen-32b via Groq
 
 import { createOpenRouter } from '@ai-sdk/openrouter';
@@ -59,7 +59,7 @@ function createOpenRouterClient(): AIClient {
   }
 
   const provider = createOpenRouter({ apiKey: key });
-  const primaryModel = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct'; // Prefer env or sensible default
+  const primaryModel = process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b:free'; // Prefer env or sensible default
 
   return {
     createSession: async ({ model, systemMessage } = {}) => {

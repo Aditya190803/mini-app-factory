@@ -53,7 +53,7 @@ export function createJob(jobId: string, description: string): BuildJob {
   return job;
 }
 
-const MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
+const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b:free';
 
 export function buildMainPrompt(description: string): string {
   return `Create a complete, production-ready multi-page site for: ${description}

@@ -21,7 +21,7 @@ async function generateWithFallback(prompt: string): Promise<string> {
   if (openrouterKey) {
     const openrouter = createOpenRouter({ apiKey: openrouterKey });
     const { text } = await generateText({
-      model: openrouter(process.env.OPENROUTER_MODEL || "meta-llama/llama-3.1-70b-instruct"),
+      model: openrouter(process.env.OPENROUTER_MODEL || "openai/gpt-oss-120b:free"),
       prompt,
     });
     return text;

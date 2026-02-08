@@ -10,7 +10,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import { withRetry } from '@/lib/ai-retry';
 
-const MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.1-70b-instruct';
+const MODEL = process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b:free';
 
 const generateSchema = z.object({
   projectName: z.string().min(1),
