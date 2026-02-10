@@ -28,7 +28,7 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Database & Backend**: [Convex](https://convex.dev/)
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
-  - **Primary**: Cerebras SDK with `zai-glm-4.7`
+  - **Primary**: Google Gemini with `gemini-3-flash-preview`
   - **Fallback**: Groq with `moonshotai/kimi-k2-instruct-0905`
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
@@ -52,10 +52,12 @@ A powerful AI-powered web application that generates production-ready multi-page
    
    ```bash
    # AI Providers
-   CEREBRAS_API_KEY=your_cerebras_api_key
-   CEREBRAS_MODEL=zai-glm-4.7
+   GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key
+   GOOGLE_MODEL=gemini-3-flash-preview
+   GOOGLE_FALLBACK_MODEL=gemini-2.5-flash
    GROQ_API_KEY=your_groq_api_key
    GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
+   GROQ_FALLBACK_MODEL=qwen/qwen3-32b
    
    # Convex
    CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev

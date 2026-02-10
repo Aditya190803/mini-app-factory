@@ -12,14 +12,14 @@ interface PromptPanelProps {
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('moonshotai/kimi-k2-instruct-0905');
+  const [model, setModel] = useState('gemini-3-flash-preview');
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
     await onGenerate(prompt, model);
   };
 
-  const isCerebrasIssue = /Cerebras|CEREBRAS|CEREBRAS_API_KEY/i.test(error || '');
+  const isProviderIssue = /GOOGLE|GEMINI|GROQ|API_KEY/i.test(error || '');
 
   const examplePrompts = [
     'A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA',
@@ -47,7 +47,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           >
             <div className="font-mono font-semibold text-xs uppercase">Configuration Error</div>
             <p className="text-xs leading-relaxed">{error}</p>
-            {isCerebrasIssue && (
+            {isProviderIssue && (
               <div
                 className="text-xs p-3 border mt-3 space-y-2"
                 style={{
@@ -56,10 +56,10 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
                   color: 'var(--secondary-text)',
                 }}
               >
-                <p className="font-mono font-semibold">CEREBRAS SETUP:</p>
+                <p className="font-mono font-semibold">AI PROVIDER SETUP:</p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">CEREBRAS_API_KEY</code> in your environment (or your deployment variables)</li>
-                  <li>Get your key from the Cerebras Cloud Console</li>
+                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Get your key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>aistudio.google.com/apikey</a></li>
                   <li>Restart your dev server after adding the variable</li>
                 </ol>
               </div>
@@ -90,8 +90,9 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="zai-glm-4.7">GLM 4.7 (Cerebras)</option>
-              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2</option>
+              <option value="gemini-3-flash-preview">Gemini 3 Flash (Google)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
+              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2 (Groq)</option>
             </select>
           </div>
         </div>
@@ -167,7 +168,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: 'var(--primary)' }}
           ></div>
-          <span>Cerebras • {model.toUpperCase()}</span>
+          <span>Google Gemini • {model.toUpperCase()}</span>
         </div>
       </div>
     </div>

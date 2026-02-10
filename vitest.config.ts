@@ -7,7 +7,7 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     env: {
       NEXT_PUBLIC_CONVEX_URL: 'https://test.convex.cloud',
-      CEREBRAS_API_KEY: 'test-key',
+      GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
       NEXT_PUBLIC_STACK_PROJECT_ID: 'stack-project',
       NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: 'stack-client',
       STACK_SECRET_SERVER_KEY: 'stack-secret',
