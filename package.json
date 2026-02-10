@@ -11,7 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@ai-sdk/cerebras": "^2.0.27",
+    "@ai-sdk/google": "^3.0.23",
     "@ai-sdk/groq": "^3.0.19",
     "@ai-sdk/react": "^3.0.0",
     "@codemirror/lang-html": "^6.4.11",
