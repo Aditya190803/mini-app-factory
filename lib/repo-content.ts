@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { createCerebras } from "@ai-sdk/cerebras";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { buildReadmePrompt } from "@/lib/site-builder";
 
@@ -15,13 +15,13 @@ function cleanRepoDescription(text: string, maxLength = 160): string {
 }
 
 async function generateWithFallback(prompt: string): Promise<string> {
-  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
 
-  if (cerebrasKey) {
-    const cerebras = createCerebras({ apiKey: cerebrasKey });
+  if (googleKey) {
+    const google = createGoogleGenerativeAI({ apiKey: googleKey });
     const { text } = await generateText({
-      model: cerebras(process.env.CEREBRAS_MODEL || "llama-3.3-70b"),
+      model: google(process.env.GOOGLE_MODEL || "gemini-3-flash-preview"),
       prompt,
     });
     return text;
@@ -30,7 +30,7 @@ async function generateWithFallback(prompt: string): Promise<string> {
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
     const { text } = await generateText({
-      model: groq("llama-3.3-70b-versatile"),
+      model: groq(process.env.GROQ_MODEL || "moonshotai/kimi-k2-instruct-0905"),
       prompt,
     });
     return text;

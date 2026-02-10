@@ -1,7 +1,7 @@
-// AI client with Cerebras as primary, Groq + Moonshot AI as fallback
-// Primary: zai-glm-4.7 via Cerebras SDK
-// Fallback: moonshotai/kimi-k2-instruct-0905 via Groq
+// AI client with Google Gemini as primary, Groq as fallback
+// Fallback chain: Gemini Main → retry → Gemini Fallback → Groq Main → Groq Fallback
 
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createGroq } from '@ai-sdk/groq';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
@@ -48,305 +48,157 @@ function loadEnv() {
   }
 }
 
+/** Provider step in the fallback chain */
+type ProviderStep = {
+  label: string;
+  providerId: 'google' | 'groq';
+  model: string;
+  createModel: () => ReturnType<ReturnType<typeof createGoogleGenerativeAI>> | ReturnType<ReturnType<typeof createGroq>>;
+  /** How many times to attempt this step (including the first try) */
+  maxAttempts: number;
+};
+
 /**
- * Create Cerebras client as primary
+ * Build the ordered fallback chain from environment config.
  */
-function createCerebrasClient(): AIClient {
-  const { createCerebras } = require('@ai-sdk/cerebras');
-  const key = process.env.CEREBRAS_API_KEY;
-  if (!key) {
-    throw new Error('CEREBRAS_API_KEY is not set. Add it to your environment or .env.local');
+function buildFallbackChain(): ProviderStep[] {
+  const steps: ProviderStep[] = [];
+
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (googleKey) {
+    const google = createGoogleGenerativeAI({ apiKey: googleKey });
+    const mainModel = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
+    const fallbackModel = process.env.GOOGLE_FALLBACK_MODEL || 'gemini-2.5-flash';
+
+    steps.push({
+      label: `Google Gemini (${mainModel})`,
+      providerId: 'google',
+      model: mainModel,
+      createModel: () => google(mainModel),
+      maxAttempts: 2, // initial try + 1 retry
+    });
+
+    steps.push({
+      label: `Google Gemini fallback (${fallbackModel})`,
+      providerId: 'google',
+      model: fallbackModel,
+      createModel: () => google(fallbackModel),
+      maxAttempts: 1,
+    });
   }
 
-  const provider = createCerebras({ apiKey: key });
-  const primaryModel = process.env.CEREBRAS_MODEL || 'gpt-oss-120b'; // Prefer env or sensible default
+  if (groqKey) {
+    const groq = createGroq({ apiKey: groqKey });
+    const groqMain = process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct-0905';
+    const groqFallback = process.env.GROQ_FALLBACK_MODEL || 'qwen/qwen3-32b';
 
-  return {
-    createSession: async ({ model, systemMessage } = {}) => {
-      const modelName = model || primaryModel;
-      const listeners: Array<(e: SessionEvent) => void> = [];
-      const controllers: Set<AbortController> = new Set();
+    steps.push({
+      label: `Groq (${groqMain})`,
+      providerId: 'groq',
+      model: groqMain,
+      createModel: () => groq(groqMain),
+      maxAttempts: 1,
+    });
 
-      return {
-        on(cb: (e: SessionEvent) => void) {
-          listeners.push(cb);
-          return () => {
-            const idx = listeners.indexOf(cb);
-            if (idx !== -1) listeners.splice(idx, 1);
-          };
-        },
+    steps.push({
+      label: `Groq fallback (${groqFallback})`,
+      providerId: 'groq',
+      model: groqFallback,
+      createModel: () => groq(groqFallback),
+      maxAttempts: 1,
+    });
+  }
 
-        async sendAndWait({ prompt, images }: { prompt: string, images?: Array<{ url: string }> }, timeout = 120000) {
-          const controller = new AbortController();
-          controllers.add(controller);
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
+  return steps;
+}
 
-          try {
-            const messages: ModelMessage[] = [];
+function isRetryableError(msg: string): boolean {
+  const low = msg.toLowerCase();
+  return (
+    /timeout|timed out|abort/i.test(low) ||
+    /econnreset|econnrefused|enotfound|eai_again|fetch failed|network/i.test(low) ||
+    /rate.?limit|429|too many requests/i.test(low) ||
+    /5\d\d/.test(low) ||
+    /temporarily unavailable|overloaded|capacity|high demand|try again later|resource.?exhausted/i.test(low)
+  );
+}
 
-            if (systemMessage?.content) {
-              messages.push({ role: 'system', content: systemMessage.content });
-            }
-            
-            if (images && images.length > 0) {
-              const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
-              images.forEach(img => {
-                userContent.push({ type: 'image', image: img.url });
-              });
-              messages.push({ role: 'user', content: userContent });
-            } else {
-              messages.push({ role: 'user', content: prompt });
-            }
+async function runWithFallbackChain<T>(
+  chain: ProviderStep[],
+  task: (step: ProviderStep) => Promise<T>,
+  listeners: Array<(e: SessionEvent) => void>,
+): Promise<T> {
+  let lastError: unknown;
 
-            const result = await generateText({
-              model: provider(modelName),
-              messages,
-              abortSignal: controller.signal,
-            });
+  for (const step of chain) {
+    for (let attempt = 1; attempt <= step.maxAttempts; attempt++) {
+      try {
+        return await task(step);
+      } catch (err) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        const retryNote = attempt < step.maxAttempts ? ` (retry ${attempt}/${step.maxAttempts})` : '';
 
-            const content = result.text || '';
-            listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
-            return { data: { content } };
-          } catch (err: unknown) {
-            let m = err instanceof Error ? err.message : String(err);
-            const isAbortError = err instanceof Error && err.name === 'AbortError';
+        console.warn(`[AI Client] ${step.label} failed${retryNote}: ${msg}`);
 
-            if (isAbortError || /timed out|timeout/i.test(m)) {
-              m = 'Request to Cerebras timed out.';
-            } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
-              m = 'Network error contacting Cerebras.';
-            } else if (/401|403|authentication|unauthorized/i.test(m)) {
-              m = `Cerebras authentication failed. Check CEREBRAS_API_KEY.`;
-            }
-
-            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
-            throw new Error(m);
-          } finally {
-            clearTimeout(timeoutId);
-            controllers.delete(controller);
+        // Notify listeners about the fallback
+        listeners.forEach(l => l({
+          type: 'provider.fallback',
+          data: {
+            message: `${step.label} failed${retryNote}, trying next provider...`,
+            error: msg,
           }
-        },
+        }));
 
-        async stream({ prompt }: { prompt: string }) {
-          const controller = new AbortController();
-          controllers.add(controller);
+        // Non-transient errors (provider down, auth, model not found) → skip to next provider immediately
+        if (!isRetryableError(msg)) {
+          console.warn(`[AI Client] Non-retryable error from ${step.label}, skipping to next provider`);
+          break;
+        }
 
-          try {
-            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+        // Brief delay before retry/next step
+        if (attempt < step.maxAttempts || chain.indexOf(step) < chain.length - 1) {
+          await new Promise(r => setTimeout(r, 500 * attempt));
+        }
+      }
+    }
+  }
 
-            if (systemMessage?.content) {
-              messages.push({ role: 'system', content: systemMessage.content });
-            }
-            messages.push({ role: 'user', content: prompt });
-
-            const result = await streamText({
-              model: provider(modelName),
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
-              abortSignal: controller.signal,
-            });
-
-            return result.textStream;
-          } catch (err: unknown) {
-            let m = err instanceof Error ? err.message : String(err);
-            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
-            throw new Error(m);
-          }
-        },
-
-        async destroy() {
-          controllers.forEach(c => c.abort());
-          controllers.clear();
-        },
-      };
-    },
-  };
+  throw lastError ?? new Error('All AI providers failed');
 }
 
 /**
- * Create Groq client for Moonshot AI model as fallback
- */
-function createGroqClient(): AIClient {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) {
-    throw new Error('GROQ_API_KEY is not set. Add it to your environment or .env.local');
-  }
-
-  const groq = createGroq({ apiKey: key });
-  const fallbackModel = 'qwen/qwen3-32b'; // Fallback model
-
-  return {
-    createSession: async ({ model, systemMessage } = {}) => {
-      const modelName = model || fallbackModel;
-      const listeners: Array<(e: SessionEvent) => void> = [];
-      const controllers: Set<AbortController> = new Set();
-
-      return {
-        on(cb: (e: SessionEvent) => void) {
-          listeners.push(cb);
-          return () => {
-            const idx = listeners.indexOf(cb);
-            if (idx !== -1) listeners.splice(idx, 1);
-          };
-        },
-
-        async sendAndWait({ prompt, images }: { prompt: string, images?: Array<{ url: string }> }, timeout = 120000) {
-          const controller = new AbortController();
-          controllers.add(controller);
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-          try {
-            const messages: ModelMessage[] = [];
-
-            if (systemMessage?.content) {
-              messages.push({ role: 'system', content: systemMessage.content });
-            }
-            
-            if (images && images.length > 0) {
-              const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
-              images.forEach(img => {
-                userContent.push({ type: 'image', image: img.url });
-              });
-              messages.push({ role: 'user', content: userContent });
-            } else {
-              messages.push({ role: 'user', content: prompt });
-            }
-
-            const result = await generateText({
-              model: groq(modelName),
-              messages,
-              abortSignal: controller.signal,
-            });
-
-            const content = result.text || '';
-            listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
-            return { data: { content } };
-          } catch (err: unknown) {
-            let m = err instanceof Error ? err.message : String(err);
-            const isAbortError = err instanceof Error && err.name === 'AbortError';
-
-            if (isAbortError || /timed out|timeout/i.test(m)) {
-              m = 'Request to Groq timed out.';
-            } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
-              m = 'Network error contacting Groq.';
-            } else if (/401|403|authentication|unauthorized/i.test(m)) {
-              m = `Groq authentication failed. Check GROQ_API_KEY.`;
-            }
-
-            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
-            throw new Error(m);
-          } finally {
-            clearTimeout(timeoutId);
-            controllers.delete(controller);
-          }
-        },
-
-        async stream({ prompt }: { prompt: string }) {
-          const controller = new AbortController();
-          controllers.add(controller);
-
-          try {
-            const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-
-            if (systemMessage?.content) {
-              messages.push({ role: 'system', content: systemMessage.content });
-            }
-            messages.push({ role: 'user', content: prompt });
-
-            const result = await streamText({
-              model: groq(modelName),
-              messages: messages.map(m => ({ role: m.role, content: m.content })),
-              abortSignal: controller.signal,
-            });
-
-            return result.textStream;
-          } catch (err: unknown) {
-            let m = err instanceof Error ? err.message : String(err);
-            listeners.forEach((l) => l({ type: 'session.error', data: { message: m } }));
-            throw new Error(m);
-          }
-        },
-
-        async destroy() {
-          controllers.forEach(c => c.abort());
-          controllers.clear();
-        },
-      };
-    },
-  };
-}
-
-/**
- * Get the AI client that handles Cerebras as primary and Groq as fallback
+ * Get the AI client that handles Google Gemini as primary and Groq as fallback.
+ *
+ * Fallback chain:
+ *   1. Google Gemini main model (retry once on failure)
+ *   2. Google Gemini fallback model
+ *   3. Groq main model
+ *   4. Groq fallback model
  */
 export async function getAIClient(): Promise<AIClient> {
   if (singletonClient && process.env.NODE_ENV !== 'test') return singletonClient;
 
   loadEnv();
 
-  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
 
-  if (!cerebrasKey && !groqKey) {
-    throw new Error('Neither CEREBRAS_API_KEY nor GROQ_API_KEY is set. Please configure at least one AI provider.');
+  if (!googleKey && !groqKey) {
+    throw new Error('Neither GOOGLE_GENERATIVE_AI_API_KEY nor GROQ_API_KEY is set. Please configure at least one AI provider.');
   }
 
-  const cerebrasClient = cerebrasKey ? createCerebrasClient() : null;
-  const groqClient = groqKey ? createGroqClient() : null;
+  const chain = buildFallbackChain();
 
   const client: AIClient = {
     createSession: async (opts) => {
-      const { providerId } = opts || {};
-      let primarySession: AIClientSession | null = null;
-      let fallbackClient: AIClient | null = null;
-      let fallbackProviderId: 'cerebras' | 'groq' | null = null;
-
-      // Keep the caller's model only for the intended provider.
-      // When switching providers, drop the model so that provider-specific defaults apply.
-      const buildSessionOpts = (targetProviderId: 'cerebras' | 'groq', isPrimary: boolean) => {
-        const explicitProviderId = opts?.providerId;
-        const shouldKeepModel = explicitProviderId
-          ? explicitProviderId === targetProviderId
-          : isPrimary;
-
-        return {
-          ...opts,
-          providerId: targetProviderId,
-          model: shouldKeepModel ? opts?.model : undefined,
-        };
-      };
-
-      if (providerId === 'groq' && groqClient) {
-        fallbackProviderId = cerebrasClient ? 'cerebras' : null;
-        primarySession = await groqClient.createSession(buildSessionOpts('groq', true));
-        fallbackClient = cerebrasClient; // Fallback to Cerebras if Groq was explicitly chosen and fails
-      } else if (providerId === 'cerebras' && cerebrasClient) {
-        fallbackProviderId = groqClient ? 'groq' : null;
-        primarySession = await cerebrasClient.createSession(buildSessionOpts('cerebras', true));
-        fallbackClient = groqClient;
-      } else {
-        // Default behavior
-        fallbackProviderId = groqClient ? 'groq' : null;
-        primarySession = (cerebrasClient && cerebrasClient.createSession)
-          ? await cerebrasClient.createSession(buildSessionOpts('cerebras', true))
-          : null;
-        fallbackClient = groqClient;
-      }
-
-      let fallbackSession: AIClientSession | null = null;
       const listeners: Array<(e: SessionEvent) => void> = [];
-
-      // Helper to attach a session to our listener pool
-      const attachSession = (s: AIClientSession) => {
-        s.on((event) => {
-          // Avoid duplicate processing if needed, but here we just propagate
-          listeners.forEach((l) => l(event));
-        });
-      };
-
-      if (primarySession) attachSession(primarySession);
+      const controllers: Set<AbortController> = new Set();
 
       const session: AIClientSession = {
-        on(cb) {
+        on(cb: (e: SessionEvent) => void) {
           listeners.push(cb);
           return () => {
             const idx = listeners.indexOf(cb);
@@ -354,84 +206,96 @@ export async function getAIClient(): Promise<AIClient> {
           };
         },
 
-        async sendAndWait(sendOpts, timeout) {
-          if (fallbackSession) {
-            return await fallbackSession.sendAndWait(sendOpts, timeout);
-          }
+        async sendAndWait({ prompt, images }: { prompt: string, images?: Array<{ url: string }> }, timeout = 180000) {
+          return runWithFallbackChain(chain, async (step) => {
+            const controller = new AbortController();
+            controllers.add(controller);
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-          if (primarySession) {
             try {
-              return await primarySession.sendAndWait(sendOpts, timeout);
+              const messages: ModelMessage[] = [];
+
+              if (opts?.systemMessage?.content) {
+                messages.push({ role: 'system', content: opts.systemMessage.content });
+              }
+
+              if (images && images.length > 0) {
+                const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
+                images.forEach(img => {
+                  userContent.push({ type: 'image', image: img.url });
+                });
+                messages.push({ role: 'user', content: userContent });
+              } else {
+                messages.push({ role: 'user', content: prompt });
+              }
+
+              const result = await generateText({
+                model: step.createModel(),
+                messages,
+                maxRetries: 0, // Disable SDK internal retries — we handle retries via fallback chain
+                abortSignal: controller.signal,
+              });
+
+              const content = result.text || '';
+              listeners.forEach((l) => l({ type: 'assistant.message', data: { content } }));
+              return { data: { content } };
             } catch (err: unknown) {
-              const message = err instanceof Error ? err.message : String(err);
-              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
-              const source = providerId || 'Primary';
+              let m = err instanceof Error ? err.message : String(err);
+              const isAbortError = err instanceof Error && err.name === 'AbortError';
 
-              console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}):`, message);
+              if (isAbortError || /timed out|timeout/i.test(m)) {
+                m = `Request to ${step.label} timed out.`;
+              } else if (/fetch failed|network|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET/i.test(m)) {
+                m = `Network error contacting ${step.label}.`;
+              } else if (/401|403|authentication|unauthorized/i.test(m)) {
+                m = `${step.label} authentication failed. Check your API key.`;
+              }
 
-              listeners.forEach(l => l({
-                type: 'provider.fallback',
-                data: { message: `Model failed, switching to ${target} fallback...`, error: message }
-              }));
-
-              if (!fallbackClient) throw err;
-
-              if (!fallbackProviderId) throw err;
-              fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
-              attachSession(fallbackSession);
-              return await fallbackSession.sendAndWait(sendOpts, timeout);
+              throw new Error(m);
+            } finally {
+              clearTimeout(timeoutId);
+              controllers.delete(controller);
             }
-          } else if (fallbackClient) {
-            if (!fallbackProviderId) throw new Error('No AI providers available');
-            fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
-            attachSession(fallbackSession);
-            return await fallbackSession.sendAndWait(sendOpts, timeout);
-          } else {
-            throw new Error('No AI providers available');
-          }
+          }, listeners);
         },
 
-        async stream(sendOpts) {
-          if (fallbackSession) {
-            return await fallbackSession.stream(sendOpts);
-          }
+        async stream({ prompt }: { prompt: string }) {
+          return runWithFallbackChain(chain, async (step) => {
+            const controller = new AbortController();
+            controllers.add(controller);
+            // Timeout for stream initiation (not the full stream duration)
+            const streamTimeout = setTimeout(() => controller.abort(), 60000);
 
-          if (primarySession) {
             try {
-              return await primarySession.stream(sendOpts);
+              const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+              if (opts?.systemMessage?.content) {
+                messages.push({ role: 'system', content: opts.systemMessage.content });
+              }
+              messages.push({ role: 'user', content: prompt });
+
+              const result = await streamText({
+                model: step.createModel(),
+                messages: messages.map(m => ({ role: m.role, content: m.content })),
+                maxRetries: 0, // Disable SDK internal retries — we handle retries via fallback chain
+                abortSignal: controller.signal,
+              });
+
+              // Stream connected successfully, clear the initiation timeout
+              clearTimeout(streamTimeout);
+              return result.textStream;
             } catch (err: unknown) {
-              const message = err instanceof Error ? err.message : String(err);
-              const target = fallbackClient === groqClient ? 'Groq' : 'Cerebras';
-              const source = providerId || 'Primary';
-
-              console.warn(`[AI Client] ${source} provider failed, trying fallback (${target}) for stream:`, message);
-
-              listeners.forEach(l => l({
-                type: 'provider.fallback',
-                data: { message: `Model failed, switching to ${target} fallback for stream...`, error: message }
-              }));
-
-              if (!fallbackClient) throw err;
-
-              if (!fallbackProviderId) throw err;
-              fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
-              attachSession(fallbackSession);
-              return await fallbackSession.stream(sendOpts);
+              clearTimeout(streamTimeout);
+              const m = err instanceof Error ? err.message : String(err);
+              throw new Error(m);
             }
-          } else if (fallbackClient) {
-            if (!fallbackProviderId) throw new Error('No AI providers available');
-            fallbackSession = await fallbackClient.createSession(buildSessionOpts(fallbackProviderId, false));
-            attachSession(fallbackSession);
-            return await fallbackSession.stream(sendOpts);
-          } else {
-            throw new Error('No AI providers available');
-          }
+          }, listeners);
         },
 
         async destroy() {
-          await primarySession?.destroy();
-          await fallbackSession?.destroy();
-        }
+          controllers.forEach(c => c.abort());
+          controllers.clear();
+        },
       };
 
       return session;

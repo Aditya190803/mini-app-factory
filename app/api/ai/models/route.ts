@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 type ProviderConfig = {
-  id: 'cerebras' | 'groq';
+  id: 'google' | 'groq';
   name: string;
-  envKey: 'CEREBRAS_API_KEY' | 'GROQ_API_KEY';
+  envKey: 'GOOGLE_GENERATIVE_AI_API_KEY' | 'GROQ_API_KEY';
   url: string;
 };
 
@@ -13,8 +13,17 @@ type ProviderModel = {
   id: string;
 };
 
-type ProviderResponse = {
+type GoogleModel = {
+  name: string;
+  displayName: string;
+};
+
+type GroqProviderResponse = {
   data: ProviderModel[];
+};
+
+type GoogleProviderResponse = {
+  models: GoogleModel[];
 };
 
 type ModelEntry = {
@@ -31,10 +40,10 @@ export async function GET() {
   
   const providers: ProviderConfig[] = [
     {
-      id: 'cerebras',
-      name: 'Cerebras',
-      envKey: 'CEREBRAS_API_KEY',
-      url: 'https://api.cerebras.ai/v1/models'
+      id: 'google',
+      name: 'Google Gemini',
+      envKey: 'GOOGLE_GENERATIVE_AI_API_KEY',
+      url: 'https://generativelanguage.googleapis.com/v1beta/models'
     },
     {
       id: 'groq',
@@ -50,23 +59,45 @@ export async function GET() {
 
     try {
       const resp = await fetch(provider.url, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+        headers: provider.id === 'google' 
+          ? { 'x-goog-api-key': apiKey } 
+          : { 'Authorization': `Bearer ${apiKey}` },
         next: { revalidate: 3600 } // Cache for 1 hour
       });
       
       if (resp.ok) {
-        const data = (await resp.json()) as ProviderResponse;
-        const providerModels = data.data.map((m) => {
-          const isVision = m.id.toLowerCase().includes('vision');
-          return {
-            id: m.id,
-            name: `${m.id}`,
-            fullName: `${m.id} (${provider.name})`,
-            provider: provider.name,
-            providerId: provider.id,
-            hasVision: isVision
-          };
-        });
+        const json = await resp.json();
+        let providerModels: ModelEntry[];
+
+        if (provider.id === 'google') {
+          const data = json as GoogleProviderResponse;
+          providerModels = (data.models || []).map((m) => {
+            const modelId = m.name.replace('models/', '');
+            const isVision = modelId.toLowerCase().includes('vision');
+            return {
+              id: modelId,
+              name: modelId,
+              fullName: `${modelId} (${provider.name})`,
+              provider: provider.name,
+              providerId: provider.id,
+              hasVision: isVision
+            };
+          });
+        } else {
+          const data = json as GroqProviderResponse;
+          providerModels = (data.data || []).map((m) => {
+            const isVision = m.id.toLowerCase().includes('vision');
+            return {
+              id: m.id,
+              name: m.id,
+              fullName: `${m.id} (${provider.name})`,
+              provider: provider.name,
+              providerId: provider.id,
+              hasVision: isVision
+            };
+          });
+        }
+
         models.push(...providerModels);
       } else {
         console.error(`Status ${resp.status} from ${provider.name}:`, await resp.text().catch(() => 'No body'));
