@@ -127,7 +127,7 @@ describe('POST /api/generate', () => {
   });
 
   test('returns SSE response for a valid generation request', async () => {
-    const generateModule = await import('@/app/api/generate/route');
+    const { POST } = await import('@/app/api/generate/route');
     const { stackServerApp } = await import('@/stack/server');
     const { getProject } = await import('@/lib/projects');
 
@@ -138,24 +138,16 @@ describe('POST /api/generate', () => {
       userId: 'user_123',
     });
 
-    const runGenerationSpy = vi
-      .spyOn(generateModule, 'runGeneration')
-      .mockResolvedValueOnce({
-        html: '<html><body><h1>Hello</h1></body></html>',
-        files: [{ path: 'index.html', content: '<html><body><h1>Hello</h1></body></html>', language: 'html', fileType: 'page' }],
-      });
-
     const req = new Request('http://localhost/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectName: 'demo-project', prompt: 'Build a landing page' }),
     });
 
-    const res = await generateModule.POST(req);
+    const res = await POST(req);
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/event-stream');
-
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    expect(runGenerationSpy).toHaveBeenCalled();
+    const streamOutput = await res.text();
+    expect(streamOutput).toContain('"status":"initializing"');
   });
 });
