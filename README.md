@@ -12,7 +12,7 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Project Dashboard**: Manage and track all your generated sites (including redeploys)
 - **Authentication**: Secure access to your projects via Stack Auth
 - **Live Preview & Editor**: Interactive workspace to see and edit your sites in real-time
-- **Download & Deploy**: Export as ZIP with all assets or deploy to the web (Netlify default)
+- **Download & Deploy**: Export as ZIP with all assets or deploy to the web
 - **Modern UI**: Built with Tailwind CSS v4 and shadcn/ui components
 
 ## How It Works
@@ -72,11 +72,9 @@ A powerful AI-powered web application that generates production-ready multi-page
    GITHUB_CLIENT_ID=your_github_oauth_client_id
    GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 
-   # Netlify OAuth (Deployments)
+   # Optional Deployment Integrations
    NETLIFY_CLIENT_ID=your_netlify_oauth_client_id
    NETLIFY_CLIENT_SECRET=your_netlify_oauth_client_secret
-
-   # Vercel OAuth (Legacy/Hidden)
    VERCEL_CLIENT_ID=your_vercel_oauth_client_id
    VERCEL_CLIENT_SECRET=your_vercel_oauth_client_secret
 
@@ -84,40 +82,19 @@ A powerful AI-powered web application that generates production-ready multi-page
    INTEGRATION_TOKEN_SECRET=your_32+_char_secret
    ```
 
-### One-Click Deploy (GitHub + Netlify)
+### One-Click Deploy
 
-The editor includes a Deploy flow that creates or reuses a GitHub repo and triggers a Netlify deployment (default provider).
+The editor includes a deploy flow that can create or reuse a GitHub repo and publish the project.
 
-1. Create a GitHub OAuth app and add `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
-2. Create a Netlify OAuth app and add `NETLIFY_CLIENT_ID` / `NETLIFY_CLIENT_SECRET`.
-3. Open a project in the editor, click **Deploy**, connect GitHub and Netlify, then deploy.
-4. Optional: choose repo visibility (public/private) and a GitHub org as the repo owner.
-5. Optional: set a Netlify site name override (separate from the GitHub repo name).
-6. Deploy options include GitHub + Netlify (default), GitHub repo only, and a hosted-by-us option for the fastest path to a live URL.
-7. Redeploys can be triggered from the dashboard without opening the editor.
+1. Configure deployment integrations in your environment.
+2. Open a project in the editor and click **Deploy**.
+3. Connect required accounts when prompted.
+4. Choose repo ownership and visibility.
+5. Redeploy from the dashboard whenever needed.
 
 ### Project Settings
 
-Each project has a settings page at `/edit/[projectName]/settings` that centralizes deployment info, Netlify site details, and metadata/SEO.
-
-#### How to Create OAuth Apps
-
-GitHub OAuth App:
-1. Go to GitHub Developer Settings → OAuth Apps → New OAuth App.
-2. Set **Homepage URL** to your app URL (for local dev: `http://localhost:3000`).
-3. Set **Authorization callback URL** to:
-   ```text
-   http://localhost:3000/api/integrations/github/callback
-   ```
-4. Copy the **Client ID** and **Client Secret** into `.env.local`.
-
-Netlify OAuth App:
-1. Go to Netlify User Settings → Applications → OAuth applications → New OAuth app.
-2. Set **Redirect URL** to:
-   ```text
-   http://localhost:3000/api/integrations/netlify/callback
-   ```
-3. Copy the **Client ID** and **Client Secret** into `.env.local`.
+Each project has a settings page at `/edit/[projectName]/settings` that centralizes deployment info and metadata/SEO.
 
 4. Initialize Convex:
    ```bash
@@ -140,6 +117,18 @@ Run unit tests (Vitest):
 
 ```bash
 bun test
+```
+
+Run type checks:
+
+```bash
+bun run typecheck
+```
+
+Run lint:
+
+```bash
+bun run lint
 ```
 
 Build the project:

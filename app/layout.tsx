@@ -51,7 +51,7 @@ export default function RootLayout({
                   </div>
                 </div>
               </footer>
-              <Toaster position="bottom-right" theme="dark" />
+              <Toaster position="bottom-right" theme="dark" closeButton />
               <Analytics />
             </ConvexClientProvider>
           </StackTheme>
