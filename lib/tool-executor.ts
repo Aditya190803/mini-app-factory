@@ -235,12 +235,81 @@ function handleReplaceContent(args: { file: string; selector: string; oldContent
       return { success: false, message: `Selector not found: ${selector}` };
     }
 
-    if (oldContent && !element.html()?.includes(oldContent)) {
-      return { success: false, message: `Old content mismatch for selector: ${selector}` };
+    const parseOpeningTag = (value: string) => {
+      const match = value.trim().match(/^<([a-zA-Z][\w:-]*)([^>]*)>$/);
+      if (!match) return null;
+      const tag = match[1].toLowerCase();
+      const attrsPart = match[2] || '';
+      try {
+        const fragment = cheerio.load(`<${tag}${attrsPart}></${tag}>`, null, false);
+        const attrs = fragment(tag).first().attr() || {};
+        return { tag, attrs };
+      } catch {
+        return null;
+      }
+    };
+
+    const oldOpenTag = oldContent ? parseOpeningTag(oldContent) : null;
+    const newOpenTag = parseOpeningTag(newContent);
+
+    if (oldContent) {
+      const normalizedOld = oldContent.trim();
+      const hasMatch = element.toArray().some((node) => {
+        const wrapped = $(node);
+        const inner = (wrapped.html() || '').trim();
+        const outer = $.html(wrapped).trim();
+        const tagName = (node as { tagName?: string }).tagName?.toLowerCase();
+        const openingTagMatches = !!(oldOpenTag && tagName === oldOpenTag.tag);
+        return inner.includes(normalizedOld) || outer.includes(normalizedOld) || openingTagMatches;
+      });
+      if (!hasMatch) {
+        return { success: false, message: `Old content mismatch for selector: ${selector}` };
+      }
+    }
+
+    // Heuristic: if AI sends opening-tag replacement via replaceContent, treat it
+    // as an attribute update on the selected elements to avoid nested-tag corruption.
+    if (oldOpenTag && newOpenTag && oldOpenTag.tag === newOpenTag.tag) {
+      const allMatchTag = element.toArray().every((node) => (node as { tagName?: string }).tagName?.toLowerCase() === newOpenTag.tag);
+      if (allMatchTag) {
+        element.each((_, node) => {
+          const wrapped = $(node);
+          Object.entries(newOpenTag.attrs).forEach(([attr, value]) => {
+            if (value !== undefined) wrapped.attr(attr, value);
+          });
+        });
+        file.content = $.html();
+        return { success: true, message: 'Attributes updated', updatedFiles: [file] };
+      }
     }
 
     element.html(newContent);
     file.content = $.html();
+    return { success: true, message: 'Content replaced', updatedFiles: [file] };
+  }
+
+  if (file.language === 'css') {
+    const ranges = findCssRuleRanges(file.content, selector);
+    if (ranges.length === 0) {
+      return { success: false, message: `Selector not found: ${selector}` };
+    }
+
+    if (oldContent) {
+      const hasOldContent = ranges.some((range) => range.text.includes(oldContent));
+      if (!hasOldContent) {
+        return { success: false, message: `Old content mismatch for selector: ${selector}` };
+      }
+    }
+
+    let replacementRule: string;
+    try {
+      replacementRule = buildCssReplacementRule(selector, newContent, true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, message: `CSS Parse error: ${message}` };
+    }
+
+    file.content = applyCssRangeReplacements(file.content, ranges, replacementRule);
     return { success: true, message: 'Content replaced', updatedFiles: [file] };
   }
 
@@ -263,6 +332,24 @@ function handleReplaceElement(args: { file: string; selector: string; newContent
 
     element.replaceWith(newContent);
     file.content = $.html();
+    return { success: true, message: 'Element replaced', updatedFiles: [file] };
+  }
+
+  if (file.language === 'css') {
+    const ranges = findCssRuleRanges(file.content, selector);
+    if (ranges.length === 0) {
+      return { success: false, message: `Selector not found: ${selector}` };
+    }
+
+    let replacementRule: string;
+    try {
+      replacementRule = buildCssReplacementRule(selector, newContent, false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, message: `CSS Parse error: ${message}` };
+    }
+
+    file.content = applyCssRangeReplacements(file.content, ranges, replacementRule);
     return { success: true, message: 'Element replaced', updatedFiles: [file] };
   }
 
@@ -295,6 +382,29 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
     return { success: true, message: 'Content inserted', updatedFiles: [file] };
   }
 
+  if (file.language === 'css') {
+    const ranges = findCssRuleRanges(file.content, selector);
+    if (ranges.length === 0) {
+      return { success: false, message: `Selector not found: ${selector}` };
+    }
+
+    if (position !== 'before' && position !== 'after') {
+      return { success: false, message: `Position ${position} is not supported for css` };
+    }
+
+    const ascending = [...ranges].sort((a, b) => a.start - b.start);
+    const anchor = ascending[0];
+    const insertion = content.endsWith('\n') ? content : `${content}\n`;
+
+    if (position === 'before') {
+      file.content = `${file.content.slice(0, anchor.start)}${insertion}${file.content.slice(anchor.start)}`;
+    } else {
+      file.content = `${file.content.slice(0, anchor.end)}\n${insertion}${file.content.slice(anchor.end)}`;
+    }
+
+    return { success: true, message: 'Content inserted', updatedFiles: [file] };
+  }
+
   return { success: false, message: `Insertion not supported for ${file.language}` };
 }
 
@@ -317,7 +427,73 @@ function handleDeleteContent(args: { file: string; selector: string }, files: Pr
     return { success: true, message: 'Content deleted', updatedFiles: [file] };
   }
 
+  if (file.language === 'css') {
+    const ranges = findCssRuleRanges(file.content, selector);
+    if (ranges.length === 0) {
+      return { success: false, message: `Selector not found: ${selector}` };
+    }
+
+    file.content = applyCssRangeReplacements(file.content, ranges, '');
+    return { success: true, message: 'Content deleted', updatedFiles: [file] };
+  }
+
   return { success: false, message: `Deletion not supported for ${file.language}` };
+}
+
+type CssRuleRange = {
+  start: number;
+  end: number;
+  text: string;
+};
+
+function findCssRuleRanges(content: string, selector: string): CssRuleRange[] {
+  const ranges: CssRuleRange[] = [];
+  const normalizedSelector = selector.trim();
+  const ast = csstree.parse(content, { context: 'stylesheet', positions: true }) as csstree.StyleSheet;
+
+  csstree.walk(ast, {
+    visit: 'Rule',
+    enter(node) {
+      const rule = node as csstree.Rule;
+      const prelude = csstree.generate(rule.prelude).trim();
+      if (prelude !== normalizedSelector) return;
+
+      const loc = (rule as unknown as { loc?: { start?: { offset?: number }, end?: { offset?: number } } }).loc;
+      const start = loc?.start?.offset;
+      const end = loc?.end?.offset;
+      if (typeof start === 'number' && typeof end === 'number' && end > start) {
+        ranges.push({ start, end, text: content.slice(start, end) });
+      }
+    },
+  });
+
+  return ranges.sort((a, b) => b.start - a.start);
+}
+
+function buildCssReplacementRule(selector: string, newContent: string, keepSelector: boolean): string {
+  const trimmed = newContent.trim();
+  if (!trimmed) {
+    throw new Error('CSS content cannot be empty');
+  }
+
+  if (trimmed.includes('{')) {
+    const parsed = csstree.parse(trimmed, { context: 'rule' }) as csstree.Rule;
+    if (!keepSelector) return csstree.generate(parsed);
+    const block = csstree.generate(parsed.block);
+    const rebuilt = csstree.parse(`${selector} ${block}`, { context: 'rule' });
+    return csstree.generate(rebuilt);
+  }
+
+  const parsed = csstree.parse(`${selector} { ${trimmed} }`, { context: 'rule' });
+  return csstree.generate(parsed);
+}
+
+function applyCssRangeReplacements(content: string, ranges: CssRuleRange[], replacement: string): string {
+  let nextContent = content;
+  for (const range of ranges) {
+    nextContent = `${nextContent.slice(0, range.start)}${replacement}${nextContent.slice(range.end)}`;
+  }
+  return nextContent;
 }
 
 function handleCreateFile(args: { path: string; content: string; fileType: ProjectFile['fileType'] }, files: ProjectFile[]): ToolResult {

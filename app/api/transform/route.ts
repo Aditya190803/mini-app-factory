@@ -4,6 +4,7 @@ import { getAIClient } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import { executeTool } from '@/lib/tool-executor';
 import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
+import { extractToolCalls } from '@/lib/transform-tool-calls';
 import { stackServerApp } from '@/stack/server';
 import { getProject, getFiles, saveFiles } from '@/lib/projects';
 import { getServerEnv } from '@/lib/env';
@@ -29,6 +30,38 @@ export async function sendAIMessage(systemPrompt: string, userPrompt: string): P
     return response?.data?.content || '';
   } finally {
     await session.destroy().catch(() => { });
+  }
+}
+
+async function extractToolCallsWithRepair(
+  rawContent: string,
+  session: { sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<{ data?: { content?: string } }> }
+) {
+  try {
+    return extractToolCalls(rawContent);
+  } catch (err) {
+    const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    const isShapeOrJsonError = message.includes('invalid json in tool calls') || message.includes('invalid tool calls payload');
+    if (!isShapeOrJsonError) throw err;
+
+    const repairPrompt = [
+      'Convert the following assistant output into STRICT JSON ONLY.',
+      'Rules:',
+      '- Output must be a JSON array.',
+      '- Each item must be: {"tool":"<name>","args":{...}}',
+      '- No markdown, no explanation, no code fences.',
+      '- Preserve the original intent exactly.',
+      '',
+      'Assistant output to repair:',
+      rawContent,
+    ].join('\n');
+
+    const repaired = await withRetry(
+      () => session.sendAndWait({ prompt: repairPrompt }, 60000),
+      { maxAttempts: 2, baseDelayMs: 500 }
+    );
+    const repairedContent = repaired?.data?.content || '';
+    return extractToolCalls(repairedContent);
   }
 }
 
@@ -110,6 +143,8 @@ function classifyTransformError(raw: unknown) {
   if (lowered.includes('unauthorized') || lowered.includes('authentication')) return { code: 'UNAUTHORIZED', message };
   if (
     lowered.includes('tool not allowed') ||
+    lowered.includes('invalid tool calls payload') ||
+    lowered.includes('invalid json in tool calls') ||
     lowered.includes('invalid selector') ||
     lowered.includes('invalid file path') ||
     lowered.includes('not an array of tool calls') ||
@@ -241,6 +276,13 @@ If a change is too complex for tools, or you need to rewrite a file completely, 
 Note:
 - You have access to ALL project files. 
 - Ensure links (<a> tags) and asset references remain valid.
+- Navigation links rule:
+  - Logo/brand link may go to home (\`index.html\`, \`/\`, or \`#\` for single-page home).
+  - All other links MUST NOT be generic \`#\`.
+  - Every non-logo link must point to an existing page or an existing section id.
+  - If you add/update nav links, also create/fix the target pages or section ids so every link resolves.
+- To modify tag attributes (for example adding role/class/id to <main>), DO NOT use replaceContent with opening tags.
+  Use replaceElement instead.
 - Active file focus is: ${targetFile || 'index.html'}.
 
 Only return changes. No explanations.`;
@@ -273,36 +315,22 @@ Only return changes. No explanations.`;
       );
       content = response?.data?.content || '';
 
-      // Try to parse as JSON tool calls. 
-      // Be robust: extracted content might have leading/trailing text or be inside a code block
-      let jsonContent = content;
-      const jsonMatch = content.match(/\[\s*\{\s*"tool":[\s\S]*\}\s*\]/);
-      if (jsonMatch) {
-        jsonContent = jsonMatch[0];
-      } else {
-        jsonContent = stripCodeFence(content);
-      }
-
-      const toolCalls = JSON.parse(jsonContent);
-      if (Array.isArray(toolCalls)) {
-        for (const call of toolCalls) {
-          const result = await executeTool(call.tool, call.args, finalFiles as ProjectFile[]);
-          if (result.success && result.updatedFiles) {
-            result.updatedFiles.forEach(uf => {
-              const idx = finalFiles.findIndex(f => f.path === uf.path);
-              if (idx >= 0) finalFiles[idx] = uf;
-              else finalFiles.push(uf);
-            });
-          }
-          if (result.success && result.deletedPaths) {
-            finalFiles = finalFiles.filter(f => !result.deletedPaths?.includes(f.path));
-          }
-          if (!result.success) {
-            throw new Error(result.message);
-          }
+      const toolCalls = await extractToolCallsWithRepair(content, session);
+      for (const call of toolCalls) {
+        const result = await executeTool(call.tool, call.args, finalFiles as ProjectFile[]);
+        if (result.success && result.updatedFiles) {
+          result.updatedFiles.forEach(uf => {
+            const idx = finalFiles.findIndex(f => f.path === uf.path);
+            if (idx >= 0) finalFiles[idx] = uf;
+            else finalFiles.push(uf);
+          });
         }
-      } else {
-        throw new Error('Not an array of tool calls');
+        if (result.success && result.deletedPaths) {
+          finalFiles = finalFiles.filter(f => !result.deletedPaths?.includes(f.path));
+        }
+        if (!result.success) {
+          throw new Error(result.message);
+        }
       }
     } catch (err) {
       if (projectName) {

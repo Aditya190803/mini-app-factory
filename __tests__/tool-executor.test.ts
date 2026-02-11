@@ -87,15 +87,72 @@ describe('tool-executor', () => {
     expect(result.message).toMatch(/Selector not found/i);
   });
 
-  test('replaceContent fails on non-html file', async () => {
+  test('replaceContent accepts oldContent that matches outer HTML', async () => {
+    const result = await executeTool('replaceContent', {
+      file: 'index.html',
+      selector: 'body',
+      oldContent: '<body>',
+      newContent: '<main role="main">Updated</main>'
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles?.[0].content).toContain('role="main"');
+  });
+
+  test('replaceContent opening-tag updates attributes without nesting', async () => {
+    const files: ProjectFile[] = [{
+      path: 'index.html',
+      content: '<html><body><main class="layout"><h1>Title</h1></main></body></html>',
+      language: 'html',
+      fileType: 'page'
+    }];
+
+    const result = await executeTool('replaceContent', {
+      file: 'index.html',
+      selector: 'main',
+      oldContent: '<main>',
+      newContent: '<main role="main">'
+    }, files);
+
+    expect(result.success).toBe(true);
+    const html = result.updatedFiles?.[0].content || '';
+    expect(html).toContain('<main class="layout" role="main">');
+    expect(html).not.toContain('<main><main');
+  });
+
+  test('replaceContent updates CSS rule declarations', async () => {
     const result = await executeTool('replaceContent', {
       file: 'styles.css',
       selector: '.title',
-      newContent: 'Updated'
+      newContent: 'color: blue; font-size: 20px;'
     }, initialFiles);
 
-    expect(result.success).toBe(false);
-    expect(result.message).toMatch(/not supported/i);
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles?.[0].content).toMatch(/\.title\s*\{\s*color:\s*blue;?\s*font-size:\s*20px;?\s*\}/);
+  });
+
+  test('insertContent inserts CSS block before selector rule', async () => {
+    const result = await executeTool('insertContent', {
+      file: 'styles.css',
+      selector: '.title',
+      position: 'before',
+      content: '.section-title { letter-spacing: 4px; }'
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    const css = result.updatedFiles?.[0].content || '';
+    expect(css.indexOf('.section-title')).toBeGreaterThanOrEqual(0);
+    expect(css.indexOf('.section-title')).toBeLessThan(css.indexOf('.title'));
+  });
+
+  test('deleteContent removes matching CSS rule', async () => {
+    const result = await executeTool('deleteContent', {
+      file: 'styles.css',
+      selector: '.title',
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles?.[0].content).not.toMatch(/\.title\s*\{/);
   });
 
   test('updateStyle updates existing rule', async () => {
@@ -121,5 +178,36 @@ describe('tool-executor', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/invalid path/i);
+  });
+
+  test('rejects unknown tools', async () => {
+    const result = await executeTool('runShellCommand', {
+      command: 'rm -rf /'
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/tool not allowed/i);
+  });
+
+  test('batchEdit rejects malformed operation structures', async () => {
+    const result = await executeTool('batchEdit', {
+      operations: [
+        { name: 'createFile', arguments: null },
+      ]
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/invalid batch operation structure/i);
+  });
+
+  test('replaceContent surfaces CSS errors for empty declarations', async () => {
+    const result = await executeTool('replaceContent', {
+      file: 'styles.css',
+      selector: '.title',
+      newContent: ''
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/css parse error/i);
   });
 });
