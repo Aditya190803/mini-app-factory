@@ -13,9 +13,9 @@ import { withRetry } from '@/lib/ai-retry';
 const MODEL = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
 
 const generateSchema = z.object({
-  projectName: z.string().min(1),
-  prompt: z.string().optional(),
-});
+  projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
+  prompt: z.string().trim().min(1).max(8_000).optional(),
+}).strict();
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -134,7 +134,7 @@ export async function runGeneration(
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
           console.error('[AI] Design session error:', event.data.message);
-        } else if (event.type === 'provider.fallback') {
+        } else if (event.type === 'provider.fallback' || event.type === 'provider.selected') {
           onEvent?.(event);
         }
       });
@@ -184,6 +184,14 @@ Mandatory requirements:
    - Instead, use the placeholder \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
    - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
 
+6. **Navigation Link Rules (CRITICAL)**:
+   - The logo/brand link may point to home (\`index.html\`, \`/\`, or \`#\` for single-page home).
+   - Other navigation links MUST NOT use generic \`#\`.
+   - Every non-logo nav link must point to:
+     - a real page that exists (e.g. \`about.html\`, \`pricing.html\`), or
+     - a real in-page section id that exists in the same file (e.g. \`#features\` with \`id=\"features\"\` present).
+   - If a link target does not exist yet, create the page/section in this output.
+
 You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
 
@@ -202,7 +210,7 @@ Return ONLY code blocks. No explanations.`;
         if (event.type === 'session.error') {
           sessionError = new Error(event.data.message);
           console.error('[AI] HTML session error:', event.data.message);
-        } else if (event.type === 'provider.fallback') {
+        } else if (event.type === 'provider.fallback' || event.type === 'provider.selected') {
           onEvent?.(event);
         }
       });
@@ -327,7 +335,13 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
     }
 
-    const finalPrompt = prompt || project.prompt;
+    const finalPrompt = (prompt || project.prompt || '').trim();
+    if (!finalPrompt) {
+      return Response.json(
+        { error: 'Prompt is required', code: 'INVALID_PAYLOAD', requestId },
+        { status: 400 }
+      );
+    }
 
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();
@@ -383,6 +397,14 @@ export async function POST(request: Request) {
             (event) => {
               if (event.type === 'provider.fallback') {
                 sse.write({ status: 'fallback', message: event.data.message });
+              } else if (event.type === 'provider.selected') {
+                sse.write({
+                  status: 'provider',
+                  message: event.data.message,
+                  providerId: event.data.providerId,
+                  model: event.data.model,
+                  label: event.data.label,
+                });
               }
             },
             requestId

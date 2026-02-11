@@ -5,6 +5,7 @@ import { getRepoLookupTargets, normalizeNetlifySiteName, slugifyRepoName } from 
 import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-content";
 import { getProject, getFiles } from "@/lib/projects";
 import { getServerEnv } from "@/lib/env";
+import { z } from "zod";
 
 function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
   const encoder = new TextEncoder();
@@ -42,6 +43,17 @@ type DeployRequest = {
   repoFullName?: string;
   netlifySiteName?: string;
 };
+
+const deploySchema = z.object({
+  projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, "Invalid project name"),
+  prompt: z.string().trim().min(1).max(8_000).optional(),
+  repoVisibility: z.enum(["private", "public"]).optional(),
+  githubOrg: z.string().trim().min(1).max(120).nullable().optional(),
+  deployMode: z.enum(["github-vercel", "github-netlify", "github-only"]).optional(),
+  repoName: z.string().trim().min(1).max(120).optional(),
+  repoFullName: z.string().trim().min(1).max(240).optional(),
+  netlifySiteName: z.string().trim().min(1).max(120).optional(),
+}).strict();
 
 async function githubRequest<T>(url: string, token: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -111,10 +123,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as DeployRequest;
-  if (!body?.projectName) {
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+  }
+
+  const parsed = deploySchema.safeParse(payload);
+  if (!parsed.success) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
+  const body = parsed.data as DeployRequest;
 
   const project = await getProject(body.projectName);
   if (!project) {
