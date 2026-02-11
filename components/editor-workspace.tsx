@@ -49,6 +49,25 @@ const applyFileDelta = (currentFiles: ProjectFile[], updates: ProjectFile[], del
   return Array.from(map.values());
 };
 
+const getTransformRecoverySuggestion = (code: string) => {
+  if (code === 'INVALID_TOOL_CALL') {
+    return 'Use a smaller change request, target a specific element, and avoid asking for many edits at once.';
+  }
+  if (code === 'RATE_LIMITED') {
+    return 'Wait a few seconds, then retry. Batch multiple tiny edits into a single transform.';
+  }
+  if (code === 'INVALID_FILE_STRUCTURE') {
+    return 'Restore required files (for example index.html) and retry.';
+  }
+  if (code === 'UNAUTHORIZED') {
+    return 'Sign in again, reload the editor, and retry.';
+  }
+  if (code === 'PROJECT_NOT_FOUND') {
+    return 'Return to dashboard, reopen the project, then retry.';
+  }
+  return 'Check your prompt, reduce scope, and retry. You can also apply part of the change manually, then run transform again.';
+};
+
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -467,17 +486,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         const data = await response.json().catch(() => ({}));
         const code = data.code || 'TRANSFORM_ERROR';
         const message = data.error || 'Transform failed';
-        const suggestion = code === 'INVALID_TOOL_CALL'
-          ? 'Try a simpler edit, or target a specific element with a clear selector.'
-          : code === 'RATE_LIMITED'
-            ? 'You are sending requests too quickly. Wait a moment and retry.'
-            : code === 'INVALID_FILE_STRUCTURE'
-              ? 'Ensure the project includes index.html and valid files before retrying.'
-              : code === 'UNAUTHORIZED'
-                ? 'Sign in again and retry the transform.'
-                : 'Check your prompt and try again.';
+        const requestId = typeof data.requestId === 'string' ? data.requestId : undefined;
+        const suggestion = getTransformRecoverySuggestion(code);
+        const description = requestId ? `${suggestion} (request: ${requestId})` : suggestion;
 
-        toast.error(message, { description: suggestion });
+        toast.error(message, { description });
         throw new Error(message);
       }
 

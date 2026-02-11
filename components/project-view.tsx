@@ -31,6 +31,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   const [_currentStepIndex, setCurrentStepIndex] = useState(0);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [fallbackInfo, setFallbackInfo] = useState<string | null>(null);
+  const [providerInfo, setProviderInfo] = useState<{ label: string; model?: string; providerId?: string } | null>(null);
   const hasStarted = useRef(false);
 
   // Poll for project status as a fallback when stream fails
@@ -100,6 +101,15 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             toast.warning('Provider issue detected', {
               description: data.message || 'Main model failed, switching to fallback...',
               duration: 5000,
+            });
+            return;
+          }
+
+          if (data.status === 'provider') {
+            setProviderInfo({
+              label: typeof data.label === 'string' ? data.label : (typeof data.message === 'string' ? data.message : 'Unknown provider'),
+              model: typeof data.model === 'string' ? data.model : undefined,
+              providerId: typeof data.providerId === 'string' ? data.providerId : undefined,
             });
             return;
           }
@@ -192,6 +202,18 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           <p className="text-secondary-text font-mono text-sm max-w-md mx-auto">
             Our autonomous agents are building your application step by step.
           </p>
+
+          {providerInfo && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="inline-flex items-center gap-2 px-3 py-1 border border-secondary-text/25 bg-secondary-text/10 text-secondary-text text-[11px] font-mono rounded-sm"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary-text/80" />
+              <span>Model in use:</span>
+              <span className="text-foreground">{providerInfo.label}</span>
+            </motion.div>
+          )}
         </div>
 
         <div className="space-y-6">

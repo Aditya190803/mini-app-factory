@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { normalizeProjectMetadata, projectFileRecordSchema } from "./project-metadata";
 
 import { ProjectFile } from "./page-builder";
 
@@ -46,6 +47,10 @@ export interface ProjectMetadata {
   files?: ProjectFile[];
 }
 
+export function toProjectMetadata(record: unknown): ProjectMetadata {
+  return normalizeProjectMetadata(record) as ProjectMetadata;
+}
+
 export async function projectExists(name: string): Promise<boolean> {
   const project = await getConvex().query(api.projects.getProject, { projectName: name });
   return !!project;
@@ -75,36 +80,16 @@ export async function saveProject(metadata: ProjectMetadata) {
 export async function getProject(name: string): Promise<ProjectMetadata | null> {
   const project = await getConvex().query(api.projects.getProject, { projectName: name });
   if (!project) return null;
-  
-  return {
-    name: project.projectName,
-    prompt: project.prompt,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-    status: project.status as ProjectMetadata['status'],
-    html: project.html,
-    isPublished: project.isPublished,
-    userId: project.userId,
-    isMultiPage: project.isMultiPage,
-    pageCount: project.pageCount,
-    description: project.description,
-    selectedModel: project.selectedModel,
-    providerId: project.providerId,
-    favicon: project.favicon,
-    deploymentUrl: project.deploymentUrl,
-    repoUrl: project.repoUrl,
-    deployProvider: project.deployProvider,
-    deployedAt: project.deployedAt,
-    netlifySiteName: project.netlifySiteName,
-    seoData: project.seoData,
-  };
+
+  return toProjectMetadata(project);
 }
 
 export async function getFiles(projectName: string) {
   const convex = getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return [];
-  return await convex.query(api.files.getFilesByProject, { projectId: project._id });
+  const files = await convex.query(api.files.getFilesByProject, { projectId: project._id });
+  return files.map((file) => projectFileRecordSchema.parse(file));
 }
 
 export async function getFile(projectName: string, path: string) {

@@ -135,6 +135,15 @@ async function runWithFallbackChain<T>(
   for (const step of chain) {
     for (let attempt = 1; attempt <= step.maxAttempts; attempt++) {
       try {
+        listeners.forEach(l => l({
+          type: 'provider.selected',
+          data: {
+            message: `Using ${step.label}`,
+            providerId: step.providerId,
+            model: step.model,
+            label: step.label,
+          }
+        }));
         return await task(step);
       } catch (err) {
         lastError = err;
