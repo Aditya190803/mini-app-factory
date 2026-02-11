@@ -8,11 +8,12 @@ interface PreviewPanelProps {
     files: ProjectFile[];
     onOpenInEditor?: (path: string, elementHtml?: string, selector?: string) => void;
     onAttachToChat?: (path: string, html: string, selector?: string) => void;
+    onOpenInNewTab?: () => void;
 }
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
-export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat }: PreviewPanelProps) {
+export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat, onOpenInNewTab }: PreviewPanelProps) {
     const [mode, setMode] = useState<ViewportMode>('desktop');
     const [refreshKey, setRefreshKey] = useState(0);
     const [isSelectorActive, setIsSelectorActive] = useState(false);
@@ -164,6 +165,17 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={onOpenInNewTab}
+                        className="p-1 text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors"
+                        title="Open preview in new tab"
+                    >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 3h7v7" />
+                            <path d="M10 14 21 3" />
+                            <path d="M21 14v7H3V3h7" />
+                        </svg>
+                    </button>
                     <button
                         onClick={() => setIsSelectorActive(!isSelectorActive)}
                         className={`p-1.5 transition-colors ${isSelectorActive ? 'text-[var(--primary)] bg-[var(--background-surface)]' : 'text-[var(--muted-text)] hover:text-white'}`}

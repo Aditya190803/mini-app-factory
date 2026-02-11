@@ -1077,6 +1077,19 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  const handleOpenPreviewInNewTab = async () => {
+    const previewPath = `/preview/${projectName}`;
+
+    try {
+      await persistFiles(files);
+    } catch (err) {
+      console.error('Failed to persist files before opening preview', err);
+      toast.error('Could not save latest changes before opening preview.');
+    }
+
+    window.open(previewPath, '_blank');
+  };
+
   return (
     <motion.div
       className="flex flex-col h-screen"
@@ -1151,6 +1164,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             <PreviewPanel 
               previewHtml={previewHtml} 
               files={files}
+              onOpenInNewTab={handleOpenPreviewInNewTab}
               onOpenInEditor={(path, html) => {
                 setActiveFilePath(path);
                 setActiveTab('code');
@@ -1186,6 +1200,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 <PreviewPanel 
                   previewHtml={previewHtml} 
                   files={files}
+                  onOpenInNewTab={handleOpenPreviewInNewTab}
                   onOpenInEditor={(path, html) => {
                     setActiveFilePath(path);
                     if (html) setEditorSearchText(html);
