@@ -1,0 +1,39 @@
+lib/utils.ts
+  40c496012d975224 86
+  264e70a8830fdfcd 87-88
+lib/site-builder.ts
+  40c496012d975224 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.2",
+  "base_commit_sha": "c01535133960de2b969062ccd205ae750153bd64",
+  "prompts": {
+    "264e70a8830fdfcd": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "d88b86b6-bcf5-46de-9a7f-ee8dd3be41f6",
+        "model": "copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "40c496012d975224": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "f2e88cff-e7b6-4718-8196-503ca6b25093",
+        "model": "copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
