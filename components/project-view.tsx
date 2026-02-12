@@ -294,10 +294,6 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
             </button>
           </motion.div>
         )}
-
-        <div className="mt-12 pt-8 border-t border-border flex justify-between items-center text-[10px] font-mono text-muted-text uppercase tracking-widest">
-          <div>Autonomous Construction</div>
-        </div>
       </div>
     </div>
   );

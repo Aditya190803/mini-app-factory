@@ -184,13 +184,12 @@ Mandatory requirements:
    - Instead, use the placeholder \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
    - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
 
-6. **Navigation Link Rules (CRITICAL)**:
-   - The logo/brand link may point to home (\`index.html\`, \`/\`, or \`#\` for single-page home).
-   - Other navigation links MUST NOT use generic \`#\`.
-   - Every non-logo nav link must point to:
-     - a real page that exists (e.g. \`about.html\`, \`pricing.html\`), or
-     - a real in-page section id that exists in the same file (e.g. \`#features\` with \`id=\"features\"\` present).
-   - If a link target does not exist yet, create the page/section in this output.
+6. **Link Integrity & Navigation (CRITICAL)**:
+   - **Zero Dead Links**: DO NOT use \`#\` for links (except for the logo if it points to home).
+   - **Mandatory Page Generation**: If you link to a page (e.g. \`about.html\`, \`privacy.html\`, \`services.html\`), YOU MUST PROVIDE THE CONTENT for that page in its own code block in this same response. If you are not prepared to generate the page, DO NOT link to it.
+   - **Relative Paths Only**: Always use relative filenames like \`about.html\`. NEVER use absolute paths like \`/about.html\` or \`/index.html\`.
+   - **Internal Anchors**: If you link to an anchor (e.g. \`#features\`), the target element with \`id=\"features\"\` must actually exist in the same HTML file.
+   - **Footer Policy**: Legal pages (Privacy Policy, Terms of Service) are often generated as empty links. You are FORBIDDEN from adding these unless you also generate the corresponding \`privacy.html\` or \`terms.html\` files. Omit footer links if they would point nowhere.
 
 You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;

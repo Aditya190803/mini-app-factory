@@ -273,16 +273,12 @@ FORMAT: Return your changes ONLY as a JSON array of tool calls:
 If a change is too complex for tools, or you need to rewrite a file completely, use:
 { "tool": "updateFile", "args": { "file": "path/to/file", "content": "FULL_CONTENT" } }
 
-Note:
-- You have access to ALL project files. 
-- Ensure links (<a> tags) and asset references remain valid.
-- Navigation links rule:
-  - Logo/brand link may go to home (\`index.html\`, \`/\`, or \`#\` for single-page home).
-  - All other links MUST NOT be generic \`#\`.
-  - Every non-logo link must point to an existing page or an existing section id.
-  - If you add/update nav links, also create/fix the target pages or section ids so every link resolves.
-- To modify tag attributes (for example adding role/class/id to <main>), DO NOT use replaceContent with opening tags.
-  Use replaceElement instead.
+**Link Integrity Rules (STRICT)**:
+- **No Dead Links**: Keep links valid. DO NOT use \`#\` (except for the logo).
+- **Page Existence Check**: Before adding a link to any file (e.g., \`about.html\`), CHECK the "Project Files" list in the context. If the file is not listed, you MUST use the \`createFile\` tool to generate it.
+- **Relative Paths**: Use relative filenames (e.g., \`about.html\`), never absolute paths (e.g., \`/about.html\`).
+- **Footer Policy**: Do not add links to Privacy/Terms pages unless you are actually creating those files. 
+- **Consistency**: If you rename or delete a file, you MUST update all links in all other files using the appropriate tools.
 - Active file focus is: ${targetFile || 'index.html'}.
 
 Only return changes. No explanations.`;

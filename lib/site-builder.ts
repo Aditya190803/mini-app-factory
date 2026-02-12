@@ -118,13 +118,19 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 - Buzzwords without specifics ("revolutionary", "cutting-edge", "seamless")
 - Cookie-cutter layouts with no personality
 - Walls of text with identical paragraph lengths
+- **BROKEN LINKS (CRITICAL)**: DO NOT use "#" for links. DO NOT link to files like "about.html" or "privacy.html" unless you are actually providing those code blocks in this response.
+
+**LINK INTEGRITY (STRICT REQUIREMENT)**:
+1. **Valid Destinations**: Every link must resolve to a file or anchor.
+2. **Mandatory File Generation**: If you link it, you MUST generate it.
+3. **No Absolute Paths**: Use relative filenames (e.g., `about.html`), not absolute paths (e.g., `/about.html`).
 
 ## Structure
 Include in one HTML file with inline <style>:
 - Navigation (minimal - logo + 2-3 links max)
 - Hero section (headline, subhead, CTA button)
 - 2-3 content sections showcasing value
-- Footer with contact/social
+- Footer with contact/social (No broken links or "#" redirects)
 
 Output the complete, working HTML file now.`;
 }
@@ -265,7 +271,7 @@ export function generateFallbackHtml(description: string, jobId: string): string
     <section class="hero">
         <h1>Welcome</h1>
         <p>${escapeHtml(description)}</p>
-        <a href="#" class="cta">Get Started</a>
+        <a href="index.html" class="cta">Get Started</a>
     </section>
 </body>
 </html>`;
