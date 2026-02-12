@@ -83,9 +83,9 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 - **BROKEN LINKS (CRITICAL)**: DO NOT use "#" for links. DO NOT link to files like "about.html" or "privacy.html" unless you are actually providing those code blocks in this response.
 
 **LINK INTEGRITY (ZERO TOLERANCE)**:
-1. **Valid Destinations**: Every link (`<a>` tag) must resolve.
-2. **Mandatory File Generation**: If you link to `pagename.html`, you MUST include a `pagename.html` code block. If you are not generating it, remove the link or change it to an anchor in the same page (e.g., `#contact`).
-3. **No Absolute Paths**: Use `about.html`, NOT `/about.html`.
+1. **Valid Destinations**: Every link (\`<a>\` tag) must resolve.
+2. **Mandatory File Generation**: If you link to \`pagename.html\`, you MUST include a \`pagename.html\` code block. If you are not generating it, remove the link or change it to an anchor in the same page (e.g., \`#contact\`).
+3. **No Absolute Paths**: Use \`about.html\`, NOT \`/about.html\`.
 4. **Clean Footer**: It is better to have NO links in the footer than to have links that point nowhere or to "#".
 
 ## Structure

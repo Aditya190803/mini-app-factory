@@ -1,6 +1,6 @@
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { getAIClient, SessionEvent } from './ai-client';
 
 export enum BuildStatus {
@@ -123,7 +123,7 @@ Pick one. Execute it fully. No timid, evenly-distributed palettes.
 **LINK INTEGRITY (STRICT REQUIREMENT)**:
 1. **Valid Destinations**: Every link must resolve to a file or anchor.
 2. **Mandatory File Generation**: If you link it, you MUST generate it.
-3. **No Absolute Paths**: Use relative filenames (e.g., `about.html`), not absolute paths (e.g., `/about.html`).
+3. **No Absolute Paths**: Use relative filenames (e.g., \`about.html\`), not absolute paths (e.g., \`/about.html\`).
 
 ## Structure
 Include in one HTML file with inline <style>:
