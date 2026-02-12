@@ -70,14 +70,21 @@ export async function GET() {
         let providerModels: ModelEntry[];
 
         if (provider.id === 'google') {
-          const data = json as GoogleProviderResponse;
-          providerModels = (data.models || []).map((m) => {
-            const modelId = m.name.replace('models/', '');
-            const isVision = modelId.toLowerCase().includes('vision');
+          // Hardcoded list as requested by user
+          const googleModels = [
+            { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
+            { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+            { id: 'gemma-3-27b', name: 'Gemma 3 27B' },
+          ];
+
+          providerModels = googleModels.map((m) => {
+            const isVision = m.id.toLowerCase().includes('gemini');
             return {
-              id: modelId,
-              name: modelId,
-              fullName: `${modelId} (${provider.name})`,
+              id: m.id,
+              name: m.name,
+              fullName: `${m.name} (${provider.name})`,
               provider: provider.name,
               providerId: provider.id,
               hasVision: isVision

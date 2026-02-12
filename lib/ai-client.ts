@@ -58,6 +58,17 @@ type ProviderStep = {
   maxAttempts: number;
 };
 
+function getFriendlyModelName(modelId: string): string {
+  const mapping: Record<string, string> = {
+    'gemini-3-flash-preview': 'Gemini 3 Flash',
+    'gemini-3-pro-preview': 'Gemini 3 Pro',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.5-flash': 'Gemini 2.5 Flash',
+    'gemma-3-27b': 'Gemma 3 27B',
+  };
+  return mapping[modelId] || modelId;
+}
+
 /**
  * Build the ordered fallback chain from environment config.
  */
@@ -73,7 +84,7 @@ function buildFallbackChain(): ProviderStep[] {
     const fallbackModel = process.env.GOOGLE_FALLBACK_MODEL || 'gemini-2.5-flash';
 
     steps.push({
-      label: `Google Gemini (${mainModel})`,
+      label: `Google Gemini (${getFriendlyModelName(mainModel)})`,
       providerId: 'google',
       model: mainModel,
       createModel: () => google(mainModel),
@@ -81,7 +92,7 @@ function buildFallbackChain(): ProviderStep[] {
     });
 
     steps.push({
-      label: `Google Gemini fallback (${fallbackModel})`,
+      label: `Google Gemini fallback (${getFriendlyModelName(fallbackModel)})`,
       providerId: 'google',
       model: fallbackModel,
       createModel: () => google(fallbackModel),
