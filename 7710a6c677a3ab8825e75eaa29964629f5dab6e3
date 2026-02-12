@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.2",
+  "base_commit_sha": "7710a6c677a3ab8825e75eaa29964629f5dab6e3",
+  "prompts": {
+    "f8637b3a76f96204": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "dfc77838-2239-4ae1-9848-fe2637c1423f",
+        "model": "copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 9,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
