@@ -1,0 +1,27 @@
+lib/site-builder.ts
+  264e70a8830fdfcd 121,123-126,133,274
+app/api/transform/route.ts
+  264e70a8830fdfcd 276-281
+app/api/generate/route.ts
+  264e70a8830fdfcd 187-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.2",
+  "base_commit_sha": "7fc8b77c746063c832885aac628f763e40451804",
+  "prompts": {
+    "264e70a8830fdfcd": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "d88b86b6-bcf5-46de-9a7f-ee8dd3be41f6",
+        "model": "copilot/gemini-3-flash-preview"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 30,
+      "accepted_lines": 20,
+      "overriden_lines": 1
+    }
+  }
+}
