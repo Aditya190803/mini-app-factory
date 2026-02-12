@@ -13,17 +13,8 @@ type ProviderModel = {
   id: string;
 };
 
-type GoogleModel = {
-  name: string;
-  displayName: string;
-};
-
 type GroqProviderResponse = {
   data: ProviderModel[];
-};
-
-type GoogleProviderResponse = {
-  models: GoogleModel[];
 };
 
 type ModelEntry = {
