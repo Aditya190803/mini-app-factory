@@ -9,6 +9,9 @@ import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import { withRetry } from '@/lib/ai-retry';
+import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
+import { isAIProviderId } from '@/lib/ai-admin-config';
+import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 const MODEL = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
 
@@ -101,7 +104,8 @@ export async function runGeneration(
   finalPrompt: string,
   signal: AbortSignal,
   onEvent?: (event: SessionEvent) => void,
-  requestId?: string
+  requestId?: string,
+  runtimeConfig?: AIRuntimeConfig
 ): Promise<{ html: string; files: ProjectFile[] } | { error: string }> {
   const project = await getProject(projectName);
   if (!project) return { error: 'Project not found during generation' };
@@ -113,7 +117,8 @@ export async function runGeneration(
 
     if (signal.aborted) return { error: 'Aborted' };
 
-    const client = await getAIClient();
+    const client = await getAIClient(runtimeConfig);
+    const projectProviderId = isAIProviderId(project.providerId) ? project.providerId : undefined;
 
     if (signal.aborted) return { error: 'Aborted' };
 
@@ -122,7 +127,7 @@ export async function runGeneration(
 
     const designSession = await client.createSession({
       model: project.selectedModel || MODEL,
-      providerId: project.providerId,
+      providerId: projectProviderId,
       systemMessage: { content: architectSystemMsg },
     });
 
@@ -196,7 +201,7 @@ Return ONLY code blocks. No explanations.`;
 
     const htmlSession = await client.createSession({
       model: project.selectedModel || MODEL,
-      providerId: project.providerId,
+      providerId: projectProviderId,
       systemMessage: { content: developerSystemMsg },
     });
 
@@ -344,6 +349,12 @@ export async function POST(request: Request) {
 
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();
+    const globalAdminConfig = await getGlobalAdminModelConfig();
+    const persistedSettings = await getPersistedAISettings(user.id);
+    const runtimeConfig: AIRuntimeConfig = {
+      adminConfig: globalAdminConfig,
+      byokConfig: persistedSettings.byokConfig,
+    };
 
     // Also listen to the request's abort signal (client disconnect)
     request.signal.addEventListener('abort', () => abortController.abort());
@@ -406,7 +417,8 @@ export async function POST(request: Request) {
                 });
               }
             },
-            requestId
+            requestId,
+            runtimeConfig
           );
 
           // Check stream state before any writes

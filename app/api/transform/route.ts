@@ -11,6 +11,9 @@ import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { withRetry } from '@/lib/ai-retry';
 
+import { isAIProviderId } from '@/lib/ai-admin-config';
+import { getPersistedAISettings } from '@/lib/ai-settings-store';
+
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
@@ -171,6 +174,13 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
     }
 
+    const { getGlobalAdminModelConfig } = await import('@/lib/ai-settings-store');
+    const globalAdminConfig = await getGlobalAdminModelConfig();
+    const persistedSettings = await getPersistedAISettings(user.id);
+    const runtimeConfig = {
+      adminConfig: globalAdminConfig,
+      byokConfig: persistedSettings.byokConfig,
+    };
     const body = await request.json();
     const parsed = transformSchema.safeParse(body);
     if (!parsed.success) {
@@ -224,10 +234,10 @@ export async function POST(request: Request) {
 
     const projectContext = buildProjectContext(finalFiles, targetFile);
 
-    const client = await getAIClient();
+    const client = await getAIClient(runtimeConfig);
     
     let effectiveModelId = modelId || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
-    let effectiveProviderId = providerId;
+    let effectiveProviderId = isAIProviderId(providerId) ? providerId : undefined;
 
     const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
 You will be given the complete project context comprising all files.
