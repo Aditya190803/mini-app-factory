@@ -2,16 +2,23 @@ import { describe, test, expect } from 'vitest';
 import { getAIClient } from '@/lib/ai-client';
 
 describe('ai client', () => {
-  test('getAIClient throws when GOOGLE_GENERATIVE_AI_API_KEY and GROQ_API_KEY is missing', async () => {
-    const oldGoogle = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    const oldGroq = process.env.GROQ_API_KEY;
+  test('getAIClient throws when no provider keys are set', async () => {
+    const saved = {
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      GROQ_API_KEY: process.env.GROQ_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY,
+    };
     delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.CEREBRAS_API_KEY;
     try {
-      await expect(getAIClient()).rejects.toThrow(/at least one AI provider/);
+      await expect(getAIClient()).rejects.toThrow(/at least one AI provider/i);
     } finally {
-      if (oldGoogle !== undefined) process.env.GOOGLE_GENERATIVE_AI_API_KEY = oldGoogle;
-      if (oldGroq !== undefined) process.env.GROQ_API_KEY = oldGroq;
+      for (const [key, value] of Object.entries(saved)) {
+        if (value !== undefined) process.env[key] = value;
+      }
     }
   });
 });

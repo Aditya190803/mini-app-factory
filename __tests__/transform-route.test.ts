@@ -16,6 +16,18 @@ vi.mock('@/lib/ai-client', () => ({
   getAIClient: vi.fn(),
 }));
 
+vi.mock('@/lib/ai-settings-store', () => ({
+  getPersistedAISettings: vi.fn().mockResolvedValue({
+    adminConfig: { providers: { google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] }, groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] }, cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] } }, providerOrder: ['google', 'groq', 'openrouter', 'cerebras'] },
+    byokConfig: {},
+    customModels: {},
+  }),
+  getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
+    providers: { google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] }, groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] }, cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] } },
+    providerOrder: ['google', 'groq', 'openrouter', 'cerebras'],
+  }),
+}));
+
 beforeAll(() => {
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
