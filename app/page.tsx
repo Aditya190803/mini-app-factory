@@ -9,6 +9,7 @@ import { ModelSelector } from "@/components/ui/model-selector";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
 import AccountMenu from "@/components/account-menu";
+import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -63,7 +64,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/check-name', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ 
           name: projectName.trim(), 
           prompt: prompt.trim(),

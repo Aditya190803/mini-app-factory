@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ChevronDown, Cpu, Zap as ZapIcon, Check, Settings2, Eye } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,11 @@ interface Model {
   hasVision?: boolean;
 }
 
+// Module-level cache — survives across mounts, shared by all instances
+let cachedModels: Model[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 interface ModelSelectorProps {
   selectedModelId?: string;
   providerId?: string;
@@ -22,28 +27,67 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ selectedModelId, providerId, onModelChange, className }: ModelSelectorProps) {
-  const [models, setModels] = useState<Model[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [models, setModels] = useState<Model[]>(cachedModels ?? []);
+  const [loading, setLoading] = useState(!cachedModels);
   const [error, setError] = useState(false);
   const [open, setOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    const isCacheValid = cachedModels && (Date.now() - cacheTimestamp < CACHE_TTL_MS);
+
+    // If cache is valid, show it immediately and skip fetch
+    if (isCacheValid) {
+      setModels(cachedModels!);
+      setLoading(false);
+      return;
+    }
+
+    // If we have stale cache, show it immediately but refresh in background
+    const hasStaleCache = !!cachedModels;
+    if (hasStaleCache) {
+      setModels(cachedModels!);
+      setLoading(false);
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     async function fetchModels() {
       try {
-        const resp = await fetch('/api/ai/models');
-        if (resp.ok) {
-          const data = await resp.json();
-          setModels(data.models);
-        } else {
-          setError(true);
+        const resp = await fetch('/api/ai/models', { signal: controller.signal });
+
+        if (!resp.ok) {
+          if (!hasStaleCache) setError(true);
+          return;
         }
-      } catch {
-        setError(true);
+
+        const data = await resp.json();
+        const serverModels: Model[] = Array.isArray(data.models) ? data.models : [];
+
+        // Update cache
+        cachedModels = serverModels;
+        cacheTimestamp = Date.now();
+
+        if (!controller.signal.aborted) {
+          setModels(serverModels);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (!hasStaleCache) setError(true);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted && !hasStaleCache) {
+          setLoading(false);
+        }
       }
     }
-    fetchModels();
+
+    void fetchModels();
+
+    return () => {
+      controller.abort();
+      abortRef.current = null;
+    };
   }, []);
 
   const selectedModel = models.find(m => m.id === selectedModelId && m.providerId === providerId);
@@ -117,7 +161,7 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
               {(!selectedModelId || !providerId) && <Check size={14} strokeWidth={3} />}
             </button>
 
-            {['google', 'groq'].map(pId => {
+            {['google', 'groq', 'openrouter', 'cerebras'].map(pId => {
               const providerModels = models.filter(m => m.providerId === pId);
               if (providerModels.length === 0) return null;
 

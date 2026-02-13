@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { extractNetlifySiteNameFromUrl, extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from '@/lib/deploy-shared';
 import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
+import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
@@ -472,7 +473,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
       const response = await fetch('/api/transform', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ 
           projectName,
           activeFile: activeFilePath,
@@ -854,7 +855,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     try {
       const resp = await fetch('/api/transform', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ projectName, polishDescription }),
       });
       if (!resp.ok) {
@@ -902,7 +903,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       try {
         const response = await fetch('/api/generate/readme', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             projectName,
             prompt: initialPrompt,

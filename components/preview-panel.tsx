@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
+import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 
 interface PreviewPanelProps {
   html: string;
@@ -138,7 +139,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
     try {
       const response = await fetch('/api/transform', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ html: editableHtml || html, prompt: transformPrompt }),
       });
       if (!response.ok) {
@@ -319,7 +320,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                       if (!desc) return;
                       setIsTransforming(true);
                       try {
-                        const resp = await fetch('/api/transform', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: editableHtml, polishDescription: desc }) });
+                        const resp = await fetch('/api/transform', { method: 'POST', headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ html: editableHtml, polishDescription: desc }) });
                         if (!resp.ok) throw new Error('Polish failed');
                         const data = await resp.json();
                         let polishedContent: string | null = null;

@@ -7,6 +7,7 @@ import { ProjectMetadata } from '@/lib/projects';
 import { ProjectFile } from '@/lib/page-builder';
 import { toast } from 'sonner';
 import { readStream } from '@/lib/stream-utils';
+import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 
 interface ProjectViewProps {
   projectName: string;
@@ -72,7 +73,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ projectName, prompt: project.prompt }),
         signal: controller.signal,
       });
