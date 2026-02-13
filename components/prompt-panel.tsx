@@ -77,6 +77,12 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
             placeholder="A modern SaaS landing page with hero section, features showcase, pricing table, and testimonials. Use a clean design with blue accents..."
             className="min-h-40 resize-none text-base leading-relaxed font-sans"
             style={{

@@ -1266,8 +1266,15 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <Textarea
+              autoFocus
               value={polishDescription}
               onChange={(e) => setPolishDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  void onPolishSubmit();
+                }
+              }}
               className="min-h-[100px] text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
             />
           </div>
