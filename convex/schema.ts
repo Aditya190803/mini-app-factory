@@ -113,4 +113,31 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_time", ["projectId", "createdAt"]),
+
+  aiSettings: defineTable({
+    userId: v.string(),
+    adminConfigJson: v.string(),
+    byokConfigJson: v.string(),
+    customModelsJson: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  // Global admin model configuration (singleton — one document for the whole app)
+  adminModelConfig: defineTable({
+    configJson: v.string(), // JSON-encoded AIAdminConfig
+    updatedBy: v.optional(v.string()), // userId of last admin who saved
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
+
+  aiAdminAudit: defineTable({
+    userId: v.string(),
+    email: v.string(),
+    action: v.string(),
+    detailsJson: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_user_time", ["userId", "createdAt"])
+    .index("by_time", ["createdAt"]),
 });

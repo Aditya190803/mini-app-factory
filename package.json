@@ -11,14 +11,16 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.23",
-    "@ai-sdk/groq": "^3.0.19",
+    "@ai-sdk/cerebras": "^2.0.33",
+    "@ai-sdk/google": "^3.0.29",
+    "@ai-sdk/groq": "^3.0.24",
     "@ai-sdk/react": "^3.0.0",
     "@codemirror/lang-html": "^6.4.11",
     "@emotion/is-prop-valid": "1.2.2",
     "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@monaco-editor/react": "^4.7.0",
+    "@openrouter/ai-sdk-provider": "^2.2.3",
     "@phosphor-icons/react": "^2.0.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",

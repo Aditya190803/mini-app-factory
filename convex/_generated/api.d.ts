@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as aiSettings from "../aiSettings.js";
 import type * as deployments from "../deployments.js";
 import type * as files from "../files.js";
 import type * as integrations from "../integrations.js";
@@ -21,6 +22,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiSettings: typeof aiSettings;
   deployments: typeof deployments;
   files: typeof files;
   integrations: typeof integrations;

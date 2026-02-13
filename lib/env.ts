@@ -10,6 +10,12 @@ const serverEnvSchema = z
     GROQ_API_KEY: z.string().optional(),
     GROQ_MODEL: z.string().optional(),
     GROQ_FALLBACK_MODEL: z.string().optional(),
+    OPENROUTER_API_KEY: z.string().optional(),
+    OPENROUTER_MODEL: z.string().optional(),
+    OPENROUTER_FALLBACK_MODEL: z.string().optional(),
+    CEREBRAS_API_KEY: z.string().optional(),
+    CEREBRAS_MODEL: z.string().optional(),
+    CEREBRAS_FALLBACK_MODEL: z.string().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1, "NEXT_PUBLIC_CONVEX_URL is required"),
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1, "NEXT_PUBLIC_STACK_PROJECT_ID is required"),
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z
@@ -21,8 +27,8 @@ const serverEnvSchema = z
       .min(32, "INTEGRATION_TOKEN_SECRET must be at least 32 characters")
       .optional(),
   })
-  .refine((data) => data.GOOGLE_GENERATIVE_AI_API_KEY || data.GROQ_API_KEY, {
-    message: "At least one AI provider key must be configured (GOOGLE_GENERATIVE_AI_API_KEY or GROQ_API_KEY).",
+  .refine((data) => data.GOOGLE_GENERATIVE_AI_API_KEY || data.GROQ_API_KEY || data.OPENROUTER_API_KEY || data.CEREBRAS_API_KEY, {
+    message: "At least one AI provider key must be configured (GOOGLE_GENERATIVE_AI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, or CEREBRAS_API_KEY).",
     path: ["GOOGLE_GENERATIVE_AI_API_KEY"],
   });
 
