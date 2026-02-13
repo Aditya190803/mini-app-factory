@@ -130,9 +130,21 @@ export function validateToolCall(toolName: string, args: Record<string, unknown>
       if (typeof normalizedArgs.properties !== 'object' || !normalizedArgs.properties) {
         return { success: false, message: 'Invalid properties' };
       }
-      for (const value of Object.values(normalizedArgs.properties as Record<string, unknown>)) {
-        if (typeof value !== 'string') return { success: false, message: 'CSS properties must be strings' };
+      const normalizedProperties: Record<string, string> = {};
+      for (const [key, value] of Object.entries(normalizedArgs.properties as Record<string, unknown>)) {
+        if (typeof value === 'string') {
+          normalizedProperties[key] = value;
+          continue;
+        }
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          normalizedProperties[key] = String(value);
+          continue;
+        }
       }
+      if (Object.keys(normalizedProperties).length === 0) {
+        return { success: false, message: 'CSS properties must be strings or numbers' };
+      }
+      normalizedArgs.properties = normalizedProperties;
       if (normalizedArgs.action && !['merge', 'replace'].includes(String(normalizedArgs.action))) {
         return { success: false, message: 'Invalid action' };
       }
@@ -388,8 +400,30 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
       return { success: false, message: `Selector not found: ${selector}` };
     }
 
-    if (position !== 'before' && position !== 'after') {
-      return { success: false, message: `Position ${position} is not supported for css` };
+    if (position === 'prepend' || position === 'append') {
+      const ascending = [...ranges].sort((a, b) => a.start - b.start);
+      const anchor = ascending[0];
+      const ruleText = anchor.text;
+      
+      const firstBrace = ruleText.indexOf('{');
+      const lastBrace = ruleText.lastIndexOf('}');
+      
+      if (firstBrace === -1 || lastBrace === -1) {
+        return { success: false, message: `Could not find rule block for selector: ${selector}` };
+      }
+
+      const insertion = content.trim();
+      const formattedInsertion = content.includes('\n') ? `\n${content}\n` : `\n    ${insertion}${insertion.endsWith(';') ? '' : ';'}\n`;
+
+      if (position === 'prepend') {
+        const insertPos = anchor.start + firstBrace + 1;
+        file.content = `${file.content.slice(0, insertPos)}${formattedInsertion}${file.content.slice(insertPos)}`;
+      } else {
+        const insertPos = anchor.start + lastBrace;
+        file.content = `${file.content.slice(0, insertPos)}${formattedInsertion}${file.content.slice(insertPos)}`;
+      }
+
+      return { success: true, message: 'Content inserted', updatedFiles: [file] };
     }
 
     const ascending = [...ranges].sort((a, b) => a.start - b.start);

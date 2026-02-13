@@ -169,6 +169,27 @@ describe('tool-executor', () => {
     expect(result.updatedFiles?.[0].content).not.toMatch(/color:\s*red/);
   });
 
+  test('updateStyle accepts numeric CSS values', async () => {
+    const result = await executeTool('updateStyle', {
+      selector: '.title',
+      properties: { 'z-index': 10, opacity: 0.8 }
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles?.[0].content).toMatch(/z-index:\s*10/);
+    expect(result.updatedFiles?.[0].content).toMatch(/opacity:\s*0.8/);
+  });
+
+  test('updateStyle rejects properties without valid primitive values', async () => {
+    const result = await executeTool('updateStyle', {
+      selector: '.title',
+      properties: { color: null, nested: { token: 'bad' } }
+    }, initialFiles);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/strings or numbers/i);
+  });
+
   test('createFile rejects unsafe paths', async () => {
     const result = await executeTool('createFile', {
       path: '../secrets.txt',
@@ -209,5 +230,31 @@ describe('tool-executor', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/css parse error/i);
+  });
+
+  test('insertContent appends to CSS rule correctly', async () => {
+    const result = await executeTool('insertContent', {
+      file: 'styles.css',
+      selector: '.title',
+      position: 'append',
+      content: 'font-weight: bold;'
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles![0].content).toContain('font-weight: bold;');
+    expect(result.updatedFiles![0].content).toContain('.title { color: red;');
+  });
+
+  test('insertContent prepends to CSS rule correctly', async () => {
+    const result = await executeTool('insertContent', {
+      file: 'styles.css',
+      selector: '.title',
+      position: 'prepend',
+      content: 'margin: 0;'
+    }, initialFiles);
+
+    expect(result.success).toBe(true);
+    expect(result.updatedFiles![0].content).toContain('margin: 0;');
+    expect(result.updatedFiles![0].content).toContain('color: red;');
   });
 });
