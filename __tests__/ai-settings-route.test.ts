@@ -5,6 +5,11 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
+vi.mock('@/lib/admin-access', () => ({
+  isAdminEmail: (email: string | null | undefined) => email === 'aditya.mer@somaiya.edu',
+  isVerifiedAdmin: (email: string | null | undefined, verified: boolean | null | undefined) =>
+    !!verified && email === 'aditya.mer@somaiya.edu',
+}));
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn(),
   savePersistedAISettings: vi.fn(),
@@ -113,6 +118,7 @@ describe('POST /api/ai/settings', () => {
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       id: 'admin_1',
       primaryEmail: 'aditya.mer@somaiya.edu',
+      primaryEmailVerified: true,
     });
 
     // getGlobalAdminModelConfig called twice: once for diff, once for response

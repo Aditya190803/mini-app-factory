@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/csrf', () => ({ validateOrigin: () => true }));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
@@ -154,7 +155,7 @@ describe('POST /api/deploy', () => {
         return new Response(JSON.stringify({ login: 'octocat' }), { status: 200 });
       }
 
-      if (url.includes('https://api.github.com/repos/octocat/demo-project') && !url.includes('/contents/')) {
+      if (url.includes('https://api.github.com/repos/octocat/demo-project') && !url.includes('/git/')) {
         return new Response(
           JSON.stringify({
             name: 'demo-project',
@@ -167,12 +168,29 @@ describe('POST /api/deploy', () => {
         );
       }
 
-      if (url.includes('/contents/') && method === 'GET') {
-        return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+      // Git Trees API: create blob
+      if (url.includes('/git/blobs') && method === 'POST') {
+        return new Response(JSON.stringify({ sha: 'blob-sha-' + Math.random().toString(36).slice(2, 8) }), { status: 201 });
       }
 
-      if (url.includes('/contents/') && method === 'PUT') {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      // Git Trees API: get branch ref
+      if (url.includes('/git/ref/heads/') && method === 'GET') {
+        return new Response(JSON.stringify({ object: { sha: 'base-commit-sha' } }), { status: 200 });
+      }
+
+      // Git Trees API: create tree
+      if (url.includes('/git/trees') && method === 'POST') {
+        return new Response(JSON.stringify({ sha: 'new-tree-sha' }), { status: 201 });
+      }
+
+      // Git Trees API: create commit
+      if (url.includes('/git/commits') && method === 'POST') {
+        return new Response(JSON.stringify({ sha: 'new-commit-sha' }), { status: 201 });
+      }
+
+      // Git Trees API: update ref
+      if (url.includes('/git/refs/heads/') && method === 'PATCH') {
+        return new Response(JSON.stringify({ object: { sha: 'new-commit-sha' } }), { status: 200 });
       }
 
       throw new Error(`Unexpected fetch call: ${method} ${url}`);

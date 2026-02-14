@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/csrf', () => ({ validateOrigin: () => true }));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
