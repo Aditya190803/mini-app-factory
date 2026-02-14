@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { buildReadmePrompt } from "@/lib/site-builder";
+import { DEFAULT_MODEL } from "@/lib/constants";
 
 const FALLBACK_ATTRIBUTION = "Made by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)";
 
@@ -21,7 +22,7 @@ async function generateWithFallback(prompt: string): Promise<string> {
   if (googleKey) {
     const google = createGoogleGenerativeAI({ apiKey: googleKey });
     const { text } = await generateText({
-      model: google(process.env.GOOGLE_MODEL || "gemini-3-flash-preview"),
+      model: google(DEFAULT_MODEL),
       prompt,
     });
     return text;

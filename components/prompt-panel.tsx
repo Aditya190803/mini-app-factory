@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
+import { DEFAULT_MODEL_OPTIONS, DEFAULT_PROVIDER_MODELS } from '@/lib/ai-admin-config';
 
 interface PromptPanelProps {
   onGenerate: (prompt: string, model?: string) => Promise<void>;
@@ -12,7 +13,7 @@ interface PromptPanelProps {
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('gemini-3-flash-preview');
+  const [model, setModel] = useState(DEFAULT_PROVIDER_MODELS.google);
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
@@ -96,9 +97,13 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="gemini-3-flash-preview">Gemini 3 Flash (Google)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
-              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2 (Groq)</option>
+              {Object.entries(DEFAULT_MODEL_OPTIONS).flatMap(([provider, models]) =>
+                models.map((m) => (
+                  <option key={m} value={m}>
+                    {m} ({provider})
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>
@@ -137,19 +142,11 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
               <button
                 key={idx}
                 onClick={() => setPrompt(example)}
-                className="block w-full text-left p-4 border transition-all duration-200 text-sm hover:-translate-y-1"
+                className="block w-full text-left p-4 border transition-all duration-200 text-sm hover:-translate-y-1 hover:text-[var(--foreground)] hover:border-[var(--primary)] focus:text-[var(--foreground)] focus:border-[var(--primary)] focus:outline-none"
                 style={{
                   backgroundColor: 'var(--background-overlay)',
                   borderColor: 'var(--border)',
                   color: 'var(--secondary-text)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'var(--foreground)';
-                  e.currentTarget.style.borderColor = 'var(--primary)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'var(--secondary-text)';
-                  e.currentTarget.style.borderColor = 'var(--border)';
                 }}
               >
                 <div className="flex items-start gap-3 font-sans">

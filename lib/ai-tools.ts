@@ -95,6 +95,33 @@ export const editTools = {
     }
   },
 
+  updateFile: {
+    name: "updateFile",
+    description: "Update an existing file with new content",
+    parameters: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path to update" },
+        content: { type: "string", description: "New file content" }
+      },
+      required: ["file", "content"]
+    }
+  },
+
+  replaceElement: {
+    name: "replaceElement",
+    description: "Replace an HTML element matched by a CSS selector with new content",
+    parameters: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "File path" },
+        selector: { type: "string", description: "CSS selector to match the element" },
+        newContent: { type: "string", description: "Replacement HTML content" }
+      },
+      required: ["file", "selector", "newContent"]
+    }
+  },
+
   batchEdit: {
     name: "batchEdit",
     description: "Perform multiple edits atomically",

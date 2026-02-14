@@ -1,3 +1,5 @@
+import { MAX_RATE_LIMIT_ENTRIES } from './constants';
+
 type RateLimitResult = {
   allowed: boolean;
   remaining: number;
@@ -11,6 +13,24 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
+/** Prune expired entries to prevent unbounded memory growth. */
+function pruneBuckets() {
+  if (buckets.size <= MAX_RATE_LIMIT_ENTRIES) return;
+  const now = Date.now();
+  for (const [k, v] of buckets) {
+    if (v.resetAt <= now) buckets.delete(k);
+  }
+  // If still over limit after pruning expired, drop oldest entries
+  if (buckets.size > MAX_RATE_LIMIT_ENTRIES) {
+    const excess = buckets.size - MAX_RATE_LIMIT_ENTRIES;
+    const keys = buckets.keys();
+    for (let i = 0; i < excess; i++) {
+      const next = keys.next();
+      if (!next.done) buckets.delete(next.value);
+    }
+  }
+}
+
 export function checkRateLimit(params: {
   key: string;
   limit: number;
@@ -18,6 +38,9 @@ export function checkRateLimit(params: {
 }): RateLimitResult {
   const now = Date.now();
   const { key, limit, windowMs } = params;
+
+  // Periodically prune to prevent memory leaks
+  pruneBuckets();
 
   const existing = buckets.get(key);
   if (!existing || existing.resetAt <= now) {

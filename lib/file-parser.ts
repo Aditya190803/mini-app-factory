@@ -51,7 +51,8 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
 }
 
 /**
- * A generator that parses a stream of text and yields completed files as they appear.
+ * A generator that parses a stream of text and yields individual completed files as they appear.
+ * Only yields each file once (tracked by path). Useful for progressive rendering during streaming.
  */
 export async function* parseStreamingOutput(stream: AsyncIterable<string>) {
   let buffer = '';
@@ -60,14 +61,12 @@ export async function* parseStreamingOutput(stream: AsyncIterable<string>) {
   for await (const chunk of stream) {
     buffer += chunk;
     const files = parseMultiFileOutput(buffer);
-    
+
     for (const file of files) {
       if (!processedPaths.has(file.path)) {
-        // This is a simple version; in reality we might want to yield partial updates
-        // But for now, let's yield when a file is "likely" complete (next one starts or stream ends)
-        // For simplicity, we just yield all found so far and let the consumer handle it
+        processedPaths.add(file.path);
+        yield file;
       }
     }
-    yield files;
   }
 }
