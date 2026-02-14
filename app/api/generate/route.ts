@@ -12,8 +12,9 @@ import { withRetry } from '@/lib/ai-retry';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
-
-const MODEL = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
+import { createSSEWriter } from '@/lib/sse';
+import { DEFAULT_MODEL } from '@/lib/constants';
+import { validateOrigin } from '@/lib/csrf';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -22,46 +23,6 @@ const generateSchema = z.object({
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
-
-/**
- * Creates a thread-safe SSE writer that gracefully handles stream destruction.
- * All writes are wrapped in try-catch and the closed state is tracked atomically.
- */
-function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>, signal?: AbortSignal) {
-  const encoder = new TextEncoder();
-  let closed = false;
-
-  const write = (data: object): boolean => {
-    // Check if specifically closed or if the signal is aborted
-    if (closed || signal?.aborted) {
-      if (!closed) closed = true;
-      return false;
-    }
-
-    try {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      return true;
-    } catch {
-      closed = true;
-      return false;
-    }
-  };
-
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    try {
-      controller.close();
-    } catch {
-      // Stream might already be closed, errored, or cancelled
-    }
-  };
-
-  const markClosed = () => { closed = true; };
-  const isClosed = () => closed || !!signal?.aborted;
-
-  return { write, close, markClosed, isClosed };
-}
 
 function classifyGenerationError(raw: unknown): { code: string; message: string } {
   try {
@@ -126,7 +87,7 @@ export async function runGeneration(
     const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
 
     const designSession = await client.createSession({
-      model: project.selectedModel || MODEL,
+      model: project.selectedModel || DEFAULT_MODEL,
       providerId: projectProviderId,
       systemMessage: { content: architectSystemMsg },
     });
@@ -145,8 +106,10 @@ export async function runGeneration(
       });
 
       try {
-        const cacheKey = `${project.selectedModel || MODEL}:${project.providerId || ''}:${finalPrompt}`;
-        const cached = getCachedDesignSpec(cacheKey);
+        // Hash prompt to avoid storing PII in memory (S12)
+        const promptHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(finalPrompt)))).map(b => b.toString(16).padStart(2, '0')).join('');
+        const cacheKey = `${project.selectedModel || DEFAULT_MODEL}:${project.providerId || ''}:${promptHash}`;
+        const cached = await getCachedDesignSpec(cacheKey);
         if (cached) {
           designSpec = cached;
         } else {
@@ -156,7 +119,7 @@ export async function runGeneration(
           );
           if (sessionError) throw sessionError;
           designSpec = designResp?.data?.content || '';
-          if (designSpec) setCachedDesignSpec(cacheKey, designSpec);
+          if (designSpec) await setCachedDesignSpec(cacheKey, designSpec);
         }
       } finally {
         unsubscribe();
@@ -200,7 +163,7 @@ You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
 
     const htmlSession = await client.createSession({
-      model: project.selectedModel || MODEL,
+      model: project.selectedModel || DEFAULT_MODEL,
       providerId: projectProviderId,
       systemMessage: { content: developerSystemMsg },
     });
@@ -296,6 +259,11 @@ Return ONLY code blocks. No explanations.`;
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
+    // CSRF origin validation
+    if (request instanceof Request && !validateOrigin(request as unknown as import('next/server').NextRequest)) {
+      return Response.json({ error: 'Invalid origin', code: 'CSRF_REJECTED', requestId }, { status: 403 });
+    }
+
     try {
       getServerEnv();
     } catch (err) {

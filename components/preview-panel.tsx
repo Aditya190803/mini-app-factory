@@ -1,8 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
+import dynamic from 'next/dynamic';
+import { toast } from 'sonner';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+
+const CodeMirror = dynamic(() => import('@uiw/react-codemirror'), { ssr: false });
 
 interface PreviewPanelProps {
   html: string;
@@ -50,7 +53,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
     };
     persistSites([site, ...savedSites]);
     setSelectedSiteId(id);
-    alert('Site saved to local storage ✅');
+    toast.success('Site saved to local storage');
   };
 
   const loadSite = (id: string | null) => {
@@ -90,12 +93,12 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
         const data = JSON.parse(String(reader.result));
         if (Array.isArray(data)) {
           persistSites([...data, ...savedSites]);
-          alert('Imported sites ✅');
+          toast.success('Imported sites');
         } else {
-          alert('Invalid file format');
+          toast.error('Invalid file format');
         }
       } catch {
-        alert('Failed to import');
+        toast.error('Failed to import');
       }
     };
     reader.readAsText(file);
@@ -129,7 +132,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Zip failed', err);
-      alert('Failed to create ZIP');
+      toast.error('Failed to create ZIP');
     }
   };
 
@@ -161,10 +164,10 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
       if (!updated) {
         throw new Error('Transform returned no HTML output');
       }
-      alert('Transformation applied ✅');
+      toast.success('Transformation applied');
     } catch (err) {
       console.error('Transform error', err);
-      alert('Transformation failed');
+      toast.error('Transformation failed');
     } finally {
       setIsTransforming(false);
     }
@@ -266,7 +269,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
             <div className="p-6">
               <div className="flex gap-3 mb-4">
                 <button
-                  onClick={() => { navigator.clipboard.writeText(editableHtml || ''); alert('Copied to clipboard ✅'); }}
+                  onClick={() => { navigator.clipboard.writeText(editableHtml || ''); toast.success('Copied to clipboard'); }}
                   className="px-3 py-1 text-xs font-mono uppercase font-semibold border"
                   style={{ backgroundColor: 'transparent', color: 'var(--secondary-text)', borderColor: 'var(--border)' }}
                 >Copy</button>
@@ -276,7 +279,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                   style={{ backgroundColor: 'transparent', color: 'var(--secondary-text)', borderColor: 'var(--border)' }}
                 >Save</button>
                 <button
-                  onClick={() => { setEditableHtml(html); alert('Reverted to generated HTML'); }}
+                  onClick={() => { setEditableHtml(html); toast.info('Reverted to generated HTML'); }}
                   className="px-3 py-1 text-xs font-mono uppercase font-semibold border"
                   style={{ backgroundColor: 'transparent', color: 'var(--secondary-text)', borderColor: 'var(--border)' }}
                 >Reset</button>
@@ -337,10 +340,10 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                           throw new Error('Polish returned no content');
                         }
                         setEditableHtml(polishedContent);
-                        alert('Polish applied ✅');
+                        toast.success('Polish applied');
                       } catch (err) {
                         console.error(err);
-                        alert('Polish failed');
+                        toast.error('Polish failed');
                       } finally {
                         setIsTransforming(false);
                       }
@@ -380,7 +383,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => { setEditableHtml(s.html); setShowCode(true); setSelectedSiteId(s.id); }} className="px-2 py-1 text-xs border">Load</button>
-                          <button onClick={() => { navigator.clipboard.writeText(s.html); alert('Copied'); }} className="px-2 py-1 text-xs border">Copy</button>
+                          <button onClick={() => { navigator.clipboard.writeText(s.html); toast.success('Copied'); }} className="px-2 py-1 text-xs border">Copy</button>
                           <button onClick={() => deleteSite(s.id)} className="px-2 py-1 text-xs border">Delete</button>
                         </div>
                       </li>
@@ -437,7 +440,7 @@ function IframePreview({ html }: { html: string }) {
       <iframe
         srcDoc={html}
         className="w-full h-full border-0"
-        sandbox="allow-scripts allow-same-origin allow-forms"
+        sandbox="allow-scripts allow-forms"
         title="Website Preview"
       />
     </div>

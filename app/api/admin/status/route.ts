@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isVerifiedAdmin } from '@/lib/admin-access';
 
 export async function GET() {
   const user = await stackServerApp.getUser();
@@ -10,7 +10,7 @@ export async function GET() {
 
   return NextResponse.json({
     authenticated: true,
-    isAdmin: isAdminEmail(user.primaryEmail),
+    isAdmin: isVerifiedAdmin(user.primaryEmail, user.primaryEmailVerified),
     email: user.primaryEmail,
   });
 }

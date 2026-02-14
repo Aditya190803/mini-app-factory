@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isVerifiedAdmin } from '@/lib/admin-access';
 import {
   sanitizeAIAdminConfig,
   sanitizeBYOKConfig,
@@ -127,7 +127,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const isAdmin = isAdminEmail(user.primaryEmail);
+  const isAdmin = isVerifiedAdmin(user.primaryEmail, user.primaryEmailVerified);
 
   // Always read the global admin config (visible to all users for model filtering)
   const globalAdminConfig = await getGlobalAdminModelConfig();
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const isAdmin = isAdminEmail(user.primaryEmail);
+  const isAdmin = isVerifiedAdmin(user.primaryEmail, user.primaryEmailVerified);
 
   // --- Admin config: save globally ---
   if (isAdmin && parsedBody.data.adminConfig !== undefined) {

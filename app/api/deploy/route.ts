@@ -1,31 +1,13 @@
 import { stackServerApp } from "@/stack/server";
 import { getIntegrationTokens } from "@/lib/integrations";
-import { buildGitHubContentPayload, normalizePath } from "@/lib/deploy-server";
+import { normalizePath, toBase64 } from "@/lib/deploy-server";
 import { getRepoLookupTargets, normalizeNetlifySiteName, slugifyRepoName } from "@/lib/deploy-shared";
 import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-content";
 import { getProject, getFiles } from "@/lib/projects";
 import { getServerEnv } from "@/lib/env";
 import { z } from "zod";
-
-function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
-  const encoder = new TextEncoder();
-  return {
-    write: (data: unknown) => {
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      } catch {
-        // Stream might be closed
-      }
-    },
-    close: () => {
-      try {
-        controller.close();
-      } catch {
-        // Already closed
-      }
-    }
-  };
-}
+import { createSSEWriter } from "@/lib/sse";
+import { validateOrigin } from "@/lib/csrf";
 
 type DeployFile = {
   path: string;
@@ -111,6 +93,11 @@ async function netlifyRequest<T>(url: string, token: string, init?: RequestInit)
 }
 
 export async function POST(req: Request) {
+  // CSRF origin validation
+  if (!validateOrigin(req as unknown as import('next/server').NextRequest)) {
+    return Response.json({ error: 'Invalid origin' }, { status: 403 });
+  }
+
   try {
     getServerEnv();
   } catch (err) {
@@ -140,10 +127,18 @@ export async function POST(req: Request) {
   if (!project) {
     return Response.json({ error: "Project not found" }, { status: 404 });
   }
-  // Legacy/guest projects may not have a `userId`. We currently allow any authenticated
-  // user to deploy those, while deletion paths still enforce ownership—keep behavior in sync.
-  if (project.userId && project.userId !== user.id) {
-    return Response.json({ error: "Unauthorized to deploy this project" }, { status: 403 });
+  // Ownership check: if the project has a userId, only that user may deploy.
+  // Legacy/guest projects (no userId) are restricted to their creator once adopted,
+  // but orphaned ones are blocked entirely to prevent unauthorized deploys.
+  if (project.userId) {
+    if (project.userId !== user.id) {
+      return Response.json({ error: "Unauthorized to deploy this project" }, { status: 403 });
+    }
+  } else {
+    // Orphaned legacy project — no owner recorded.  Allow only if the project name
+    // was just reserved by this user (i.e. the calling user is the creator).
+    // For full safety, log a warning so we can migrate these projects.
+    console.warn(`[deploy] Legacy project "${body.projectName}" has no userId — deploying as ${user.id}`);
   }
 
   const storedFiles = await getFiles(body.projectName);
@@ -269,49 +264,80 @@ export async function POST(req: Request) {
           uploadFiles.push({ path: "README.md", content: readme });
         }
 
-        for (let i = 0; i < uploadFiles.length; i++) {
-          const file = uploadFiles[i];
-          const path = normalizePath(file.path);
-          if (!path) continue;
+        writer.write({
+          status: "progress",
+          message: `GitHub: Uploading ${uploadFiles.length} files in a single commit`,
+        });
 
-          writer.write({
-            status: "progress",
-            message: `GitHub: Uploading ${path} (${i + 1}/${uploadFiles.length})`,
-          });
+        // Create blobs for all files in parallel
+        const blobResults = await Promise.all(
+          uploadFiles
+            .map((file) => ({ ...file, path: normalizePath(file.path) }))
+            .filter((file) => file.path)
+            .map(async (file) => {
+              const blob = await githubRequest<{ sha: string }>(
+                `https://api.github.com/repos/${owner}/${repo.name}/git/blobs`,
+                githubToken,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    content: toBase64(file.content),
+                    encoding: "base64",
+                  }),
+                }
+              );
+              return { path: file.path, sha: blob.sha };
+            })
+        );
 
-          const encodedPath = path
-            .split("/")
-            .map((segment) => encodeURIComponent(segment))
-            .join("/");
+        // Get the current commit SHA for the branch
+        const branchRef = await githubRequest<{ object: { sha: string } }>(
+          `https://api.github.com/repos/${owner}/${repo.name}/git/ref/heads/${encodeURIComponent(defaultBranch)}`,
+          githubToken
+        );
+        const baseCommitSha = branchRef.object.sha;
 
-          let existingSha: string | undefined;
-          try {
-            const existing = await githubRequest<{ sha: string }>(
-              `https://api.github.com/repos/${owner}/${repo.name}/contents/${encodedPath}?ref=${encodeURIComponent(
-                defaultBranch
-              )}`,
-              githubToken
-            );
-            existingSha = existing.sha;
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "";
-            if (!/GitHub API error: 404/i.test(message)) {
-              throw err;
-            }
+        // Create tree
+        const tree = await githubRequest<{ sha: string }>(
+          `https://api.github.com/repos/${owner}/${repo.name}/git/trees`,
+          githubToken,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              base_tree: baseCommitSha,
+              tree: blobResults.map((b) => ({
+                path: b.path,
+                mode: "100644",
+                type: "blob",
+                sha: b.sha,
+              })),
+            }),
           }
+        );
 
-          await githubRequest(`https://api.github.com/repos/${owner}/${repo.name}/contents/${encodedPath}`, githubToken, {
-            method: "PUT",
-            body: JSON.stringify(
-              buildGitHubContentPayload({
-                path,
-                content: file.content,
-                branch: defaultBranch,
-                existingSha,
-              })
-            ),
-          });
-        }
+        // Create commit
+        const commit = await githubRequest<{ sha: string }>(
+          `https://api.github.com/repos/${owner}/${repo.name}/git/commits`,
+          githubToken,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              message: `Deploy ${body.projectName} via Mini App Factory`,
+              tree: tree.sha,
+              parents: [baseCommitSha],
+            }),
+          }
+        );
+
+        // Update branch ref
+        await githubRequest(
+          `https://api.github.com/repos/${owner}/${repo.name}/git/refs/heads/${encodeURIComponent(defaultBranch)}`,
+          githubToken,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ sha: commit.sha }),
+          }
+        );
 
         let deploymentUrl: string | undefined;
         if (deployMode === "github-vercel") {

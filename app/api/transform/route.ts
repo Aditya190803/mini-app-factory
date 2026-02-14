@@ -13,6 +13,8 @@ import { withRetry } from '@/lib/ai-retry';
 
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
+import { DEFAULT_MODEL } from '@/lib/constants';
+import { validateOrigin } from '@/lib/csrf';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -20,20 +22,6 @@ export const dynamic = 'force-dynamic';
 // Health check so clients can verify the endpoint is available without invoking the AI backend
 export async function GET() {
   return Response.json({ ok: true });
-}
-
-export async function sendAIMessage(systemPrompt: string, userPrompt: string): Promise<string> {
-  const client = await getAIClient();
-  const session = await client.createSession({
-    systemMessage: { content: systemPrompt },
-  });
-
-  try {
-    const response = await session.sendAndWait({ prompt: userPrompt }, 120000);
-    return response?.data?.content || '';
-  } finally {
-    await session.destroy().catch(() => { });
-  }
 }
 
 async function extractToolCallsWithRepair(
@@ -161,6 +149,11 @@ function classifyTransformError(raw: unknown) {
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
 
+  // CSRF origin validation
+  if (!validateOrigin(request as unknown as import('next/server').NextRequest)) {
+    return Response.json({ error: 'Invalid origin', code: 'CSRF_REJECTED', requestId }, { status: 403 });
+  }
+
   try {
     try {
       getServerEnv();
@@ -236,7 +229,7 @@ export async function POST(request: Request) {
 
     const client = await getAIClient(runtimeConfig);
     
-    let effectiveModelId = modelId || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
+    let effectiveModelId = modelId || DEFAULT_MODEL;
     let effectiveProviderId = isAIProviderId(providerId) ? providerId : undefined;
 
     const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 

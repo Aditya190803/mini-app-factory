@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { stackServerApp } from '@/stack/server';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isVerifiedAdmin } from '@/lib/admin-access';
 import AIAdminConsole from '@/components/admin/ai-admin-console';
 
 export default async function AdminPage() {
@@ -10,7 +10,7 @@ export default async function AdminPage() {
     redirect('/handler/sign-in');
   }
 
-  if (!isAdminEmail(user.primaryEmail)) {
+  if (!isVerifiedAdmin(user.primaryEmail, user.primaryEmailVerified)) {
     redirect('/settings');
   }
 

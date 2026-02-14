@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { listAIAdminAudit } from '@/lib/ai-settings-store';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isVerifiedAdmin } from '@/lib/admin-access';
 
 export async function GET(req: Request) {
   try {
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!isAdminEmail(email)) {
+    if (!isVerifiedAdmin(email, user.primaryEmailVerified)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
