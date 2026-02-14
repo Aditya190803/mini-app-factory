@@ -26,11 +26,17 @@ import AccountMenu from "@/components/account-menu";
 export default function DashboardPage() {
   const user = useUser();
   const router = useRouter();
-  const projects = useQuery(api.projects.getUserProjects, { userId: user?.id ?? "" });
+  const PAGE_SIZE = 12;
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE);
+  const allProjects = useQuery(api.projects.getUserProjects, { userId: user?.id ?? "", limit: displayLimit + 1 });
+  const hasMore = (allProjects?.length ?? 0) > displayLimit;
+  const projects = allProjects ? allProjects.slice(0, displayLimit) : allProjects;
   const deleteProject = useMutation(api.projects.deleteProject);
   const saveProject = useMutation(api.projects.saveProject);
   const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [optimisticallyDeleted, setOptimisticallyDeleted] = useState<Set<string>>(new Set());
   const [isRedeployDialogOpen, setIsRedeployDialogOpen] = useState(false);
   const [redeployProject, setRedeployProject] = useState<NonNullable<typeof projects>[number] | null>(null);
   const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only'>('github-netlify');
@@ -53,16 +59,29 @@ export default function DashboardPage() {
 
   const handleDelete = async (projectName: string) => {
     if (!user) return;
-    if (confirm(`Are you sure you want to delete "${projectName}"?`)) {
-      setIsDeleting(projectName);
-      try {
-        await deleteProject({ projectName, userId: user.id });
-      } catch (error) {
-        console.error("Failed to delete project:", error);
-        alert("Failed to delete project. Please try again.");
-      } finally {
-        setIsDeleting(null);
-      }
+    setDeleteTarget(projectName);
+  };
+
+  const confirmDelete = async () => {
+    if (!user || !deleteTarget) return;
+    const targetName = deleteTarget;
+    setDeleteTarget(null);
+    // Optimistically remove from UI immediately
+    setOptimisticallyDeleted(prev => new Set(prev).add(targetName));
+    try {
+      await deleteProject({ projectName: targetName, userId: user.id });
+      toast.success(`"${targetName}" deleted`);
+    } catch (error) {
+      console.error("Failed to delete project:", error);
+      toast.error("Failed to delete project. Please try again.");
+      // Restore on error
+      setOptimisticallyDeleted(prev => {
+        const next = new Set(prev);
+        next.delete(targetName);
+        return next;
+      });
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -243,6 +262,7 @@ export default function DashboardPage() {
             <button
               onClick={() => router.push('/')}
               className="w-10 h-10 flex items-center justify-center border border-[var(--border)] hover:border-[var(--primary)] text-[var(--secondary-text)] hover:text-[var(--primary)] transition-all"
+              aria-label="Go back to home"
             >
               ←
             </button>
@@ -250,7 +270,7 @@ export default function DashboardPage() {
               <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>
                 System Dashboard
               </h1>
-              <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
+              <p className="text-[11px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
                 Active Production Archive
               </p>
             </div>
@@ -269,7 +289,7 @@ export default function DashboardPage() {
         {projects.length === 0 ? (
           <div className="h-[400px] border border-dashed flex flex-col items-center justify-center gap-6 rounded-lg" style={{ borderColor: 'var(--border)' }}>
             <div className="w-16 h-16 border flex items-center justify-center text-3xl opacity-20 rounded-full" style={{ borderColor: 'var(--border)' }}>
-              ∅
+              <span aria-hidden="true">∅</span>
             </div>
             <div className="text-center space-y-2">
               <h3 className="text-xs font-mono uppercase font-bold tracking-widest text-[var(--foreground)]">
@@ -288,8 +308,9 @@ export default function DashboardPage() {
             </Button>
           </div>
         ) : (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
+            {projects.filter(p => !optimisticallyDeleted.has(p.projectName)).map((project) => (
               <div
                 key={project._id}
                 className="group relative flex flex-col bg-[var(--background-surface)] border border-[var(--border)] rounded-sm hover:border-[var(--primary)] transition-all duration-300"
@@ -308,18 +329,18 @@ export default function DashboardPage() {
                     <div className="bg-[var(--background-surface)] p-3 space-y-1">
                       <div className="flex items-center gap-1.5 opacity-50">
                         <Layers className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">No of Pages</span>
+                        <span className="text-[11px] font-mono uppercase">No of Pages</span>
                       </div>
-                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                      <div className="text-[11px] font-mono font-bold text-[var(--secondary-text)]">
                         {project.pageCount || 1} Pages
                       </div>
                     </div>
                     <div className="bg-[var(--background-surface)] p-3 space-y-1">
                       <div className="flex items-center gap-1.5 opacity-50">
                         <Calendar className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">Last Sync</span>
+                        <span className="text-[11px] font-mono uppercase">Last Sync</span>
                       </div>
-                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                      <div className="text-[11px] font-mono font-bold text-[var(--secondary-text)]">
                         {new Date(project.createdAt).toLocaleDateString(undefined, { 
                           year: 'numeric', 
                           month: 'short', 
@@ -332,9 +353,9 @@ export default function DashboardPage() {
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center gap-1.5 opacity-50">
                       <Globe className="w-2.5 h-2.5" />
-                      <span className="text-[8px] font-mono uppercase">Deployment</span>
+                      <span className="text-[11px] font-mono uppercase">Deployment</span>
                     </div>
-                    <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
+                    <div className="text-[11px] font-mono font-bold text-[var(--secondary-text)]">
                       {project.deploymentUrl ? (
                         <>
                           {project.deployProvider ? project.deployProvider.toUpperCase() : 'DEPLOYED'}
@@ -346,7 +367,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     {project.deploymentUrl && (
-                      <div className="text-[9px] font-mono text-[var(--muted-text)] break-all">
+                      <div className="text-[11px] font-mono text-[var(--muted-text)] break-all">
                         {project.deploymentUrl}
                       </div>
                     )}
@@ -356,7 +377,7 @@ export default function DashboardPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => window.open(project.deploymentUrl, '_blank')}
-                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                          className="h-7 px-3 text-[11px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
                         >
                           Open Live
                         </Button>
@@ -366,7 +387,7 @@ export default function DashboardPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => window.open(project.repoUrl, '_blank')}
-                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                          className="h-7 px-3 text-[11px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
                         >
                           Repo
                         </Button>
@@ -380,7 +401,7 @@ export default function DashboardPage() {
                       size="sm"
                       onClick={() => handleDelete(project.projectName)}
                       disabled={isDeleting === project.projectName}
-                      className="h-8 flex-1 text-red-500/60 hover:text-red-500 hover:bg-red-500/5 text-[9px] font-mono uppercase px-0"
+                      className="h-8 flex-1 text-red-500/60 hover:text-red-500 hover:bg-red-500/5 text-[11px] font-mono uppercase px-0"
                     >
                       <Trash2 className="w-3 h-3 mr-2" />
                       Decom
@@ -432,6 +453,18 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          {hasMore && (
+            <div className="flex justify-center mt-8">
+              <Button
+                variant="outline"
+                onClick={() => setDisplayLimit((prev) => prev + PAGE_SIZE)}
+                className="font-mono uppercase text-xs tracking-wider border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--primary)] hover:border-[var(--primary)]"
+              >
+                Load more projects
+              </Button>
+            </div>
+          )}
+          </>
         )}
       </div>
 
@@ -456,10 +489,12 @@ export default function DashboardPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
+            <div className="grid gap-2" role="radiogroup" aria-label="Deploy Options">
+              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]" id="deploy-options-label">Deploy Options</label>
               <button
                 type="button"
+                role="radio"
+                aria-checked={redeployOption === 'github-netlify'}
                 onClick={() => setRedeployOption('github-netlify')}
                 className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-netlify'
                   ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
@@ -470,6 +505,8 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
+                role="radio"
+                aria-checked={redeployOption === 'github-only'}
                 onClick={() => setRedeployOption('github-only')}
                 className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-only'
                   ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
@@ -609,6 +646,35 @@ export default function DashboardPage() {
               className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
             >
               {isRedeploying ? 'Deploying...' : 'Redeploy Now'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm bg-[var(--background)] border-[var(--border)]">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-mono uppercase font-black tracking-widest text-[var(--foreground)]">
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription className="text-xs font-mono text-[var(--muted-text)]">
+              Are you sure you want to delete &quot;{deleteTarget}&quot;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDelete}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-mono uppercase text-[10px] font-black"
+            >
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

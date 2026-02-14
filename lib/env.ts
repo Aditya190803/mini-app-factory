@@ -26,6 +26,8 @@ const serverEnvSchema = z
       .string()
       .min(32, "INTEGRATION_TOKEN_SECRET must be at least 32 characters")
       .optional(),
+    UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   })
   .refine((data) => data.GOOGLE_GENERATIVE_AI_API_KEY || data.GROQ_API_KEY || data.OPENROUTER_API_KEY || data.CEREBRAS_API_KEY, {
     message: "At least one AI provider key must be configured (GOOGLE_GENERATIVE_AI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, or CEREBRAS_API_KEY).",

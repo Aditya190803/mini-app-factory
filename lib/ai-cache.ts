@@ -1,22 +1,32 @@
-type CacheEntry = {
-  value: string;
-  expiresAt: number;
-};
+import { Redis } from '@upstash/redis';
+import { DESIGN_SPEC_CACHE_TTL_MS } from './constants';
 
-const designSpecCache = new Map<string, CacheEntry>();
+const CACHE_PREFIX = 'design-spec:';
 
-const DEFAULT_TTL_MS = 1000 * 60 * 15; // 15 minutes
-
-export function getCachedDesignSpec(key: string): string | null {
-  const entry = designSpecCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    designSpecCache.delete(key);
-    return null;
+function getRedis(): Redis {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set');
   }
-  return entry.value;
+  return new Redis({ url, token });
 }
 
-export function setCachedDesignSpec(key: string, value: string, ttlMs = DEFAULT_TTL_MS) {
-  designSpecCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+export async function getCachedDesignSpec(key: string): Promise<string | null> {
+  try {
+    const value = await getRedis().get<string>(`${CACHE_PREFIX}${key}`);
+    return value ?? null;
+  } catch (err) {
+    console.warn('Upstash cache read failed, skipping:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+export async function setCachedDesignSpec(key: string, value: string, ttlMs = DESIGN_SPEC_CACHE_TTL_MS) {
+  try {
+    const ttlSeconds = Math.max(1, Math.round(ttlMs / 1000));
+    await getRedis().set(`${CACHE_PREFIX}${key}`, value, { ex: ttlSeconds });
+  } catch (err) {
+    console.warn('Upstash cache write failed, skipping:', err instanceof Error ? err.message : err);
+  }
 }

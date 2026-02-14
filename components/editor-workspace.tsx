@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -25,6 +24,7 @@ import { toast } from 'sonner';
 import { extractNetlifySiteNameFromUrl, extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from '@/lib/deploy-shared';
 import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { MAX_HISTORY_ENTRIES } from '@/lib/constants';
 
 import EditorHeader from './editor/editor-header';
 import EditorSidebar from './editor/editor-sidebar';
@@ -86,6 +86,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     githubConnected: false,
     netlifyConnected: false,
   });
+  const integrationCacheRef = useRef<{ data: typeof integrationStatus; fetchedAt: number } | null>(null);
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState<string>('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
@@ -152,22 +153,30 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     [linkedRepoName, normalizedRepoName]
   );
 
+  const INTEGRATION_CACHE_TTL = 30_000; // 30 seconds
+
   const fetchIntegrationStatus = useCallback(async () => {
+    // Return cached result if fresh
+    const cached = integrationCacheRef.current;
+    if (cached && Date.now() - cached.fetchedAt < INTEGRATION_CACHE_TTL) {
+      setIntegrationStatus(cached.data);
+      return;
+    }
+
     try {
       const resp = await fetch('/api/integrations/status');
-      if (resp.status === 401) {
-        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
-        return;
-      }
-      if (!resp.ok) {
-        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+      const fallback = { githubConnected: false, netlifyConnected: false };
+      if (resp.status === 401 || !resp.ok) {
+        setIntegrationStatus(fallback);
         return;
       }
       const data = await resp.json();
-      setIntegrationStatus({
+      const result = {
         githubConnected: !!data.githubConnected,
         netlifyConnected: !!data.netlifyConnected,
-      });
+      };
+      integrationCacheRef.current = { data: result, fetchedAt: Date.now() };
+      setIntegrationStatus(result);
     } catch (err) {
       console.error(err);
       setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
@@ -296,11 +305,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     setHistory(prev => {
       const next = prev.slice(0, historyIndex + 1);
       next.push([...currentFiles]);
-      // Limit history size
-      if (next.length > 50) next.shift();
+      // Limit history size — notify user when entries are dropped
+      if (next.length > MAX_HISTORY_ENTRIES) {
+        next.shift();
+        toast.info('Undo history limit reached — oldest entry dropped', { id: 'history-limit', duration: 2000 });
+      }
       return next;
     });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
+    setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY_ENTRIES - 1));
   }, [historyIndex]);
 
   const undo = () => {
@@ -413,6 +425,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   }, [files, activeFilePath, projectName, projectData]);
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
@@ -421,10 +434,19 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       );
       setFiles(nextFiles);
       
+      // Clear both timers to avoid double writes
       if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+      // History snapshot after 1s of inactivity
       historyTimerRef.current = setTimeout(() => {
         addToHistory(nextFiles);
       }, 1000);
+
+      // Auto-save after 2s of inactivity (single timer, no overlap)
+      autoSaveTimerRef.current = setTimeout(() => {
+        persistFiles(nextFiles);
+      }, 2000);
     }
   };
 
@@ -444,16 +466,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   }, [user, projectData?._id, saveFilesAction]);
 
-  // Auto-save to Convex
-  useEffect(() => {
-    if (!user || !files.length || !projectData?._id) return;
-
-    const timer = setTimeout(async () => {
-      persistFiles(files);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [files, user, projectData?._id, persistFiles]);
+  // Auto-save is now handled in handleEditorChange to avoid double writes.
+  // Other code paths that modify files should call persistFiles() directly.
 
   const runTransform = async () => {
     if (!transformPrompt.trim()) return;
@@ -1056,6 +1070,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           netlifySiteName: data.netlifySiteName ?? undefined,
         });
       }
+      // Invalidate cache after deploy to get fresh integration status
+      integrationCacheRef.current = null;
       fetchIntegrationStatus();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Deploy failed';
@@ -1092,12 +1108,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   return (
-    <motion.div
-      className="flex flex-col h-screen"
+    <div
+      className="flex flex-col h-screen animate-in fade-in duration-300"
       style={{ backgroundColor: 'var(--background)' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
     >
       <EditorHeader
         projectName={projectName}
@@ -1133,32 +1146,29 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </button>
 
-        <AnimatePresence>
-          {isExplorerVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
-            >
-              <FileTree 
-                files={files} 
-                activeFilePath={activeFilePath} 
-                onFileSelect={setActiveFilePath}
-                onNewFile={handleNewFile}
-                onNewFolder={handleNewFolder}
-                onDeleteItem={handleDeleteItem}
-                onRenameItem={handleRenameItem}
-                onDuplicateItem={handleDuplicateItem}
-                onNewFileInFolder={handleNewFileInFolder}
-                onMoveItem={handleMoveItem}
-                onMoveAndReorder={handleMoveAndReorder}
-                onReorderFiles={handleReorderFiles}
-              />
-            </motion.div>
+        <div
+          className={cn(
+            "overflow-hidden flex flex-col shrink-0 transition-all duration-200 ease-in-out",
+            isExplorerVisible ? "w-[280px] opacity-100" : "w-0 opacity-0"
           )}
-        </AnimatePresence>
+        >
+          {isExplorerVisible && (
+            <FileTree 
+              files={files} 
+              activeFilePath={activeFilePath} 
+              onFileSelect={setActiveFilePath}
+              onNewFile={handleNewFile}
+              onNewFolder={handleNewFolder}
+              onDeleteItem={handleDeleteItem}
+              onRenameItem={handleRenameItem}
+              onDuplicateItem={handleDuplicateItem}
+              onNewFileInFolder={handleNewFileInFolder}
+              onMoveItem={handleMoveItem}
+              onMoveAndReorder={handleMoveAndReorder}
+              onReorderFiles={handleReorderFiles}
+            />
+          )}
+        </div>
         
         <main className="flex-1 flex overflow-hidden">
           {activeTab === 'preview' && (
@@ -1215,29 +1225,26 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </main>
 
-        <AnimatePresence>
-          {isRightSidebarVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 320, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
-            >
-              <EditorSidebar
-                transformPrompt={transformPrompt}
-                setTransformPrompt={setTransformPrompt}
-                selectedModel={selectedModel}
-                setSelectedModel={setSelectedModel}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-                runTransform={runTransform}
-                runPolish={() => setIsPolishDialogOpen(true)}
-                isTransforming={isTransforming}
-              />
-            </motion.div>
+        <div
+          className={cn(
+            "overflow-hidden flex flex-col shrink-0 transition-all duration-200 ease-in-out",
+            isRightSidebarVisible ? "w-[320px] opacity-100" : "w-0 opacity-0"
           )}
-        </AnimatePresence>
+        >
+          {isRightSidebarVisible && (
+            <EditorSidebar
+              transformPrompt={transformPrompt}
+              setTransformPrompt={setTransformPrompt}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              selectedElement={selectedElement}
+              setSelectedElement={setSelectedElement}
+              runTransform={runTransform}
+              runPolish={() => setIsPolishDialogOpen(true)}
+              isTransforming={isTransforming}
+            />
+          )}
+        </div>
 
         {/* Toggle Right Sidebar Button (Always visible) */}
         <button
@@ -1363,10 +1370,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
+            <div className="grid gap-2" role="radiogroup" aria-label="Deploy Options">
               <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
               <button
                 type="button"
+                role="radio"
+                aria-checked={deployOption === 'github-netlify'}
                 onClick={() => setDeployOption('github-netlify')}
                 className={cn(
                   "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
@@ -1379,6 +1388,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               </button>
               <button
                 type="button"
+                role="radio"
+                aria-checked={deployOption === 'github-only'}
                 onClick={() => setDeployOption('github-only')}
                 className={cn(
                   "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
@@ -1391,6 +1402,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               </button>
               <button
                 type="button"
+                role="radio"
+                aria-checked={deployOption === 'maf-hosted'}
                 onClick={() => setDeployOption('maf-hosted')}
                 className={cn(
                   "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
@@ -1884,13 +1897,13 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   }}
                 >
                   <div className="w-8 h-8 rounded border border-[var(--border)] flex items-center justify-center bg-[var(--background)] group-hover:bg-[var(--background-overlay)] transition-colors">
-                    <span className="text-[9px] uppercase font-bold text-[var(--muted-text)]">
+                    <span className="text-[11px] uppercase font-bold text-[var(--muted-text)]">
                       {file.path.split('.').pop()}
                     </span>
                   </div>
                   <div className="flex flex-col flex-1 overflow-hidden">
                     <span className="text-xs font-mono truncate">{file.path}</span>
-                    <span className="text-[9px] text-[var(--muted-text)] font-mono uppercase tracking-widest leading-none mt-1">
+                    <span className="text-[11px] text-[var(--muted-text)] font-mono uppercase tracking-widest leading-none mt-1">
                       {file.fileType}
                     </span>
                   </div>
@@ -1907,6 +1920,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </div>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   );
 }

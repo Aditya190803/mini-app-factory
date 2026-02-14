@@ -63,9 +63,14 @@ export async function GET(
     contentType = 'application/javascript; charset=utf-8';
   }
 
+  const cacheControl = contentType.startsWith('text/html')
+    ? 'public, max-age=60, stale-while-revalidate=300'
+    : 'public, max-age=3600, stale-while-revalidate=86400';
+
   return new NextResponse(content, {
     headers: {
       'Content-Type': contentType,
+      'Cache-Control': cacheControl,
     },
   });
 }

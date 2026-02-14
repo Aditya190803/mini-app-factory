@@ -143,13 +143,14 @@ export const updateMetadata = mutation({
 });
 
 export const getUserProjects = query({
-  args: { userId: v.string() },
+  args: { userId: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const take = args.limit ?? 100;
     return await ctx.db
       .query("projects")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .collect();
+      .take(take);
   },
 });
 
@@ -173,18 +174,4 @@ export const deleteProject = mutation({
   },
 });
 
-export const cleanupLegacyFields = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const projects = await ctx.db.query("projects").collect();
-    for (const project of projects) {
-      await ctx.db.patch(project._id, {
-        // Remove legacy visual reference fields that are no longer in schema
-        visualReferences: undefined,
-        visualAnalysis: undefined,
-        isStrictRecreation: undefined,
-      } as Record<string, undefined>);
-    }
-    return { updated: projects.length };
-  },
-});
+
