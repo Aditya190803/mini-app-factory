@@ -150,7 +150,7 @@ export default function Home() {
               <div className="flex items-center gap-2 mt-1">
                 <div className="w-1.5 h-1.5 rounded-full bg-[var(--success)] animate-pulse" />
                 <p
-                  className="text-[9px] font-mono uppercase tracking-[0.2em]"
+                  className="text-[11px] font-mono uppercase tracking-[0.2em]"
                   style={{ color: 'var(--muted-text)' }}
                 >
                   System Status: Operational
@@ -269,10 +269,10 @@ export default function Home() {
                   disabled={isChecking}
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-[9px] font-mono uppercase tracking-[0.2em] opacity-40">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.2em] opacity-40">
                     System Unique UID
                   </p>
-                  <p className="text-[9px] font-mono uppercase tracking-[0.2em] opacity-40">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.2em] opacity-40">
                     [a-z0-9-] Only
                   </p>
                 </div>
@@ -296,10 +296,10 @@ export default function Home() {
                   disabled={isChecking}
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-[9px] font-mono uppercase tracking-[0.2em] opacity-40">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.2em] opacity-40">
                     Visual + Functional Logic Params
                   </p>
-                  <p className="text-[8px] font-mono uppercase tracking-[0.2em] opacity-30">
+                  <p className="text-[11px] font-mono uppercase tracking-[0.2em] opacity-30">
                     Ln {prompt.split('\n').length}, Col {prompt.length}
                   </p>
                 </div>
@@ -352,7 +352,7 @@ export default function Home() {
                   )}
                 </button>
                 
-                <p className="text-[9px] font-mono uppercase tracking-widest opacity-40 text-center md:text-right">
+                <p className="text-[11px] font-mono uppercase tracking-widest opacity-40 text-center md:text-right">
                   [Ctrl + Enter] to bypass manual initialize
                 </p>
               </div>
@@ -369,7 +369,7 @@ export default function Home() {
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent to-[var(--border)]" />
               <h3
-                className="text-[9px] font-mono uppercase font-black tracking-[0.4em]"
+                className="text-[11px] font-mono uppercase font-black tracking-[0.4em]"
                 style={{ color: 'var(--secondary-text)' }}
               >
                 Inspiration Modules
@@ -393,7 +393,7 @@ export default function Home() {
                 >
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
-                       <span className="text-[8px] font-mono uppercase tracking-widest text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">
+                       <span className="text-[11px] font-mono uppercase tracking-widest text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">
                         Template_0{idx + 1}
                       </span>
                       <ZapIcon size={10} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />

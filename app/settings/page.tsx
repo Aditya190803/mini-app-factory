@@ -298,7 +298,7 @@ export default function SettingsPage() {
           </button>
           <div>
             <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>Settings</h1>
-            <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
+            <p className="text-[11px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
               Manage account, integrations, and keys
             </p>
           </div>
@@ -349,11 +349,11 @@ export default function SettingsPage() {
                   <div className="grid md:grid-cols-2 gap-2 text-[10px] font-mono text-[var(--muted-text)]">
                     <div>
                       GitHub: {status.githubConnected ? 'Connected' : 'Not connected'}
-                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
+                      <div className="text-[11px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
                     </div>
                     <div>
                       Netlify: {status.netlifyConnected ? 'Connected' : 'Not connected'}
-                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
+                      <div className="text-[11px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
                     </div>
                   </div>
                 </div>
@@ -362,7 +362,7 @@ export default function SettingsPage() {
                   <div>
                     <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
                     <div className="text-[11px] text-[var(--muted-text)]">{status.githubConnected ? 'Connected' : 'Not connected'}</div>
-                    <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
+                    <div className="text-[11px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
                   </div>
                   <div className="flex gap-2">
                     <Button onClick={connectGithub} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
@@ -385,7 +385,7 @@ export default function SettingsPage() {
                   <div>
                     <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
                     <div className="text-[11px] text-[var(--muted-text)]">{status.netlifyConnected ? 'Connected' : 'Not connected'}</div>
-                    <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
+                    <div className="text-[11px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
                   </div>
                   <div className="flex gap-2">
                     <Button onClick={connectNetlify} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
@@ -421,7 +421,7 @@ export default function SettingsPage() {
                 <div key={`byok-${providerId}`} className="border border-[var(--border)] rounded-md p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-                      <span className="w-5 h-5 border border-[var(--border)] rounded-full inline-flex items-center justify-center text-[9px] text-[var(--foreground)]">
+                      <span className="w-5 h-5 border border-[var(--border)] rounded-full inline-flex items-center justify-center text-[11px] text-[var(--foreground)]">
                         {providerLabel[providerId].slice(0, 1)}
                       </span>
                       {providerLabel[providerId]}

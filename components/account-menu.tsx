@@ -45,7 +45,7 @@ export default function AccountMenu({
       <button
         onClick={() => router.push('/handler/sign-in')}
         className={cn(
-          'px-5 py-2 text-[9px] font-mono border border-[var(--primary)]/30 bg-[var(--primary)]/5 uppercase hover:bg-[var(--primary)] hover:text-black transition-all text-[var(--primary)]',
+          'px-5 py-2 text-[11px] font-mono border border-[var(--primary)]/30 bg-[var(--primary)]/5 uppercase hover:bg-[var(--primary)] hover:text-black transition-all text-[var(--primary)]',
           loginClassName
         )}
       >
@@ -59,7 +59,7 @@ export default function AccountMenu({
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         className={cn(
-          'flex items-center gap-2 px-3 py-1.5 text-[9px] font-mono border border-[var(--border)] uppercase hover:bg-white hover:text-black transition-all',
+          'flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono border border-[var(--border)] uppercase hover:bg-white hover:text-black transition-all',
           buttonClassName
         )}
       >
@@ -75,7 +75,7 @@ export default function AccountMenu({
               setIsOpen(false);
               router.push(settingsPath);
             }}
-            className="w-full text-left px-3 py-2 text-[9px] font-mono uppercase hover:bg-[var(--background-overlay)]"
+            className="w-full text-left px-3 py-2 text-[11px] font-mono uppercase hover:bg-[var(--background-overlay)]"
           >
             Settings
           </button>
@@ -85,7 +85,7 @@ export default function AccountMenu({
               setIsOpen(false);
               setIsLoggingOut(true);
             }}
-            className="w-full text-left px-3 py-2 text-[9px] font-mono uppercase hover:bg-[var(--background-overlay)] block"
+            className="w-full text-left px-3 py-2 text-[11px] font-mono uppercase hover:bg-[var(--background-overlay)] block"
           >
             {isLoggingOut ? 'Logging out...' : 'Logout'}
           </a>

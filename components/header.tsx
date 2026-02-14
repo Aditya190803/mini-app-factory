@@ -9,6 +9,12 @@ export default function Header() {
         borderColor: 'var(--border)',
       }}
     >
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-[var(--primary)] focus:text-[var(--primary-foreground)] focus:font-mono focus:text-xs focus:uppercase"
+      >
+        Skip to content
+      </a>
       <div className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
           <div 

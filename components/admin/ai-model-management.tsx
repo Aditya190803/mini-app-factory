@@ -201,7 +201,7 @@ export default function AIModelManagement() {
               <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>
                 Model Visibility
               </h1>
-              <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
+              <p className="text-[11px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
                 Search · Hide/Show · Default Selection
               </p>
             </div>
@@ -326,7 +326,7 @@ export default function AIModelManagement() {
 
                             <div className="flex items-center gap-2">
                               {isDefault && (
-                                <span className="text-[9px] px-2 py-1 border border-[var(--primary)] text-[var(--primary)] font-mono uppercase">
+                                <span className="text-[11px] px-2 py-1 border border-[var(--primary)] text-[var(--primary)] font-mono uppercase">
                                   Default
                                 </span>
                               )}

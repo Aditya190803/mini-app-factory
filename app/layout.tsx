@@ -16,6 +16,20 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'Mini App Factory',
   description: 'Generate production-ready static websites from natural language descriptions',
+  metadataBase: new URL('https://miniappfactory.vercel.app'),
+  openGraph: {
+    title: 'Mini App Factory',
+    description: 'Generate production-ready static websites from natural language descriptions',
+    url: 'https://miniappfactory.vercel.app',
+    siteName: 'Mini App Factory',
+    type: 'website',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Mini App Factory',
+    description: 'Generate production-ready static websites from natural language descriptions',
+  },
 }
 
 export default function RootLayout({
@@ -29,7 +43,9 @@ export default function RootLayout({
         <StackProvider app={stackClientApp}>
           <StackTheme>
             <ConvexClientProvider>
-              {children}
+              <main id="main-content">
+                {children}
+              </main>
               <footer className="border-t border-[var(--border)] bg-[var(--background)]">
                 <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">
