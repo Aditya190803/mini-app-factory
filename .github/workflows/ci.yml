@@ -29,5 +29,14 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Build
+        run: bun run build
+        env:
+          CONVEX_URL: https://placeholder.convex.cloud
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          NEXT_PUBLIC_STACK_PROJECT_ID: placeholder
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: placeholder
+          STACK_SECRET_SERVER_KEY: placeholder
+
       - name: Test
         run: bun run test
