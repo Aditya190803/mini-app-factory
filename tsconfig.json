@@ -25,11 +25,15 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@uiw/react-codemirror": [
+        "./node_modules/@uiw/react-codemirror/esm/index.d.ts"
       ]
     }
   },
   "include": [
     "next-env.d.ts",
+    "**/*.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

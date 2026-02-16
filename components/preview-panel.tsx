@@ -287,7 +287,7 @@ export default function PreviewPanel({ html }: PreviewPanelProps) {
                   <CodeMirror
                     value={editableHtml}
                     height="420px"
-                    onChange={(value) => setEditableHtml(value)}
+                    onChange={(value: string) => setEditableHtml(value)}
                     basicSetup={{
                       highlightActiveLine: false,
                       defaultKeymap: true,
