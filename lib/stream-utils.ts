@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 export type StreamEvent = {
     status: string;
     message?: string;
@@ -45,7 +47,7 @@ export async function readStream<TEvent extends StreamEvent = StreamEvent>(
                         const data = JSON.parse(line.slice(6));
                         onEvent(data);
                     } catch (e) {
-                        console.debug('Malformed SSE message:', e);
+                        logger.debug('Malformed SSE message', { error: e instanceof Error ? e.message : String(e) });
                     }
                 }
             }

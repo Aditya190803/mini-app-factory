@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { isVerifiedAdmin } from '@/lib/admin-access';
+import { validateOrigin } from '@/lib/csrf';
 import {
   sanitizeAIAdminConfig,
   sanitizeBYOKConfig,
@@ -143,6 +144,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!validateOrigin(request as unknown as import('next/server').NextRequest)) {
+    return NextResponse.json({ error: 'Invalid origin' }, { status: 403 });
+  }
+
   const user = await stackServerApp.getUser();
   if (!user) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

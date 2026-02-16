@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { generateReadmeContent } from "@/lib/repo-content";
 import { stackServerApp } from '@/stack/server';
 import { getProject, getFiles } from '@/lib/projects';
+import { logger } from '@/lib/logger';
 
 const readmeSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ content });
   } catch (error: unknown) {
-    console.error('README generation failed:', error);
+    logger.error('README generation failed', { error: error instanceof Error ? error.message : String(error) });
     const message = error instanceof Error ? error.message : 'Failed to generate README';
     return NextResponse.json({ error: message }, { status: 500 });
   }

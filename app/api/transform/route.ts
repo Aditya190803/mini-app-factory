@@ -15,6 +15,7 @@ import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
 import { DEFAULT_MODEL } from '@/lib/constants';
 import { validateOrigin } from '@/lib/csrf';
+import { logger } from '@/lib/logger';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -180,7 +181,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
     }
 
-    const rateLimit = checkRateLimit({ key: `${user.id}:transform`, limit: 20, windowMs: 60_000 });
+    const rateLimit = await checkRateLimit({ key: `${user.id}:transform`, limit: 20, windowMs: 60_000 });
     if (!rateLimit.allowed) {
       const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
       return Response.json(
@@ -356,7 +357,7 @@ Only return changes. No explanations.`;
         }
       }
     } finally {
-      await session.destroy().catch(() => { });
+      await session.destroy().catch((err) => { logger.warn('session.destroy failed', { error: err instanceof Error ? err.message : String(err) }); });
     }
 
     const structure = validateFileStructure(finalFiles);
@@ -372,7 +373,7 @@ Only return changes. No explanations.`;
       try {
         await saveFiles(projectName, finalFiles);
       } catch (err) {
-        console.error(`[Transform ${requestId}] Failed to save files:`, err);
+        logger.error(`[Transform ${requestId}] Failed to save files`, { error: err instanceof Error ? err.message : String(err) });
         return Response.json({
           error: 'Failed to save transformed files',
           code: 'SAVE_FAILED',
@@ -399,7 +400,7 @@ Only return changes. No explanations.`;
     return Response.json({ html: activeHtml, files: finalFiles, full: true, requestId });
   } catch (error) {
     const classified = classifyTransformError(error);
-    console.error(`[Transform ${requestId}] error:`, error);
+    logger.error(`[Transform ${requestId}] error`, { error: error instanceof Error ? error.message : String(error) });
     return Response.json({ error: classified.message, code: classified.code, requestId }, { status: 500 });
   }
 }

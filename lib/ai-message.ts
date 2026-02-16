@@ -1,5 +1,6 @@
 import { getAIClient } from './ai-client';
 import { AI_MESSAGE_TIMEOUT_MS } from './constants';
+import { logger } from './logger';
 
 /**
  * Send a single message to the AI backend and return the response text.
@@ -21,6 +22,6 @@ export async function sendAIMessage(
     );
     return response?.data?.content || '';
   } finally {
-    await session.destroy().catch(() => {});
+    await session.destroy().catch((err) => { logger.warn('session.destroy failed', { error: err instanceof Error ? err.message : String(err) }); });
   }
 }

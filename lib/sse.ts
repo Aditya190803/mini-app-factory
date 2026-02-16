@@ -4,10 +4,12 @@
  */
 export function createSSEWriter(
   controller: ReadableStreamDefaultController<Uint8Array>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { heartbeatMs?: number },
 ) {
   const encoder = new TextEncoder();
   let closed = false;
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
   const write = (data: object): boolean => {
     if (closed || signal?.aborted) {
@@ -25,6 +27,7 @@ export function createSSEWriter(
   };
 
   const close = () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (closed) return;
     closed = true;
     try {
@@ -35,10 +38,27 @@ export function createSSEWriter(
   };
 
   const markClosed = () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
     closed = true;
   };
 
   const isClosed = () => closed || !!signal?.aborted;
+
+  // Start heartbeat if requested
+  if (options?.heartbeatMs && options.heartbeatMs > 0) {
+    heartbeatTimer = setInterval(() => {
+      if (isClosed()) {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        return;
+      }
+      try {
+        controller.enqueue(encoder.encode(': heartbeat\n\n'));
+      } catch {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        closed = true;
+      }
+    }, options.heartbeatMs);
+  }
 
   return { write, close, markClosed, isClosed };
 }

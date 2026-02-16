@@ -3,6 +3,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
 import { buildReadmePrompt } from "@/lib/site-builder";
 import { DEFAULT_MODEL } from "@/lib/constants";
+import { DEFAULT_PROVIDER_MODELS } from "@/lib/ai-admin-config";
+import { logger } from "@/lib/logger";
 
 const FALLBACK_ATTRIBUTION = "Made by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)";
 
@@ -31,7 +33,7 @@ async function generateWithFallback(prompt: string): Promise<string> {
   if (groqKey) {
     const groq = createGroq({ apiKey: groqKey });
     const { text } = await generateText({
-      model: groq(process.env.GROQ_MODEL || "moonshotai/kimi-k2-instruct-0905"),
+      model: groq(DEFAULT_PROVIDER_MODELS.groq),
       prompt,
     });
     return text;
@@ -52,7 +54,7 @@ export async function generateReadmeContent(opts: {
     const content = await generateWithFallback(readmePrompt);
     if (content.trim()) return content;
   } catch (error) {
-    console.error("README generation failed:", error);
+    logger.error('README generation failed', { error: error instanceof Error ? error.message : String(error) });
   }
 
   return `# ${projectName}\n\n${prompt}\n\n---\n${FALLBACK_ATTRIBUTION}`;
@@ -85,7 +87,7 @@ Rules:
     if (!text.trim()) return fallback;
     return cleanRepoDescription(text, 160) || fallback;
   } catch (error) {
-    console.error("Repo description generation failed:", error);
+    logger.error('Repo description generation failed', { error: error instanceof Error ? error.message : String(error) });
     return fallback;
   }
 }

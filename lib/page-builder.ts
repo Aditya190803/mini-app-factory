@@ -224,7 +224,6 @@ export function assembleFullPage(
           document.head.appendChild(style);
         }
         style.textContent = content;
-        console.log(\`[HMR] Updated \${file}\`);
       }
 
       if (event.data.type === 'init-vfs') {

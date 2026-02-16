@@ -1,8 +1,7 @@
 import { DEFAULT_PROVIDER_MODELS } from './ai-admin-config';
 
-/** The default AI model, sourced from env or the admin config defaults. */
-export const DEFAULT_MODEL =
-  process.env.GOOGLE_MODEL || DEFAULT_PROVIDER_MODELS.google;
+/** The default AI model, sourced from admin config defaults. */
+export const DEFAULT_MODEL = DEFAULT_PROVIDER_MODELS.google;
 
 /** Design spec cache TTL in milliseconds (15 minutes). */
 export const DESIGN_SPEC_CACHE_TTL_MS = 1000 * 60 * 15;

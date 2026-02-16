@@ -2,6 +2,7 @@ import { stackServerApp } from "@/stack/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { z } from "zod";
+import { validateOrigin } from "@/lib/csrf";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 const disconnectSchema = z
@@ -11,6 +12,10 @@ const disconnectSchema = z
   .strict();
 
 export async function POST(req: Request) {
+  if (!validateOrigin(req as unknown as import('next/server').NextRequest)) {
+    return Response.json({ error: 'Invalid origin' }, { status: 403 });
+  }
+
   const user = await stackServerApp.getUser();
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

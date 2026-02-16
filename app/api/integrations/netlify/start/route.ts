@@ -1,9 +1,14 @@
 import { stackServerApp } from "@/stack/server";
 import { createOAuthStateCookie, getBaseUrl, sanitizeReturnTo } from "@/lib/oauth";
+import { validateOrigin } from "@/lib/csrf";
 
 const COOKIE_NAME = "oauth_netlify_state";
 
 export async function GET(req: Request) {
+  if (!validateOrigin(req as unknown as import('next/server').NextRequest)) {
+    return Response.json({ error: 'Invalid origin' }, { status: 403 });
+  }
+
   const user = await stackServerApp.getUser();
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -8,6 +8,7 @@ import { getServerEnv } from "@/lib/env";
 import { z } from "zod";
 import { createSSEWriter } from "@/lib/sse";
 import { validateOrigin } from "@/lib/csrf";
+import { logger } from "@/lib/logger";
 
 type DeployFile = {
   path: string;
@@ -138,7 +139,7 @@ export async function POST(req: Request) {
     // Orphaned legacy project — no owner recorded.  Allow only if the project name
     // was just reserved by this user (i.e. the calling user is the creator).
     // For full safety, log a warning so we can migrate these projects.
-    console.warn(`[deploy] Legacy project "${body.projectName}" has no userId — deploying as ${user.id}`);
+    logger.warn('[deploy] Legacy project has no userId', { projectName: body.projectName, userId: user.id });
   }
 
   const storedFiles = await getFiles(body.projectName);

@@ -5,17 +5,9 @@ import { z } from "zod";
 const serverEnvSchema = z
   .object({
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
-    GOOGLE_MODEL: z.string().optional(),
-    GOOGLE_FALLBACK_MODEL: z.string().optional(),
     GROQ_API_KEY: z.string().optional(),
-    GROQ_MODEL: z.string().optional(),
-    GROQ_FALLBACK_MODEL: z.string().optional(),
     OPENROUTER_API_KEY: z.string().optional(),
-    OPENROUTER_MODEL: z.string().optional(),
-    OPENROUTER_FALLBACK_MODEL: z.string().optional(),
     CEREBRAS_API_KEY: z.string().optional(),
-    CEREBRAS_MODEL: z.string().optional(),
-    CEREBRAS_FALLBACK_MODEL: z.string().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1, "NEXT_PUBLIC_CONVEX_URL is required"),
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1, "NEXT_PUBLIC_STACK_PROJECT_ID is required"),
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z

@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import * as csstree from 'css-tree';
 import path from 'path';
 import { ProjectFile } from './page-builder';
+import { logger } from './logger';
 
 export interface ToolResult {
   success: boolean;
@@ -186,7 +187,7 @@ export async function executeTool(
   if (process.env.NODE_ENV === 'development') {
     const payloadPreview = JSON.stringify(safeArgs).slice(0, 400);
     const suffix = payloadPreview.length >= 400 ? '…' : '';
-    console.log(`[Tool Executor] ${toolName} ${payloadPreview}${suffix}`);
+    logger.debug(`[Tool Executor] ${toolName} ${payloadPreview}${suffix}`);
   }
 
   switch (toolName) {

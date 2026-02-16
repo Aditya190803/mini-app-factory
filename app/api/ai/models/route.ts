@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import type { AIProviderId } from '@/lib/ai-admin-config';
 import { stackServerApp } from '@/stack/server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -79,11 +79,6 @@ export async function GET(_request: Request) {
 
     // Add the default model (always visible)
     addModel(models, seen, provider, providerAdmin.defaultModel);
-
-    // Add built-in defaults that pass the admin visibility filter
-    DEFAULT_MODEL_OPTIONS[provider.id]
-      .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
-      .forEach((modelId) => addModel(models, seen, provider, modelId));
 
     // Add admin-configured custom models that pass the visibility filter
     providerAdmin.customModels

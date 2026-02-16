@@ -32,11 +32,9 @@ export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
   cerebras: 'llama-3.3-70b',
 };
 
-export const DEFAULT_MODEL_OPTIONS: Record<AIProviderId, string[]> = {
-  google: ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemma-3-27b'],
-  groq: ['moonshotai/kimi-k2-instruct-0905', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct'],
-  openrouter: ['openai/gpt-oss-120b', 'anthropic/claude-3.5-sonnet', 'google/gemini-2.5-pro', 'meta-llama/llama-3.3-70b-instruct'],
-  cerebras: ['llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
+export const DEFAULT_FALLBACK_MODELS: Partial<Record<AIProviderId, string>> = {
+  google: 'gemini-2.5-flash',
+  groq: 'qwen/qwen3-32b',
 };
 
 export const DEFAULT_AI_ADMIN_CONFIG: AIAdminConfig = {

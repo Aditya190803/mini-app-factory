@@ -1,36 +1,25 @@
+import bundleAnalyzer from '@next/bundle-analyzer';
+import { withSentryConfig } from '@sentry/nextjs';
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    unoptimized: true,
+    remotePatterns: [
+      { protocol: 'https', hostname: '**' },
+    ],
   },
 
   // Security headers applied to all routes
+  // Note: CSP is now handled dynamically by middleware.ts with nonces
   async headers() {
     return [
       {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-        ],
-      },
-      {
         source: '/results/:path*',
         headers: [
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; frame-ancestors 'none';",
-          },
           {
             key: 'Cache-Control',
             value: 'public, s-maxage=60, stale-while-revalidate=300',
@@ -41,4 +30,9 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+export default withSentryConfig(withBundleAnalyzer(nextConfig), {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: true,
+  disableLogger: true,
+});

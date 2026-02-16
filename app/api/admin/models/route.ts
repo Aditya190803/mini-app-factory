@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { isVerifiedAdmin } from '@/lib/admin-access';
-import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import type { AIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 export const dynamic = 'force-dynamic';
@@ -171,7 +171,6 @@ export async function GET(_request: Request) {
       const providerConfig = adminConfig.providers[providerId];
       const modelMap = new Map<string, { id: string; name: string; isDefault: boolean; isCustom: boolean }>();
 
-      DEFAULT_MODEL_OPTIONS[providerId].forEach((modelId) => addModel(modelMap, modelId));
       addModel(modelMap, providerConfig.defaultModel, { isDefault: true });
       providerConfig.customModels.forEach((modelId) => addModel(modelMap, modelId, { isCustom: true }));
       providerConfig.visibleModels.forEach((modelId) => addModel(modelMap, modelId));

@@ -1,6 +1,7 @@
 import { stackServerApp } from "@/stack/server";
 import { consumeOAuthStateCookie, getBaseUrl } from "@/lib/oauth";
 import { upsertIntegrationTokens } from "@/lib/integrations";
+import { logger } from "@/lib/logger";
 
 const COOKIE_NAME = "oauth_github_state";
 
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
     error_description?: string;
   };
   if (tokenData.error) {
-    console.error("GitHub OAuth error:", tokenData.error, tokenData.error_description);
+    logger.error('GitHub OAuth error', { error: tokenData.error, description: tokenData.error_description });
     return Response.json({ error: "GitHub token exchange failed" }, { status: 500 });
   }
   if (!tokenData.access_token) {

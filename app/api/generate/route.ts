@@ -1,20 +1,14 @@
 import { z } from 'zod';
-import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
-import { getProject, saveProject, saveFiles } from '@/lib/projects';
+import { getProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
-import { getAIClient, SessionEvent } from '@/lib/ai-client';
-import { parseMultiFileOutput } from '@/lib/file-parser';
-import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
 import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
-import { withRetry } from '@/lib/ai-retry';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
-import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { createSSEWriter } from '@/lib/sse';
-import { DEFAULT_MODEL } from '@/lib/constants';
 import { validateOrigin } from '@/lib/csrf';
+import { logger } from '@/lib/logger';
+import { runGeneration, classifyGenerationError } from '@/lib/generation-engine';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -23,238 +17,6 @@ const generateSchema = z.object({
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
-
-function classifyGenerationError(raw: unknown): { code: string; message: string } {
-  try {
-    const rawMsg = typeof raw === 'string' ? raw : (raw instanceof Error ? raw.message : String(raw));
-    const m = rawMsg.toLowerCase();
-
-    if (m.includes('google_generative_ai_api_key') || m.includes('google api key') || m.includes('api_key')) {
-      return {
-        code: 'ENV_MISSING',
-        message: 'Missing GOOGLE_GENERATIVE_AI_API_KEY. To enable AI features, set GOOGLE_GENERATIVE_AI_API_KEY in your environment or deployment variables and restart the server.'
-      };
-    }
-
-    if (m.includes('google') || m.includes('gemini') || m.includes('provider returned') || m.includes('rate-limited')) {
-      return {
-        code: 'AI_PROVIDER_ERROR',
-        message: 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Check your GOOGLE_GENERATIVE_AI_API_KEY, switch providers, or try again shortly.'
-      };
-    }
-
-    if (/timeout|timed out/.test(m)) return { code: 'AI_TIMEOUT', message: 'AI request timed out. Try again.' };
-    if (/network|enotfound|eai_again|econnrefused|econnreset/.test(m)) {
-      return { code: 'AI_NETWORK_ERROR', message: 'Network error contacting AI provider. Ensure server can reach the provider and try again.' };
-    }
-
-    // Default to the raw string but keep it concise
-    const concise = rawMsg.length > 800 ? rawMsg.slice(0, 800) + '…' : rawMsg;
-    return { code: 'AI_ERROR', message: concise };
-  } catch {
-    return { code: 'AI_ERROR', message: 'Unknown error contacting AI provider' };
-  }
-}
-
-/**
- * Runs the generation workflow, saving progress to the database.
- * The workflow continues even if the stream is closed - results are persisted.
- */
-export async function runGeneration(
-  projectName: string,
-  finalPrompt: string,
-  signal: AbortSignal,
-  onEvent?: (event: SessionEvent) => void,
-  requestId?: string,
-  runtimeConfig?: AIRuntimeConfig
-): Promise<{ html: string; files: ProjectFile[] } | { error: string }> {
-  const project = await getProject(projectName);
-  if (!project) return { error: 'Project not found during generation' };
-
-  try {
-    // Update status
-    project.status = 'generating';
-    await saveProject(project).catch(() => { });
-
-    if (signal.aborted) return { error: 'Aborted' };
-
-    const client = await getAIClient(runtimeConfig);
-    const projectProviderId = isAIProviderId(project.providerId) ? project.providerId : undefined;
-
-    if (signal.aborted) return { error: 'Aborted' };
-
-    // Design phase
-    const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
-
-    const designSession = await client.createSession({
-      model: project.selectedModel || DEFAULT_MODEL,
-      providerId: projectProviderId,
-      systemMessage: { content: architectSystemMsg },
-    });
-
-    let designSpec = '';
-    try {
-      // Listen for session errors that might occur during send
-      let sessionError: Error | null = null;
-      const unsubscribe = designSession.on((event) => {
-        if (event.type === 'session.error') {
-          sessionError = new Error(event.data.message);
-          console.error('[AI] Design session error:', event.data.message);
-        } else if (event.type === 'provider.fallback' || event.type === 'provider.selected') {
-          onEvent?.(event);
-        }
-      });
-
-      try {
-        // Hash prompt to avoid storing PII in memory (S12)
-        const promptHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(finalPrompt)))).map(b => b.toString(16).padStart(2, '0')).join('');
-        const cacheKey = `${project.selectedModel || DEFAULT_MODEL}:${project.providerId || ''}:${promptHash}`;
-        const cached = await getCachedDesignSpec(cacheKey);
-        if (cached) {
-          designSpec = cached;
-        } else {
-          const designResp = await withRetry(
-            () => designSession.sendAndWait({ prompt: finalPrompt }, 120000),
-            { maxAttempts: 3, baseDelayMs: 800 }
-          );
-          if (sessionError) throw sessionError;
-          designSpec = designResp?.data?.content || '';
-          if (designSpec) await setCachedDesignSpec(cacheKey, designSpec);
-        }
-      } finally {
-        unsubscribe();
-      }
-    } finally {
-      await designSession.destroy().catch(() => { });
-    }
-
-    if (signal.aborted) return { error: 'Aborted' };
-
-    // HTML generation phase
-    const developerSystemMsg = `You are an expert developer. Generate a complete multi-file website project. 
-Return files using code blocks with the format:
-\`\`\`html:filename.html
-Code here...
-\`\`\`
-
-Mandatory requirements:
-1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
-2. **No Inline Tags**: DO NOT use <style> or <script> tags inside HTML files.
-3. **Linking**: index.html MUST include <link rel="stylesheet" href="styles.css"> and <script src="script.js" defer></script>.
-4. **Project Files**: Always include at least:
-   - index.html (main landing page)
-   - styles.css (common styles)
-   - script.js (common interactions)
-
-5. **Shared Partials (CRITICAL)**:
-   - If the project has multiple pages, you MUST create a \`header.html\` (and \`footer.html\` if applicable).
-   - DO NOT duplicate the header or footer HTML code inside individual page files.
-   - Instead, use the placeholder \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
-   - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
-
-6. **Link Integrity & Navigation (CRITICAL)**:
-   - **Zero Dead Links**: DO NOT use \`#\` for links (except for the logo if it points to home).
-   - **Mandatory Page Generation**: If you link to a page (e.g. \`about.html\`, \`privacy.html\`, \`services.html\`), YOU MUST PROVIDE THE CONTENT for that page in its own code block in this same response. If you are not prepared to generate the page, DO NOT link to it.
-   - **Relative Paths Only**: Always use relative filenames like \`about.html\`. NEVER use absolute paths like \`/about.html\` or \`/index.html\`.
-   - **Internal Anchors**: If you link to an anchor (e.g. \`#features\`), the target element with \`id=\"features\"\` must actually exist in the same HTML file.
-   - **Footer Policy**: Legal pages (Privacy Policy, Terms of Service) are often generated as empty links. You are FORBIDDEN from adding these unless you also generate the corresponding \`privacy.html\` or \`terms.html\` files. Omit footer links if they would point nowhere.
-
-You can also create sub-pages (e.g. about.html, gallery.html).
-Return ONLY code blocks. No explanations.`;
-
-    const htmlSession = await client.createSession({
-      model: project.selectedModel || DEFAULT_MODEL,
-      providerId: projectProviderId,
-      systemMessage: { content: developerSystemMsg },
-    });
-
-    let html = '';
-    let files: ProjectFile[] = [];
-    try {
-      // Listen for session errors that might occur during send
-      let sessionError: Error | null = null;
-      const unsubscribe = htmlSession.on((event) => {
-        if (event.type === 'session.error') {
-          sessionError = new Error(event.data.message);
-          console.error('[AI] HTML session error:', event.data.message);
-        } else if (event.type === 'provider.fallback' || event.type === 'provider.selected') {
-          onEvent?.(event);
-        }
-      });
-
-      try {
-        const mainPrompt = buildMainPrompt(finalPrompt);
-        const htmlResp = await withRetry(
-          () => htmlSession.sendAndWait({
-            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
-          }, 120000),
-          { maxAttempts: 3, baseDelayMs: 800 }
-        );
-        if (sessionError) throw sessionError;
-        
-        const content = htmlResp?.data?.content || '';
-        files = parseMultiFileOutput(content);
-        
-        if (files.length === 0) {
-          // Fallback if no code fences found
-          html = stripCodeFence(content);
-          files = [{ path: 'index.html', content: html, language: 'html', fileType: 'page' }];
-        } else {
-          // Find index.html for legacy compatibility
-          html = files.find(f => f.path === 'index.html')?.content || '';
-        }
-      } finally {
-        unsubscribe();
-      }
-    } finally {
-      await htmlSession.destroy().catch(() => { });
-    }
-
-    const structure = validateFileStructure(files);
-    if (!structure.valid) {
-      return { error: `Invalid file structure: ${structure.errors.join(', ')}` };
-    }
-
-    // Always save the result to the database (even if client disconnected)
-    const finalProject = await getProject(projectName);
-    if (finalProject) {
-      finalProject.html = html; // Keep for legacy / preview
-      finalProject.status = 'completed';
-      finalProject.isMultiPage = files.length > 1;
-      finalProject.pageCount = files.filter(f => f.fileType === 'page').length;
-      finalProject.description = designSpec.slice(0, 500); // Save partial spec as description
-      
-      await saveProject(finalProject).catch(err => {
-        console.error('Failed to save completed project:', err);
-      });
-      
-      if (files.length > 0) {
-        await saveFiles(projectName, files).catch(err => {
-          console.error('Failed to save project files:', err);
-        });
-      }
-    }
-
-    return { html, files };
-  } catch (err) {
-    const original = err instanceof Error ? err.message : String(err);
-    const errorInfo = classifyGenerationError(original);
-
-    // Log original for debugging, save sanitized to project state
-    console.error(`[Generation ${requestId ?? 'unknown'}] error for`, projectName, ':', original);
-
-    try {
-      const proj = await getProject(projectName);
-      if (proj) {
-        proj.status = 'error';
-        proj.error = errorInfo.message;
-        await saveProject(proj);
-      }
-    } catch { /* ignore */ }
-
-    return { error: errorInfo.message };
-  }
-}
 
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
@@ -289,7 +51,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit({ key: `${user.id}:generate`, limit: 10, windowMs: 60_000 });
+    const rateLimit = await checkRateLimit({ key: `${user.id}:generate`, limit: 10, windowMs: 60_000 });
     if (!rateLimit.allowed) {
       const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
       return Response.json(
@@ -408,7 +170,7 @@ export async function POST(request: Request) {
         })()
           .catch((err) => {
             const errorInfo = classifyGenerationError(err instanceof Error ? err.message : err);
-            console.error(`[Generation ${requestId}] workflow error:`, err);
+            logger.error(`[Generation ${requestId}] workflow error`, { error: err instanceof Error ? err.message : String(err) });
             if (!sse.isClosed()) {
               sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
             }
@@ -435,7 +197,7 @@ export async function POST(request: Request) {
 
   } catch (error) {
     const errorInfo = classifyGenerationError(error instanceof Error ? error.message : error);
-    console.error(`[Generation ${requestId}] Failed to initialize:`, error);
+    logger.error(`[Generation ${requestId}] Failed to initialize`, { error: error instanceof Error ? error.message : String(error) });
     return Response.json({ error: errorInfo.message, code: errorInfo.code, requestId }, { status: 500 });
   }
 }

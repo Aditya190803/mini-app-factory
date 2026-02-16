@@ -6,7 +6,8 @@ export default defineSchema({
   projects: defineTable({
     projectName: v.string(),
     prompt: v.string(),
-    html: v.optional(v.string()), // Kept for migration, will be removed later
+    /** @deprecated Legacy single-page field — use projectFiles table instead. Removal target: 2026-Q2 after migration verification. */
+    html: v.optional(v.string()),
     pages: v.optional(v.array(v.object({
       html: v.string(),
       isHomePage: v.optional(v.boolean()),

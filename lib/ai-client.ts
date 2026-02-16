@@ -5,7 +5,9 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
 import type { AIProviderId } from '@/lib/ai-admin-config';
+import { DEFAULT_PROVIDER_MODELS, DEFAULT_FALLBACK_MODELS } from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
+import { logger } from '@/lib/logger';
 
 export type SessionEvent = {
   type: string;
@@ -35,11 +37,13 @@ export interface AIClientSession {
 
 type UserContentPart = TextPart | ImagePart;
 
+type AIModel = Parameters<typeof generateText>[0]['model'];
+
 type ProviderStep = {
   label: string;
   providerId: AIProviderId;
   model: string;
-  createModel: () => unknown;
+  createModel: () => AIModel;
   maxAttempts: number;
 };
 
@@ -82,26 +86,26 @@ function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMa
     google: {
       enabled: admin?.google?.enabled ?? true,
       apiKey: byok?.google || process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-      defaultModel: admin?.google?.defaultModel || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview',
-      fallbackModel: process.env.GOOGLE_FALLBACK_MODEL || 'gemini-2.5-flash',
+      defaultModel: admin?.google?.defaultModel || DEFAULT_PROVIDER_MODELS.google,
+      fallbackModel: DEFAULT_FALLBACK_MODELS.google,
     },
     groq: {
       enabled: admin?.groq?.enabled ?? true,
       apiKey: byok?.groq || process.env.GROQ_API_KEY,
-      defaultModel: admin?.groq?.defaultModel || process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct-0905',
-      fallbackModel: process.env.GROQ_FALLBACK_MODEL || 'qwen/qwen3-32b',
+      defaultModel: admin?.groq?.defaultModel || DEFAULT_PROVIDER_MODELS.groq,
+      fallbackModel: DEFAULT_FALLBACK_MODELS.groq,
     },
     openrouter: {
       enabled: admin?.openrouter?.enabled ?? true,
       apiKey: byok?.openrouter || process.env.OPENROUTER_API_KEY,
-      defaultModel: admin?.openrouter?.defaultModel || process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
-      fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL,
+      defaultModel: admin?.openrouter?.defaultModel || DEFAULT_PROVIDER_MODELS.openrouter,
+      fallbackModel: DEFAULT_FALLBACK_MODELS.openrouter,
     },
     cerebras: {
       enabled: admin?.cerebras?.enabled ?? true,
       apiKey: byok?.cerebras || process.env.CEREBRAS_API_KEY,
-      defaultModel: admin?.cerebras?.defaultModel || process.env.CEREBRAS_MODEL || 'llama-3.3-70b',
-      fallbackModel: process.env.CEREBRAS_FALLBACK_MODEL,
+      defaultModel: admin?.cerebras?.defaultModel || DEFAULT_PROVIDER_MODELS.cerebras,
+      fallbackModel: DEFAULT_FALLBACK_MODELS.cerebras,
     },
   };
 }
@@ -297,7 +301,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
               }
 
               const result = await generateText({
-                model: step.createModel() as never,
+                model: step.createModel(),
                 messages,
                 maxRetries: 0,
                 abortSignal: controller.signal,
@@ -340,7 +344,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
               messages.push({ role: 'user', content: prompt });
 
               const result = await streamText({
-                model: step.createModel() as never,
+                model: step.createModel(),
                 messages,
                 maxRetries: 0,
                 abortSignal: controller.signal,
@@ -378,7 +382,7 @@ export async function withSession<T>(client: AIClient, fn: (session: AIClientSes
   try {
     return await fn(session);
   } finally {
-    await session.destroy().catch(() => { });
+    await session.destroy().catch((err) => { logger.warn('session.destroy failed', { error: err instanceof Error ? err.message : String(err) }); });
   }
 }
 
