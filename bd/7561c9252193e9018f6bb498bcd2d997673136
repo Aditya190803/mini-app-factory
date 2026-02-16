@@ -1,0 +1,37 @@
+hooks/use-deploy-workflow.ts
+  874d3169f25e3c39 13,27-58,66,72-74
+components/prompt-panel.tsx
+  874d3169f25e3c39 6,35-36
+lib/integrations.ts
+  874d3169f25e3c39 5-9
+app/api/transform/route.ts
+  874d3169f25e3c39 16,19,146,148,169,171,183,190,202,205
+lib/editor-utils.ts
+  874d3169f25e3c39 21-22,27,30,33,36,39
+lib/constants.ts
+  874d3169f25e3c39 23-58
+app/api/generate/route.ts
+  874d3169f25e3c39 11,13,25,36,43,47,56,62,69,79,207
+components/home-form.tsx
+  874d3169f25e3c39 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.3",
+  "base_commit_sha": "bd7561c9252193e9018f6bb498bcd2d997673136",
+  "prompts": {
+    "874d3169f25e3c39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c65bc-4254-7d11-8b85-c55880d852b6",
+        "model": "unknown"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 410,
+      "overriden_lines": 0
+    }
+  }
+}
