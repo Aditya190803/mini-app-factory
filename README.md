@@ -52,22 +52,14 @@ A powerful AI-powered web application that generates production-ready multi-page
    bun install
    ```
 
-3. Set up your environment variables in `.env.local` (you can start from `.env.example` or `.env.local.example`):
+3. Set up your environment variables in `.env.local` (you can start from `.env.example`):
    
    ```bash
-   # AI Providers
+   # AI Providers (at least one key required; models are managed via Admin panel)
    GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key
-   GOOGLE_MODEL=gemini-3-flash-preview
-   GOOGLE_FALLBACK_MODEL=gemini-2.5-flash
    GROQ_API_KEY=your_groq_api_key
-   GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
-   GROQ_FALLBACK_MODEL=qwen/qwen3-32b
    OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL=openai/gpt-oss-120b
-   OPENROUTER_FALLBACK_MODEL=optional_openrouter_fallback_model
    CEREBRAS_API_KEY=your_cerebras_api_key
-   CEREBRAS_MODEL=llama-3.3-70b
-   CEREBRAS_FALLBACK_MODEL=optional_cerebras_fallback_model
    
    # Convex
    CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev
@@ -90,6 +82,20 @@ A powerful AI-powered web application that generates production-ready multi-page
 
    # Integration Token Encryption
    INTEGRATION_TOKEN_SECRET=your_32+_char_secret
+
+   # Upstash Redis (recommended for distributed rate limiting + cache)
+   UPSTASH_REDIS_REST_URL=your_upstash_url
+   UPSTASH_REDIS_REST_TOKEN=your_upstash_token
+
+   # Optional Sentry monitoring
+   NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
+   SENTRY_AUTH_TOKEN=your_sentry_auth_token
+   SENTRY_ORG=your_sentry_org
+   SENTRY_PROJECT=your_sentry_project
+
+   # Optional Playwright auth-gated E2E flow
+   E2E_TEST_EMAIL=your_test_user_email
+   E2E_TEST_PASSWORD=your_test_user_password
    ```
 
 ### One-Click Deploy
@@ -135,6 +141,24 @@ Run unit tests (Vitest):
 
 ```bash
 bun test
+```
+
+Run E2E tests (Playwright):
+
+```bash
+bun run test:e2e
+```
+
+Install Playwright browser binaries (first run / CI bootstrap):
+
+```bash
+bun run test:e2e:install
+```
+
+Run E2E tests in headed mode:
+
+```bash
+bun run test:e2e:headed
 ```
 
 Run type checks:
