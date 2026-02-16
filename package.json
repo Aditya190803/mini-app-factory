@@ -108,7 +108,7 @@
     "@types/react-dom": "^19",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
-    "@vitest/coverage-v8": "^1.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint-plugin-jsx-a11y": "^6.8.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^7.0.1",
