@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Shield, Settings2, ArrowLeft, ArrowUp, ArrowDown } from 'lucide-react';
-import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { AI_PROVIDER_IDS, type AIProviderId } from '@/lib/ai-admin-config';
 import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
 const providerLabel: Record<AIProviderId, string> = {
@@ -261,7 +261,6 @@ export default function AIAdminConsole() {
                   .map((model) => model.id);
                 const optionSet = new Set<string>([
                   ...catalogVisibleModels,
-                  ...DEFAULT_MODEL_OPTIONS[providerId],
                   ...provider.customModels,
                   provider.defaultModel,
                 ]);

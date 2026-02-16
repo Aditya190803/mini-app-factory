@@ -4,17 +4,25 @@ import { normalizeProjectMetadata, projectFileRecordSchema } from "./project-met
 
 import { ProjectFile } from "./page-builder";
 
-// Lazy-initialize the convex client to avoid errors when running tests
-let _convex: ConvexHttpClient | null = null;
+// Lazy-initialize the convex client; supports injection for testing
+let _defaultConvex: ConvexHttpClient | null = null;
+let _injectedConvex: ConvexHttpClient | null = null;
+
 function getConvex(): ConvexHttpClient {
-  if (!_convex) {
+  if (_injectedConvex) return _injectedConvex;
+  if (!_defaultConvex) {
     const url = process.env.NEXT_PUBLIC_CONVEX_URL;
     if (!url) {
       throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
     }
-    _convex = new ConvexHttpClient(url);
+    _defaultConvex = new ConvexHttpClient(url);
   }
-  return _convex;
+  return _defaultConvex;
+}
+
+/** Inject a custom ConvexHttpClient (useful for testing). Call with `null` to reset. */
+export function setConvexClient(client: ConvexHttpClient | null): void {
+  _injectedConvex = client;
 }
 
 export interface ProjectMetadata {
