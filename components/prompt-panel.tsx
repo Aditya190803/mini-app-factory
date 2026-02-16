@@ -1,9 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
-import { DEFAULT_MODEL_OPTIONS, DEFAULT_PROVIDER_MODELS } from '@/lib/ai-admin-config';
+
+type ModelEntry = {
+  id: string;
+  fullName: string;
+  provider: string;
+  providerId: string;
+};
 
 interface PromptPanelProps {
   onGenerate: (prompt: string, model?: string) => Promise<void>;
@@ -13,7 +19,29 @@ interface PromptPanelProps {
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState(DEFAULT_PROVIDER_MODELS.google);
+  const [model, setModel] = useState('');
+  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const resp = await fetch('/api/ai/models');
+        if (resp.ok) {
+          const data = await resp.json();
+          const fetched: ModelEntry[] = Array.isArray(data.models) ? data.models : [];
+          setModels(fetched);
+          if (fetched.length > 0 && !model) {
+            setModel(fetched[0].id);
+          }
+        }
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
@@ -96,15 +124,17 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
 
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
-            <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              {Object.entries(DEFAULT_MODEL_OPTIONS).flatMap(([provider, models]) =>
-                models.map((m) => (
-                  <option key={m} value={m}>
-                    {m} ({provider})
+            {modelsLoading ? (
+              <span className="text-[10px] font-mono text-[var(--muted-text)]">Loading models…</span>
+            ) : (
+              <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
+                {models.map((m) => (
+                  <option key={`${m.providerId}:${m.id}`} value={m.id}>
+                    {m.fullName}
                   </option>
-                ))
-              )}
-            </select>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -171,7 +201,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: 'var(--primary)' }}
           ></div>
-          <span>Google Gemini • {model.toUpperCase()}</span>
+          <span>{models.find((m) => m.id === model)?.provider ?? 'AI'} • {model.toUpperCase() || 'NO MODEL'}</span>
         </div>
       </div>
     </div>

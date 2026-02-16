@@ -8,6 +8,9 @@ import { ProjectFile } from '@/lib/page-builder';
 import { toast } from 'sonner';
 import { readStream } from '@/lib/stream-utils';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { useMutation } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { useUser } from '@stackframe/stack';
 
 interface ProjectViewProps {
   projectName: string;
@@ -33,7 +36,10 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [fallbackInfo, setFallbackInfo] = useState<string | null>(null);
   const [providerInfo, setProviderInfo] = useState<{ label: string; model?: string; providerId?: string } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const hasStarted = useRef(false);
+  const user = useUser();
+  const resetStatus = useMutation(api.projects.resetProjectStatus);
 
   // Poll for project status as a fallback when stream fails
   const pollForCompletion = useCallback(async (): Promise<boolean> => {
@@ -288,10 +294,28 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               <div className="mt-2 text-[10px] text-red-300/70">Code: {error.code}</div>
             )}
             <button
-              onClick={() => { hasStarted.current = false; startGeneration(); }}
+              onClick={async () => {
+                // Reset backend status before retrying
+                if (user) {
+                  try {
+                    await resetStatus({ projectName, userId: user.id });
+                  } catch {
+                    // Non-critical; proceed with retry anyway
+                  }
+                }
+                // Reset all UI state
+                setSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
+                setCurrentStepIndex(0);
+                setError(null);
+                setFallbackInfo(null);
+                setProviderInfo(null);
+                setRetryCount(c => c + 1);
+                hasStarted.current = false;
+                startGeneration();
+              }}
               className="block mx-auto mt-3 underline"
             >
-              Retry
+              Retry{retryCount > 0 ? ` (attempt ${retryCount + 1})` : ''}
             </button>
           </motion.div>
         )}

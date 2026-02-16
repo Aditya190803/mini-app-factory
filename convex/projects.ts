@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { mutation, query } from "./_generated/server";
 
 export const getProject = query({
@@ -143,14 +144,13 @@ export const updateMetadata = mutation({
 });
 
 export const getUserProjects = query({
-  args: { userId: v.string(), limit: v.optional(v.number()) },
+  args: { userId: v.string(), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
-    const take = args.limit ?? 100;
     return await ctx.db
       .query("projects")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .take(take);
+      .paginate(args.paginationOpts);
   },
 });
 
@@ -171,6 +171,33 @@ export const deleteProject = mutation({
     }
 
     await ctx.db.delete(project._id);
+  },
+});
+
+/** Reset a project stuck in 'error' or 'generating' status so it can be retried. */
+export const resetProjectStatus = mutation({
+  args: {
+    projectName: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
+      .first();
+
+    if (!project) throw new Error("Project not found");
+    if (project.userId && project.userId !== args.userId) {
+      throw new Error("Unauthorized");
+    }
+    if (project.status !== 'error' && project.status !== 'generating') {
+      throw new Error("Project is not in a retryable state");
+    }
+
+    await ctx.db.patch(project._id, {
+      status: 'pending',
+      updatedAt: Date.now(),
+    });
   },
 });
 

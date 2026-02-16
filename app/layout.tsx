@@ -3,7 +3,7 @@ import Link from "next/link";
 import { StackProvider, StackTheme } from "@stackframe/stack";
 import { stackClientApp } from "../stack/client";
 import { ConvexClientProvider } from "@/components/convex-client-provider";
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
@@ -12,6 +12,12 @@ import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0a0a0a',
+}
 
 export const metadata: Metadata = {
   title: 'Mini App Factory',
@@ -39,11 +45,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans antialiased`}>
+      <body className={`font-sans antialiased min-h-screen flex flex-col`}>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-[var(--primary)] focus:text-[var(--primary-foreground)] focus:rounded focus:text-sm focus:font-mono focus:font-bold"
+        >
+          Skip to main content
+        </a>
         <StackProvider app={stackClientApp}>
           <StackTheme>
             <ConvexClientProvider>
-              <main id="main-content">
+              <main id="main-content" className="flex-1">
                 {children}
               </main>
               <footer className="border-t border-[var(--border)] bg-[var(--background)]">
