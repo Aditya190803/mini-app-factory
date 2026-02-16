@@ -31,8 +31,9 @@ const nextConfig = {
 }
 
 export default withSentryConfig(withBundleAnalyzer(nextConfig), {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
+  org: process.env.SENTRY_ORG ?? 'aditya-mer',
+  project: process.env.SENTRY_PROJECT ?? 'mini-app-factory',
   silent: true,
   disableLogger: true,
+  tunnelRoute: '/monitoring',
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useEffect, useMemo } from 'react';
 
 function classifyError(error: Error): {
@@ -53,8 +54,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Structured error reporting — logger is server-only, so use console here
-    console.error('Unhandled error:', error);
+    Sentry.captureException(error);
   }, [error]);
 
   const classified = useMemo(() => classifyError(error), [error]);
