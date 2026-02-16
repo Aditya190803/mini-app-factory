@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_AI_ADMIN_CONFIG } from '@/lib/ai-admin-config';
 
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/csrf', () => ({ validateOrigin: () => true }));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
