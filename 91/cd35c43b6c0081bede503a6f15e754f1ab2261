@@ -1,0 +1,35 @@
+package.json
+  874d3169f25e3c39 116-117,126-128
+.github/workflows/ci.yml
+  874d3169f25e3c39 37,42
+.prettierrc
+  874d3169f25e3c39 1-8
+README.md
+  874d3169f25e3c39 22-33
+CONTRIBUTING.md
+  874d3169f25e3c39 1-37
+eslint.config.mjs
+  874d3169f25e3c39 1-8,15-17,20-24
+bun.lock
+  874d3169f25e3c39 98-99,1817
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.3",
+  "base_commit_sha": "91cd35c43b6c0081bede503a6f15e754f1ab2261",
+  "prompts": {
+    "874d3169f25e3c39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c65bc-4254-7d11-8b85-c55880d852b6",
+        "model": "unknown"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 548,
+      "total_deletions": 714,
+      "accepted_lines": 530,
+      "overriden_lines": 0
+    }
+  }
+}
