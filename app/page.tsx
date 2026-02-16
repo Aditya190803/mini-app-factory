@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
 import AccountMenu from "@/components/account-menu";
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { EXAMPLE_PROMPTS, PROMPT_TEMPLATE_CATEGORIES } from '@/lib/constants';
+import TemplateFillDialog from '@/components/template-fill-dialog';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
@@ -17,6 +19,9 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string>('');
+  const [inspirationMode, setInspirationMode] = useState<'examples' | 'templates'>('examples');
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; category: string; template: string } | null>(null);
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const user = useUser();
@@ -95,12 +100,10 @@ export default function Home() {
     }
   };
 
-  const examplePrompts = [
-    'A brutalist portfolio for a creative director with bold typography and case study grid',
-    'Minimal SaaS landing page for an AI writing tool with dark mode and gradient accents',
-    'E-commerce product page for premium headphones with 3D-style hero and reviews',
-    'Developer documentation site with sidebar navigation and code snippets',
-  ];
+  const handleTemplateSelect = (templateCategory: (typeof PROMPT_TEMPLATE_CATEGORIES)[number]) => {
+    setSelectedTemplate(templateCategory);
+    setIsTemplateDialogOpen(true);
+  };
 
   return (
     <div
@@ -378,39 +381,95 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {examplePrompts.map((example, idx) => (
-                <motion.button
-                  key={idx}
-                  onClick={() => setPrompt(example)}
-                  className="text-left p-6 border border-white/5 rounded-xl transition-all duration-300 group hover:border-[var(--primary)]/30 hover:shadow-[0_10px_30px_-15px_rgba(245,158,11,0.2)]"
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                  }}
-                  whileHover={{
-                    y: -4,
-                  }}
-                  whileTap={{ scale: 0.98 }}
+              <div className="md:col-span-2 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setInspirationMode('examples')}
+                  className={cn(
+                    'px-4 py-2 text-[10px] font-mono uppercase tracking-[0.2em] border rounded-md transition-colors',
+                    inspirationMode === 'examples'
+                      ? 'border-[var(--primary)] text-[var(--primary)] bg-[var(--primary)]/10'
+                      : 'border-white/10 text-[var(--muted-text)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]'
+                  )}
                 >
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                       <span className="text-[8px] font-mono uppercase tracking-widest text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">
-                        Template_0{idx + 1}
-                      </span>
-                      <ZapIcon size={10} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-                    </div>
-                    <span
-                      className="text-[11px] leading-relaxed transition-colors font-mono tracking-tight"
-                      style={{ color: 'var(--secondary-text)' }}
+                  Examples
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInspirationMode('templates')}
+                  className={cn(
+                    'px-4 py-2 text-[10px] font-mono uppercase tracking-[0.2em] border rounded-md transition-colors',
+                    inspirationMode === 'templates'
+                      ? 'border-[var(--primary)] text-[var(--primary)] bg-[var(--primary)]/10'
+                      : 'border-white/10 text-[var(--muted-text)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]'
+                  )}
+                >
+                  Templates
+                </button>
+              </div>
+
+              {inspirationMode === 'examples'
+                ? EXAMPLE_PROMPTS.map((example, idx) => (
+                    <motion.button
+                      key={`${example}-${idx}`}
+                      onClick={() => setPrompt(example)}
+                      className="text-left p-6 border border-white/5 rounded-xl transition-all duration-300 group hover:border-[var(--primary)]/30 hover:shadow-[0_10px_30px_-15px_rgba(245,158,11,0.2)]"
+                      style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}
+                      whileHover={{ y: -4 }}
+                      whileTap={{ scale: 0.98 }}
                     >
-                      {example}
-                    </span>
-                  </div>
-                </motion.button>
-              ))}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[8px] font-mono uppercase tracking-widest text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">
+                            Example_0{idx + 1}
+                          </span>
+                          <ZapIcon size={10} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
+                        </div>
+                        <span
+                          className="text-[11px] leading-relaxed transition-colors font-mono tracking-tight"
+                          style={{ color: 'var(--secondary-text)' }}
+                        >
+                          {example}
+                        </span>
+                      </div>
+                    </motion.button>
+                  ))
+                : PROMPT_TEMPLATE_CATEGORIES.map((templateCategory, idx) => (
+                    <motion.button
+                      key={templateCategory.id}
+                      onClick={() => handleTemplateSelect(templateCategory)}
+                      className="text-left p-6 border border-white/5 rounded-xl transition-all duration-300 group hover:border-[var(--primary)]/30 hover:shadow-[0_10px_30px_-15px_rgba(245,158,11,0.2)]"
+                      style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}
+                      whileHover={{ y: -4 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[8px] font-mono uppercase tracking-widest text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors">
+                            Template_0{idx + 1}
+                          </span>
+                          <ZapIcon size={10} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
+                        </div>
+                        <span
+                          className="text-[11px] leading-relaxed transition-colors font-mono tracking-tight"
+                          style={{ color: 'var(--secondary-text)' }}
+                        >
+                          {templateCategory.category}: {templateCategory.template}
+                        </span>
+                      </div>
+                    </motion.button>
+                  ))}
             </div>
           </motion.div>
         </motion.div>
       </main>
+
+      <TemplateFillDialog
+        template={selectedTemplate}
+        open={isTemplateDialogOpen}
+        onOpenChange={setIsTemplateDialogOpen}
+        onApply={setPrompt}
+      />
     </div>
   );
 }

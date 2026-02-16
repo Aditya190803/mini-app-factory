@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
+import { EXAMPLE_PROMPTS } from '@/lib/constants';
 
 interface PromptPanelProps {
   onGenerate: (prompt: string, model?: string) => Promise<void>;
@@ -20,12 +21,6 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
   };
 
   const isProviderIssue = /GOOGLE|GEMINI|GROQ|API_KEY/i.test(error || '');
-
-  const examplePrompts = [
-    'A modern SaaS landing page for a project management tool with hero, features, pricing, and CTA',
-    'An e-commerce product page with image gallery, reviews, and add to cart button',
-    'A portfolio website showcasing design work with a grid layout and case studies',
-  ];
 
   return (
     <div
@@ -133,7 +128,7 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
             Sample Prompts
           </h3>
           <div className="space-y-2">
-            {examplePrompts.map((example, idx) => (
+            {EXAMPLE_PROMPTS.map((example, idx) => (
               <button
                 key={idx}
                 onClick={() => setPrompt(example)}

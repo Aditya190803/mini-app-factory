@@ -7,6 +7,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { APP_DESCRIPTION, APP_FOOTER_LINKS, APP_NAME } from '@/lib/constants'
 import './fonts.css'
 import './globals.css'
 
@@ -14,8 +15,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Mini App Factory',
-  description: 'Generate production-ready static websites from natural language descriptions',
+  title: APP_NAME,
+  description: APP_DESCRIPTION,
 }
 
 export default function RootLayout({
@@ -33,21 +34,18 @@ export default function RootLayout({
               <footer className="border-t border-[var(--border)] bg-[var(--background)]">
                 <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">
-                    Mini App Factory
+                    {APP_NAME}
                   </div>
                   <div className="flex flex-wrap gap-4 text-[10px] font-mono uppercase">
-                    <Link href="/docs" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
-                      Documentation
-                    </Link>
-                    <Link href="/privacy" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
-                      Privacy Policy
-                    </Link>
-                    <Link href="/eula" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
-                      EULA
-                    </Link>
-                    <Link href="/support" className="text-[var(--secondary-text)] hover:text-[var(--primary)]">
-                      Support
-                    </Link>
+                    {APP_FOOTER_LINKS.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className="text-[var(--secondary-text)] hover:text-[var(--primary)]"
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
                   </div>
                 </div>
               </footer>
