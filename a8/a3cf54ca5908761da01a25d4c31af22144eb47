@@ -1,0 +1,29 @@
+lib/deploy-client.ts
+  465b734cc90c6125 17-18
+app/api/integrations/disconnect/route.ts
+  465b734cc90c6125 9,19
+convex/integrations.ts
+  465b734cc90c6125 69
+app/api/deploy/route.ts
+  465b734cc90c6125 4,41,51,146,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "a8a3cf54ca5908761da01a25d4c31af22144eb47",
+  "prompts": {
+    "465b734cc90c6125": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "e3b750ff-569a-4848-82f9-71216b17dc17",
+        "model": "copilot/gpt-5.3-codex"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 174,
+      "total_deletions": 363,
+      "accepted_lines": 151,
+      "overriden_lines": 0
+    }
+  }
+}
