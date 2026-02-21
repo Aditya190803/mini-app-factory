@@ -1,0 +1,29 @@
+__tests__/deploy-utils.test.ts
+  465b734cc90c6125 36
+app/eula/page.tsx
+  465b734cc90c6125 44
+Improvements.md
+  465b734cc90c6125 47
+app/privacy/page.tsx
+  465b734cc90c6125 26,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "394182e0c791d6505a8cf931cd6f9508b0f7bc73",
+  "prompts": {
+    "465b734cc90c6125": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "e3b750ff-569a-4848-82f9-71216b17dc17",
+        "model": "copilot/gpt-5.3-codex"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
