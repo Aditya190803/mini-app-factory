@@ -1,0 +1,23 @@
+app/api/integrations/vercel/callback/route.ts
+  ed66f5208a7060f0 7-19,29-30,33-41,80-83,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "4ddf435ca64c015d4b3646d162527353e2fdad2f",
+  "prompts": {
+    "ed66f5208a7060f0": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0a725110-6966-46ed-a27b-9310cb283d61",
+        "model": "copilot/gpt-5.3-codex"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 7,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    }
+  }
+}
