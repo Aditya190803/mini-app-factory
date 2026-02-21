@@ -1,0 +1,29 @@
+components/project-settings.tsx
+  465b734cc90c6125 111
+app/settings/page.tsx
+  465b734cc90c6125 15,17,40,95,97,249-250,253,263,265,355-356,386-388,391-392,394,396,399
+app/dashboard/page.tsx
+  465b734cc90c6125 36,43,45,81,95,101,119-120,171,177,453-454,459,489,491,493-494,499,520,523,525,529,533,588
+components/editor-workspace.tsx
+  465b734cc90c6125 85,87,94,155,159,165,169,936,938,1033,1039,1347,1353-1364,1414,1416,1418-1419,1424,1447,1450,1452,1456,1460,1499,1501,1595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "1ef32590faff97d0217b8fe6456642e5e42536bb",
+  "prompts": {
+    "465b734cc90c6125": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "e3b750ff-569a-4848-82f9-71216b17dc17",
+        "model": "copilot/gpt-5.3-codex"
+      },
+      "human_author": "Aditya Mer <aditya.mer@somaiya.edu>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    }
+  }
+}
