@@ -1,3 +1,43 @@
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+public/build/
+
+# Vite / Svelte
+.vite/
+.svelte-kit/
+
+# Vercel
+.vercel/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+
+# Coverage
+coverage/
+
+# Temporary AI build dirs (prefix used by site-builder)
+ai-build-*
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
