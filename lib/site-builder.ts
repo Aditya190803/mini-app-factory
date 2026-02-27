@@ -2,6 +2,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { getAIClient, SessionEvent } from './ai-client';
+import { ensureFrameworkFiles, Framework } from './framework-templates';
+import { installAndBuild } from './deploy';
 
 export enum BuildStatus {
   PENDING = 'pending',
@@ -324,7 +326,8 @@ export async function buildSite(
   description: string,
   deployFunc?: (outputDir: string, jobId: string) => Promise<string | undefined>,
   onProgress?: (percent: number, message: string) => void,
-  enablePolishPass = true
+  enablePolishPass = true,
+  framework?: Framework
 ): Promise<BuildJob> {
   let job = getJob(jobId);
   if (!job) {
@@ -354,6 +357,14 @@ export async function buildSite(
     const mainResult = await runAISession(mainPrompt, tmp, job);
     if (!mainResult.success) job.addLog(`Main generation failed: ${mainResult.output.slice(0, 200)}`);
 
+    // Ensure minimal framework files exist as fallbacks (package.json, config, entrypoints)
+    try {
+      await ensureFrameworkFiles(tmp, framework);
+      job.addLog(`Ensured framework fallback files for: ${framework}`);
+    } catch (err:any) {
+      job.addLog(`Failed to write framework files: ${err?.message || String(err)}`);
+    }
+
     if (enablePolishPass && (await fileExists(path.join(tmp, 'index.html')))) {
       updateProgress(60, 'Polishing site...');
       const polishPrompt = buildPolishPrompt(description);
@@ -380,7 +391,17 @@ export async function buildSite(
         job.error = msg;
       }
     } else {
-      updateProgress(100, 'Build complete');
+      // If no deploy function provided but a framework was requested, try a safe install+build
+      if (framework) {
+        try {
+          await installAndBuild(tmp, jobId, job);
+          updateProgress(100, 'Build (install+build) completed');
+        } catch (err:any) {
+          job.addLog(`Default install/build failed: ${err?.message || String(err)}`);
+        }
+      } else {
+        updateProgress(100, 'Build complete');
+      }
     }
 
     job.status = BuildStatus.COMPLETED;
