@@ -1,0 +1,38 @@
+# Mini App Factory
+
+> A powerful AI-powered web application that generates production-ready static websites from natural language descriptions.
+
+## Overview
+Mini App Factory is an AI-driven platform that transforms natural language prompts into complete, production-ready static websites. Users describe what they want, and the AI generates, previews, and deploys fully functional web applications.
+
+## Key Features
+- **AI Website Generation** — Generate complete websites from natural language descriptions
+- **Visual Reference Upload** — Upload reference images for design guidance
+- **Live Preview** — Real-time preview of generated sites
+- **Code Editor** — Built-in code editor with file tree for custom edits
+- **Template System** — Pre-built templates to accelerate development
+- **Project Management** — Organize and manage multiple projects
+- **One-click Deploy** — Deploy generated sites instantly
+- **Multi-model Support** — Choose from various AI models for generation
+- **Admin Console** — AI-powered admin dashboard for platform management
+
+## Pages
+- `/` — Landing page
+- `/dashboard` — Project dashboard
+- `/edit/[projectName]` — Code editor workspace
+- `/admin` — Admin dashboard
+- `/admin/models` — AI model management
+- `/docs` — Documentation
+- `/documentation` — Detailed documentation
+- `/settings` — User settings
+- `/support` — Support page
+- `/privacy` — Privacy policy
+- `/eula` — End User License Agreement
+
+## Tech Stack
+- Next.js (App Router)
+- Convex (Backend/Database)
+- Stack Auth (Authentication)
+- AI/LLM Integration
+- TypeScript
+- Tailwind CSS
