@@ -6,6 +6,7 @@ import {
     Zap as ZapIcon 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import TransformProgress, { type TransformProgressState } from './transform-progress';
 
 interface EditorSidebarProps {
     transformPrompt: string;
@@ -17,6 +18,8 @@ interface EditorSidebarProps {
     runTransform: () => void;
     runPolish: () => void;
     isTransforming: boolean;
+    transformProgress?: TransformProgressState | null;
+    onCancelTransform?: () => void;
 }
 
 export default function EditorSidebar({
@@ -28,7 +31,9 @@ export default function EditorSidebar({
     setSelectedElement,
     runTransform,
     runPolish,
-    isTransforming
+    isTransforming,
+    transformProgress = null,
+    onCancelTransform,
 }: EditorSidebarProps) {
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -131,6 +136,16 @@ export default function EditorSidebar({
 
                 {/* Footer Actions */}
                 <div className="p-5 border-t bg-black/40 backdrop-blur-md space-y-3" style={{ borderColor: 'var(--border)' }}>
+                    <TransformProgress state={transformProgress} />
+                    {isTransforming && onCancelTransform ? (
+                        <button
+                            type="button"
+                            onClick={onCancelTransform}
+                            className="w-full text-[10px] font-mono uppercase text-[var(--muted-text)] hover:text-[var(--foreground)] transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    ) : null}
                     <div className="flex gap-2">
                         <button
                             onClick={runTransform}

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { buildMainPrompt, stripCodeFence } from '@/lib/utils';
+import { assertCanAccessProject } from '@/lib/project-access';
 import { getProject, saveProject, saveFiles } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { getAIClient, SessionEvent } from '@/lib/ai-client';
@@ -12,56 +13,19 @@ import { withRetry } from '@/lib/ai-retry';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
+import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
+import { createSSEWriter } from '@/lib/sse-writer';
 
 const MODEL = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
   prompt: z.string().trim().min(1).max(8_000).optional(),
+  referenceUrl: z.string().trim().max(2048).optional(),
 }).strict();
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
-
-/**
- * Creates a thread-safe SSE writer that gracefully handles stream destruction.
- * All writes are wrapped in try-catch and the closed state is tracked atomically.
- */
-function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>, signal?: AbortSignal) {
-  const encoder = new TextEncoder();
-  let closed = false;
-
-  const write = (data: object): boolean => {
-    // Check if specifically closed or if the signal is aborted
-    if (closed || signal?.aborted) {
-      if (!closed) closed = true;
-      return false;
-    }
-
-    try {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      return true;
-    } catch {
-      closed = true;
-      return false;
-    }
-  };
-
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    try {
-      controller.close();
-    } catch {
-      // Stream might already be closed, errored, or cancelled
-    }
-  };
-
-  const markClosed = () => { closed = true; };
-  const isClosed = () => closed || !!signal?.aborted;
-
-  return { write, close, markClosed, isClosed };
-}
 
 function classifyGenerationError(raw: unknown): { code: string; message: string } {
   try {
@@ -259,7 +223,7 @@ Return ONLY code blocks. No explanations.`;
       finalProject.status = 'completed';
       finalProject.isMultiPage = files.length > 1;
       finalProject.pageCount = files.filter(f => f.fileType === 'page').length;
-      finalProject.description = designSpec.slice(0, 500); // Save partial spec as description
+      finalProject.description = designSpec.slice(0, 500);
       
       await saveProject(finalProject).catch(err => {
         console.error('Failed to save completed project:', err);
@@ -314,7 +278,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
     }
 
-    const { prompt, projectName } = parsed.data;
+    const { prompt, projectName, referenceUrl } = parsed.data;
 
     const user = await stackServerApp.getUser();
     if (!user) {
@@ -330,22 +294,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const project = await getProject(projectName);
-    if (!project) {
-      return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
+    const projectRecord = await getProject(projectName);
+    const access = assertCanAccessProject(projectRecord, user.id);
+    if (!access.ok) {
+      const code = access.status === 404 ? 'PROJECT_NOT_FOUND' : access.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN';
+      return Response.json({ error: access.message, code, requestId }, { status: access.status });
     }
+    const project = access.project;
 
-    if (project.userId && project.userId !== user.id) {
-      return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
-    }
-
-    const finalPrompt = (prompt || project.prompt || '').trim();
-    if (!finalPrompt) {
+    const basePrompt = (prompt || project.prompt || '').trim();
+    if (!basePrompt) {
       return Response.json(
         { error: 'Prompt is required', code: 'INVALID_PAYLOAD', requestId },
         { status: 400 }
       );
     }
+
+    const enriched = await appendReferenceUrlToPrompt(basePrompt, {
+      referenceUrl,
+      storedReferenceUrl: project.referenceUrl,
+      storedDescription: project.description,
+    });
+    const finalPrompt = enriched.prompt;
 
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();

@@ -5,27 +5,9 @@ import { getRepoLookupTargets, normalizeNetlifySiteName, slugifyRepoName } from 
 import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-content";
 import { getProject, getFiles } from "@/lib/projects";
 import { getServerEnv } from "@/lib/env";
+import { assertCanAccessProject } from "@/lib/project-access";
+import { createSSEWriter } from "@/lib/sse-writer";
 import { z } from "zod";
-
-function createSSEWriter(controller: ReadableStreamDefaultController<Uint8Array>) {
-  const encoder = new TextEncoder();
-  return {
-    write: (data: unknown) => {
-      try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      } catch {
-        // Stream might be closed
-      }
-    },
-    close: () => {
-      try {
-        controller.close();
-      } catch {
-        // Already closed
-      }
-    }
-  };
-}
 
 type DeployFile = {
   path: string;
@@ -137,13 +119,9 @@ export async function POST(req: Request) {
   const body = parsed.data as DeployRequest;
 
   const project = await getProject(body.projectName);
-  if (!project) {
-    return Response.json({ error: "Project not found" }, { status: 404 });
-  }
-  // Legacy/guest projects may not have a `userId`. We currently allow any authenticated
-  // user to deploy those, while deletion paths still enforce ownership—keep behavior in sync.
-  if (project.userId && project.userId !== user.id) {
-    return Response.json({ error: "Unauthorized to deploy this project" }, { status: 403 });
+  const access = assertCanAccessProject(project, user.id);
+  if (!access.ok) {
+    return Response.json({ error: access.message }, { status: access.status });
   }
 
   const storedFiles = await getFiles(body.projectName);

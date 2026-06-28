@@ -30,6 +30,7 @@ export interface ProjectMetadata {
   isMultiPage?: boolean;
   pageCount?: number;
   description?: string;
+  referenceUrl?: string;
   selectedModel?: string;
   providerId?: string;
   favicon?: string;
@@ -67,6 +68,7 @@ export async function saveProject(metadata: ProjectMetadata) {
     isMultiPage: metadata.isMultiPage,
     pageCount: metadata.pageCount,
     description: metadata.description,
+    referenceUrl: metadata.referenceUrl,
     selectedModel: metadata.selectedModel,
     providerId: metadata.providerId,
     deploymentUrl: metadata.deploymentUrl,
@@ -97,6 +99,10 @@ export async function getFile(projectName: string, path: string) {
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return null;
   return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
+}
+
+export async function claimProjectOrphan(projectName: string, userId: string) {
+  await getConvex().mutation(api.projects.claimProjectOrphan, { projectName, userId });
 }
 
 export async function saveFiles(projectName: string, files: ProjectFile[]) {

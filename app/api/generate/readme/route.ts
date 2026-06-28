@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateReadmeContent } from "@/lib/repo-content";
 import { stackServerApp } from '@/stack/server';
+import { assertCanAccessProject } from '@/lib/project-access';
 import { getProject, getFiles } from '@/lib/projects';
 
 const readmeSchema = z.object({
@@ -30,14 +31,12 @@ export async function POST(req: NextRequest) {
 
     const { projectName, prompt } = parsed.data;
 
-    const project = await getProject(projectName);
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    const projectRecord = await getProject(projectName);
+    const access = assertCanAccessProject(projectRecord, user.id);
+    if (!access.ok) {
+      return NextResponse.json({ error: access.message }, { status: access.status });
     }
-
-    if (project.userId && project.userId !== user.id) {
-      return NextResponse.json({ error: 'Unauthorized to access this project' }, { status: 403 });
-    }
+    const project = access.project;
 
     const storedFiles = await getFiles(projectName);
     if (storedFiles.length === 0) {

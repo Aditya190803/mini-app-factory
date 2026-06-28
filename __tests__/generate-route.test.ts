@@ -12,6 +12,10 @@ vi.mock('@/lib/projects', () => ({
   saveFiles: vi.fn(),
 }));
 
+vi.mock('@/lib/resolve-reference-url', () => ({
+  appendReferenceUrlToPrompt: vi.fn(async (base: string) => ({ prompt: base })),
+}));
+
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
     adminConfig: { providers: { google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] }, groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] }, cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] } }, providerOrder: ['google', 'groq', 'openrouter', 'cerebras'] },

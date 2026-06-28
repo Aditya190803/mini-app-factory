@@ -25,6 +25,7 @@ export default defineSchema({
     isMultiPage: v.optional(v.boolean()),
     pageCount: v.optional(v.number()),
     description: v.optional(v.string()),
+    referenceUrl: v.optional(v.string()),
     selectedModel: v.optional(v.string()),
     providerId: v.optional(v.string()),
     // Legacy fields for migration/compatibility

@@ -1,162 +1,37 @@
 import { z } from 'zod';
-import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
-import { getAIClient } from '@/lib/ai-client';
-import { parseMultiFileOutput } from '@/lib/file-parser';
-import { executeTool } from '@/lib/tool-executor';
-import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
-import { extractToolCalls } from '@/lib/transform-tool-calls';
 import { stackServerApp } from '@/stack/server';
-import { getProject, getFiles, saveFiles } from '@/lib/projects';
+import { claimProjectOrphan, getProject, getFiles } from '@/lib/projects';
+import { canUserEditProject, isOrphanProject } from '@/lib/project-access';
 import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { withRetry } from '@/lib/ai-retry';
-
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
+import { createSSEWriter } from '@/lib/sse-writer';
+import { runTransformWork, classifyTransformError } from '@/lib/transform-run';
+import { normalizeFileType } from '@/lib/transform-files';
+import type { ProjectFile } from '@/lib/page-builder';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-// Health check so clients can verify the endpoint is available without invoking the AI backend
 export async function GET() {
   return Response.json({ ok: true });
 }
 
-export async function sendAIMessage(systemPrompt: string, userPrompt: string): Promise<string> {
-  const client = await getAIClient();
-  const session = await client.createSession({
-    systemMessage: { content: systemPrompt },
+const transformSchema = z
+  .object({
+    projectName: z.string().optional(),
+    html: z.string().optional(),
+    prompt: z.string().optional(),
+    activeFile: z.string().optional(),
+    polishDescription: z.string().optional(),
+    modelId: z.string().optional(),
+    providerId: z.string().optional(),
+  })
+  .strict()
+  .refine((data) => data.projectName || data.html, {
+    message: 'projectName or html is required',
   });
-
-  try {
-    const response = await session.sendAndWait({ prompt: userPrompt }, 120000);
-    return response?.data?.content || '';
-  } finally {
-    await session.destroy().catch(() => { });
-  }
-}
-
-async function extractToolCallsWithRepair(
-  rawContent: string,
-  session: { sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<{ data?: { content?: string } }> }
-) {
-  try {
-    return extractToolCalls(rawContent);
-  } catch (err) {
-    const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-    const isShapeOrJsonError = message.includes('invalid json in tool calls') || message.includes('invalid tool calls payload');
-    if (!isShapeOrJsonError) throw err;
-
-    const repairPrompt = [
-      'Convert the following assistant output into STRICT JSON ONLY.',
-      'Rules:',
-      '- Output must be a JSON array.',
-      '- Each item must be: {"tool":"<name>","args":{...}}',
-      '- No markdown, no explanation, no code fences.',
-      '- Preserve the original intent exactly.',
-      '',
-      'Assistant output to repair:',
-      rawContent,
-    ].join('\n');
-
-    const repaired = await withRetry(
-      () => session.sendAndWait({ prompt: repairPrompt }, 60000),
-      { maxAttempts: 2, baseDelayMs: 500 }
-    );
-    const repairedContent = repaired?.data?.content || '';
-    return extractToolCalls(repairedContent);
-  }
-}
-
-const transformSchema = z.object({
-  projectName: z.string().optional(),
-  files: z.array(z.object({
-    path: z.string(),
-    content: z.string(),
-    language: z.string(),
-    fileType: z.string(),
-  })).optional(),
-  html: z.string().optional(), // Legacy support
-  prompt: z.string().optional(),
-  activeFile: z.string().optional(),
-  polishDescription: z.string().optional(),
-  modelId: z.string().optional(),
-  providerId: z.string().optional(),
-}).refine((data) => data.projectName || data.html, {
-  message: 'projectName or html is required',
-});
-
-const MAX_CONTEXT_CHARS = 120_000;
-
-const fileTypeFromPath = (path: string): ProjectFile['fileType'] => {
-  const lowerPath = path.toLowerCase();
-  if (lowerPath.endsWith('.css')) return 'style';
-  if (lowerPath.endsWith('.js')) return 'script';
-  return 'page';
-};
-
-const normalizeFileType = (raw: unknown, path: string): ProjectFile['fileType'] => {
-  const value = String(raw ?? '').toLowerCase();
-  if (value === 'html') return 'page';
-  if (value === 'css') return 'style';
-  if (value === 'js' || value === 'javascript') return 'script';
-  if (value === 'page' || value === 'partial' || value === 'style' || value === 'script') {
-    return value as ProjectFile['fileType'];
-  }
-  if (path) return fileTypeFromPath(path);
-  return 'page';
-};
-
-function buildProjectContext(files: ProjectFile[], activeFile?: string) {
-  const prioritized = [...files].sort((a, b) => {
-    if (activeFile && a.path === activeFile) return -1;
-    if (activeFile && b.path === activeFile) return 1;
-    if (a.fileType === 'partial' && b.fileType !== 'partial') return -1;
-    if (b.fileType === 'partial' && a.fileType !== 'partial') return 1;
-    return a.path.localeCompare(b.path);
-  });
-
-  const included: string[] = [];
-  const omitted: string[] = [];
-  let total = 0;
-
-  for (const file of prioritized) {
-    const block = `File: ${file.path}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
-    if (total + block.length > MAX_CONTEXT_CHARS) {
-      omitted.push(file.path);
-      continue;
-    }
-    included.push(block);
-    total += block.length;
-  }
-
-  const header = `Project Files: ${files.map((f) => f.path).join(', ')}`;
-  const omittedNote = omitted.length > 0
-    ? `\n\n[Context Budget] Omitted files: ${omitted.join(', ')}`
-    : '';
-
-  return `${header}\n\n${included.join('\n\n')}${omittedNote}`.trim();
-}
-
-function classifyTransformError(raw: unknown) {
-  const message = raw instanceof Error ? raw.message : String(raw ?? 'Transform failed');
-  const lowered = message.toLowerCase();
-  if (lowered.includes('invalid payload')) return { code: 'INVALID_PAYLOAD', message };
-  if (lowered.includes('rate limit')) return { code: 'RATE_LIMITED', message };
-  if (lowered.includes('unauthorized') || lowered.includes('authentication')) return { code: 'UNAUTHORIZED', message };
-  if (
-    lowered.includes('tool not allowed') ||
-    lowered.includes('invalid tool calls payload') ||
-    lowered.includes('invalid json in tool calls') ||
-    lowered.includes('invalid selector') ||
-    lowered.includes('invalid file path') ||
-    lowered.includes('not an array of tool calls') ||
-    lowered.includes('unexpected token')
-  ) {
-    return { code: 'INVALID_TOOL_CALL', message };
-  }
-  return { code: 'TRANSFORM_ERROR', message };
-}
 
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
@@ -181,7 +56,12 @@ export async function POST(request: Request) {
       adminConfig: globalAdminConfig,
       byokConfig: persistedSettings.byokConfig,
     };
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON payload', code: 'INVALID_JSON', requestId }, { status: 400 });
+    }
     const parsed = transformSchema.safeParse(body);
     if (!parsed.success) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
@@ -196,24 +76,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const { 
-      projectName, html, prompt, activeFile, polishDescription, 
-      modelId, providerId
-    } = parsed.data;
+    const { projectName, html, prompt, activeFile, polishDescription, modelId, providerId } = parsed.data;
 
     const project = projectName ? await getProject(projectName) : null;
     if (projectName && !project) {
       return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
     }
-    if (project && project.userId && project.userId !== user.id) {
+    if (project && !canUserEditProject(project, user.id)) {
       return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
     }
-
-    // Detect if there's a target element instruction to adjust focus
-    let targetFile = activeFile;
-    if (prompt && prompt.includes('Target element in ')) {
-      const match = prompt.match(/Target element in ([a-zA-Z0-9._-]+):/);
-      if (match) targetFile = match[1];
+    if (project && isOrphanProject(project)) {
+      try {
+        await claimProjectOrphan(projectName!, user.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        if (message === 'Project not found') {
+          return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
+        }
+        if (message === 'Unauthorized to edit this project') {
+          return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
+        }
+        throw err;
+      }
     }
 
     let finalFiles: ProjectFile[] = [];
@@ -232,178 +116,56 @@ export async function POST(request: Request) {
       finalFiles = [{ path: 'index.html', content: html, language: 'html', fileType: 'page' } as ProjectFile];
     }
 
-    const projectContext = buildProjectContext(finalFiles, targetFile);
+    const workInput = {
+      requestId,
+      projectName,
+      html,
+      prompt,
+      activeFile,
+      polishDescription,
+      modelId,
+      providerId: isAIProviderId(providerId) ? providerId : undefined,
+      finalFiles,
+      runtimeConfig,
+    };
 
-    const client = await getAIClient(runtimeConfig);
-    
-    let effectiveModelId = modelId || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
-    let effectiveProviderId = isAIProviderId(providerId) ? providerId : undefined;
-
-    const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
-You will be given the complete project context comprising all files.
-
-Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
-
-**Target Element Context**:
-- If the user prompt mentions a "Target element", prioritize modifications to that specific piece of code.
-- Ensure any changes to the target element are reflected correctly using the tools provided.
-- If you use a selector, make it as specific as possible (e.g. use classes, IDs, or :contains() logic) to ensure only the intended element is changed.
-
-**Shared Partials (CRITICAL)**:
-- If a project has multiple pages, you MUST ensure there is a \`header.html\` (and \`footer.html\` if applicable).
-- DO NOT allow duplicate header/footer code in individual pages. 
-- If you see duplication, use the \`createFile\` tool to make a partial and replace the duplicate code in all pages with \`<!-- include:header.html -->\`.
-- Any shared navigation or branding MUST live in a partial.
-
-**Converting Single-Page to Multi-Page (CRITICAL)**:
-- When adding new pages (e.g., work.html) to an existing single-page site:
-  1. FIRST create the partial (e.g., header.html) with the shared navigation/header content
-  2. THEN use \`replaceElement\` or \`deleteContent\` to REMOVE the old inline header/nav from index.html
-  3. THEN use \`insertContent\` to add \`<!-- include:header.html -->\` where the header was
-- NEVER leave both the old inline header AND the include directive in the same file
-- The include directive REPLACES the inline content, it does not supplement it
-
-You MUST use structured tool calls to modify files. 
-Available tools:
-1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes. newContent is the INNER html.
-2. replaceElement(file, selector, newContent) - Replace the matching element ENTIRELY with newContent.
-3. insertContent(file, position, selector, content) - position: before, after, prepend, append.
-4. deleteContent(file, selector) - Remove an element.
-5. createFile(path, content, fileType) - Create a new page, style, script or partial.
-6. deleteFile(path) - Remove a file.
-7. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
-8. updateFile(file, content) - Replace an entire file when changes are too complex for other tools.
-
-FORMAT: Return your changes ONLY as a JSON array of tool calls:
-[
-  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello World" } },
-  ...
-]
-
-If a change is too complex for tools, or you need to rewrite a file completely, use:
-{ "tool": "updateFile", "args": { "file": "path/to/file", "content": "FULL_CONTENT" } }
-
-**Link Integrity Rules (STRICT)**:
-- **No Dead Links**: Keep links valid. DO NOT use \`#\` (except for the logo).
-- **Page Existence Check**: Before adding a link to any file (e.g., \`about.html\`), CHECK the "Project Files" list in the context. If the file is not listed, you MUST use the \`createFile\` tool to generate it.
-- **Relative Paths**: Use relative filenames (e.g., \`about.html\`), never absolute paths (e.g., \`/about.html\`).
-- **Footer Policy**: Do not add links to Privacy/Terms pages unless you are actually creating those files. 
-- **Consistency**: If you rename or delete a file, you MUST update all links in all other files using the appropriate tools.
-- Active file focus is: ${targetFile || 'index.html'}.
-
-Only return changes. No explanations.`;
-
-    let userMessage: string;
-    if (polishDescription && !prompt) {
-      const polishPrompt = buildPolishPrompt(polishDescription);
-      userMessage = `${polishPrompt}\n\nProject Context:\n\n${projectContext}`;
-    } else {
-      userMessage = `Project Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
-    }
-
-    const session = await client.createSession({
-      model: effectiveModelId,
-      providerId: effectiveProviderId,
-      systemMessage: { content: systemMessage },
+    const stream = new ReadableStream({
+      start(controller) {
+        const sse = createSSEWriter(controller, request.signal);
+        (async () => {
+          try {
+            await runTransformWork({
+              ...workInput,
+              signal: request.signal,
+              onEvent: (event) => {
+                if (!sse.write(event)) return;
+                if (event.status === 'complete' || event.status === 'error') sse.close();
+              },
+            });
+          } catch (error) {
+            const classified = classifyTransformError(error);
+            const code =
+              error && typeof error === 'object' && 'code' in error && typeof (error as { code: string }).code === 'string'
+                ? (error as { code: string }).code
+                : classified.code;
+            console.error(`[Transform ${requestId}] error:`, error);
+            sse.write({ status: 'error', error: classified.message, code, requestId });
+            sse.close();
+          }
+        })();
+      },
+      cancel() {
+        /* client disconnected; runTransformWork checks request.signal */
+      },
     });
 
-    // Since we need to parse the multi-file output, we can't easily stream it back as raw text
-    // if we want to return a structured JSON response. 
-    // However, the EditorWorkspace expects a JSON response now.
-
-    let content = '';
-    const originalFiles = finalFiles.map((file) => ({ ...file }));
-
-    try {
-      const response = await withRetry(
-        () => session.sendAndWait({ prompt: userMessage }, 150000),
-        { maxAttempts: 3, baseDelayMs: 800 }
-      );
-      content = response?.data?.content || '';
-
-      const toolCalls = await extractToolCallsWithRepair(content, session);
-      for (const call of toolCalls) {
-        const result = await executeTool(call.tool, call.args, finalFiles as ProjectFile[]);
-        if (result.success && result.updatedFiles) {
-          result.updatedFiles.forEach(uf => {
-            const idx = finalFiles.findIndex(f => f.path === uf.path);
-            if (idx >= 0) finalFiles[idx] = uf;
-            else finalFiles.push(uf);
-          });
-        }
-        if (result.success && result.deletedPaths) {
-          finalFiles = finalFiles.filter(f => !result.deletedPaths?.includes(f.path));
-        }
-        if (!result.success) {
-          throw new Error(result.message);
-        }
-      }
-    } catch (err) {
-      if (projectName) {
-        throw err;
-      }
-
-      // Fallback to block parsing (legacy html-only flow)
-      const updatedFiles = parseMultiFileOutput(content);
-      if (updatedFiles.length > 0) {
-        updatedFiles.forEach(uf => {
-          const idx = finalFiles.findIndex(f => f.path === uf.path);
-          if (idx >= 0) {
-            finalFiles[idx] = uf;
-          } else {
-            finalFiles.push(uf);
-          }
-        });
-      } else if (content && content.length > 50 && (content.includes('<html>') || content.includes('<div') || content.includes('function') || content.includes('const '))) {
-        // Only overwrite if it really looks like code content
-        const activePath = activeFile || 'index.html';
-        const idx = finalFiles.findIndex(f => f.path === activePath);
-        if (idx >= 0) {
-          finalFiles[idx].content = stripCodeFence(content);
-        }
-      }
-    } finally {
-      await session.destroy().catch(() => { });
-    }
-
-    const structure = validateFileStructure(finalFiles);
-    if (!structure.valid) {
-      return Response.json({
-        error: `Invalid file structure: ${structure.errors.join(', ')}`,
-        code: 'INVALID_FILE_STRUCTURE',
-        requestId,
-      }, { status: 400 });
-    }
-
-    if (projectName) {
-      try {
-        await saveFiles(projectName, finalFiles);
-      } catch (err) {
-        console.error(`[Transform ${requestId}] Failed to save files:`, err);
-        return Response.json({
-          error: 'Failed to save transformed files',
-          code: 'SAVE_FAILED',
-          requestId,
-        }, { status: 500 });
-      }
-    }
-
-    if (projectName) {
-      const originalMap = new Map(originalFiles.map((file) => [file.path, file]));
-      const updatedFiles = finalFiles.filter((file) => {
-        const original = originalMap.get(file.path);
-        return !original || original.content !== file.content || original.fileType !== file.fileType || original.language !== file.language;
-      });
-      const deletedPaths = originalFiles
-        .filter((file) => !finalFiles.some((f) => f.path === file.path))
-        .map((file) => file.path);
-
-      return Response.json({ files: updatedFiles, deletedPaths, full: false, requestId });
-    }
-
-    const activePath = activeFile || 'index.html';
-    const activeHtml = finalFiles.find((f) => f.path === activePath)?.content || html || '';
-    return Response.json({ html: activeHtml, files: finalFiles, full: true, requestId });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      },
+    });
   } catch (error) {
     const classified = classifyTransformError(error);
     console.error(`[Transform ${requestId}] error:`, error);

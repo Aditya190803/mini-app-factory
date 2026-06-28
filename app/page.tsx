@@ -10,11 +10,13 @@ import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
 import AccountMenu from "@/components/account-menu";
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { isHttpUrl } from '@/lib/url-reference';
 import { EXAMPLE_PROMPTS, PROMPT_TEMPLATE_CATEGORIES } from '@/lib/constants';
 import TemplateFillDialog from '@/components/template-fill-dialog';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
+  const [referenceUrl, setReferenceUrl] = useState('');
   const [projectName, setProjectName] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isChecking, setIsChecking] = useState(false);
@@ -64,6 +66,12 @@ export default function Home() {
       return;
     }
 
+    const trimmedReferenceUrl = referenceUrl.trim();
+    if (trimmedReferenceUrl && !isHttpUrl(trimmedReferenceUrl)) {
+      setError('Reference URL must be a valid http(s) URL.');
+      return;
+    }
+
     setIsChecking(true);
 
     try {
@@ -74,7 +82,8 @@ export default function Home() {
           name: projectName.trim(), 
           prompt: prompt.trim(),
           selectedModel: selectedModel.id || undefined,
-          providerId: selectedModel.providerId || undefined
+          providerId: selectedModel.providerId || undefined,
+          referenceUrl: trimmedReferenceUrl || undefined,
         }),
       });
 
@@ -285,7 +294,29 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-3 bg-[var(--primary)]" />
                   <label className="text-[10px] font-mono uppercase font-bold tracking-[0.3em]" style={{ color: 'var(--secondary-text)' }}>
-                    02 // INPUT_SPECIFICATIONS
+                    02 // REFERENCE_URL (optional)
+                  </label>
+                </div>
+                <input
+                  type="url"
+                  value={referenceUrl}
+                  onChange={(e) => setReferenceUrl(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="https://site-you-want-to-take-cues-from.com"
+                  className="w-full bg-black/40 border border-white/5 outline-none text-sm font-mono px-6 py-3 placeholder:opacity-10 transition-all focus:border-[var(--primary)]/50 focus:bg-black/60 rounded-lg"
+                  style={{ color: 'var(--foreground)' }}
+                  disabled={isChecking}
+                />
+                <p className="text-[9px] font-mono uppercase tracking-[0.2em] opacity-40">
+                  Fetched via Exa at generation (needs EXA_API_KEY on server)
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-3 bg-[var(--primary)]" />
+                  <label className="text-[10px] font-mono uppercase font-bold tracking-[0.3em]" style={{ color: 'var(--secondary-text)' }}>
+                    03 // INPUT_SPECIFICATIONS
                   </label>
                 </div>
                 <textarea

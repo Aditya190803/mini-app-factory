@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
+import { isHttpUrl, normalizeReferenceUrl } from '@/lib/url-reference';
 
 export async function POST(req: NextRequest) {
-  const { name, prompt, selectedModel, providerId } = await req.json();
+  const { name, prompt, selectedModel, providerId, referenceUrl } = await req.json();
 
   if (!name || name.trim().length === 0) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -27,15 +28,25 @@ export async function POST(req: NextRequest) {
 
   // "Reserve" the name by creating a pending project
   if (prompt) {
-    await saveProject({
-      name: normalizedName,
-      prompt,
-      createdAt: Date.now(),
-      status: 'pending',
-      userId: user.id,
-      selectedModel,
-      providerId,
-    });
+    const ref = typeof referenceUrl === 'string' && referenceUrl.trim() ? referenceUrl.trim() : undefined;
+    const storedRef = ref && isHttpUrl(ref) ? normalizeReferenceUrl(ref) : undefined;
+    try {
+      await saveProject({
+        name: normalizedName,
+        prompt,
+        createdAt: Date.now(),
+        status: 'pending',
+        userId: user.id,
+        selectedModel,
+        providerId,
+        referenceUrl: storedRef,
+      });
+    } catch (err) {
+      if (await projectExists(normalizedName)) {
+        return NextResponse.json({ error: 'Project name is already taken' }, { status: 409 });
+      }
+      throw err;
+    }
   }
 
   return NextResponse.json({ success: true, name: normalizedName });
