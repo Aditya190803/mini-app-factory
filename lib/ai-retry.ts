@@ -17,6 +17,26 @@ export function isTransientError(error: unknown): boolean {
   );
 }
 
+function abortedError(): Error & { code: string } {
+  return Object.assign(new Error('Aborted'), { code: 'ABORTED' });
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortedError());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(abortedError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 export async function withRetry<T>(
   task: (attempt: number) => Promise<T>,
   options: RetryOptions
@@ -25,22 +45,18 @@ export async function withRetry<T>(
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    if (signal?.aborted) {
-      throw Object.assign(new Error('Aborted'), { code: 'ABORTED' });
-    }
+    if (signal?.aborted) throw abortedError();
     try {
       return await task(attempt);
     } catch (error) {
       lastError = error;
-      if (signal?.aborted) {
-        throw Object.assign(new Error('Aborted'), { code: 'ABORTED' });
-      }
+      if (signal?.aborted) throw abortedError();
       const retryable = shouldRetry ? shouldRetry(error) : isTransientError(error);
       if (!retryable || attempt >= maxAttempts) {
         throw error;
       }
       const backoff = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
-      await new Promise((resolve) => setTimeout(resolve, backoff));
+      await sleep(backoff, signal);
     }
   }
 

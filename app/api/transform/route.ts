@@ -86,7 +86,18 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
     }
     if (project && isOrphanProject(project)) {
-      await claimProjectOrphan(projectName!, user.id);
+      try {
+        await claimProjectOrphan(projectName!, user.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        if (message === 'Project not found') {
+          return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
+        }
+        if (message === 'Unauthorized to edit this project') {
+          return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
+        }
+        throw err;
+      }
     }
 
     let finalFiles: ProjectFile[] = [];

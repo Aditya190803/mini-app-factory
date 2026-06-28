@@ -30,16 +30,23 @@ export async function POST(req: NextRequest) {
   if (prompt) {
     const ref = typeof referenceUrl === 'string' && referenceUrl.trim() ? referenceUrl.trim() : undefined;
     const storedRef = ref && isHttpUrl(ref) ? normalizeReferenceUrl(ref) : undefined;
-    await saveProject({
-      name: normalizedName,
-      prompt,
-      createdAt: Date.now(),
-      status: 'pending',
-      userId: user.id,
-      selectedModel,
-      providerId,
-      referenceUrl: storedRef,
-    });
+    try {
+      await saveProject({
+        name: normalizedName,
+        prompt,
+        createdAt: Date.now(),
+        status: 'pending',
+        userId: user.id,
+        selectedModel,
+        providerId,
+        referenceUrl: storedRef,
+      });
+    } catch (err) {
+      if (await projectExists(normalizedName)) {
+        return NextResponse.json({ error: 'Project name is already taken' }, { status: 409 });
+      }
+      throw err;
+    }
   }
 
   return NextResponse.json({ success: true, name: normalizedName });
