@@ -1,3 +1,4 @@
+import { canUserEditProject } from '@/lib/project-access';
 import { getProject } from '@/lib/projects';
 import ProjectView from '@/components/project-view';
 import { notFound, redirect } from 'next/navigation';
@@ -22,9 +23,8 @@ export default async function ProjectPage({ params }: PageProps) {
     redirect('/handler/sign-in');
   }
 
-  if (project.userId && project.userId !== user.id) {
-    // If it's someone else's project, don't let them edit
-    notFound(); 
+  if (!canUserEditProject(project, user.id)) {
+    notFound();
   }
 
   return (

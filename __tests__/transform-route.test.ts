@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { extractToolCalls } from '@/lib/transform-tool-calls';
+import { consumeTransformStream } from '@/lib/transform-stream';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/stack/server', () => ({
@@ -10,6 +11,7 @@ vi.mock('@/lib/projects', () => ({
   getProject: vi.fn(),
   getFiles: vi.fn(),
   saveFiles: vi.fn(),
+  saveProject: vi.fn(),
 }));
 
 vi.mock('@/lib/ai-client', () => ({
@@ -55,6 +57,81 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(401);
+  });
+
+  test('returns 403 when project belongs to another user', async () => {
+    const { POST } = await import('@/app/api/transform/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject } = await import('@/lib/projects');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ userId: 'other_user', name: 'demo-project' });
+
+    const req = new Request('http://localhost/api/transform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName: 'demo-project', prompt: 'Hack' }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe('FORBIDDEN');
+  });
+
+  test('rejects unknown body keys (client files not accepted)', async () => {
+    const { POST } = await import('@/app/api/transform/route');
+    const { stackServerApp } = await import('@/stack/server');
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+
+    const req = new Request('http://localhost/api/transform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectName: 'demo-project',
+        prompt: 'x',
+        files: [{ path: 'index.html', content: '<h1>Hacked</h1>', language: 'html', fileType: 'page' }],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  test('claims orphan project on first transform', async () => {
+    const { POST } = await import('@/app/api/transform/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFiles, saveFiles, saveProject } = await import('@/lib/projects');
+    const { getAIClient } = await import('@/lib/ai-client');
+
+    const orphan = { name: 'legacy', prompt: 'p', status: 'completed' as const, createdAt: 1 };
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(orphan);
+    (saveProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
+    ]);
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      createSession: vi.fn().mockResolvedValue({
+        sendAndWait: vi.fn().mockResolvedValue({
+          data: {
+            content: '[{"tool":"replaceContent","args":{"file":"index.html","selector":"h1","newContent":"New"}}]',
+          },
+        }),
+        destroy: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+
+    const req = new Request('http://localhost/api/transform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName: 'legacy', prompt: 'Update title' }),
+    });
+
+    const res = await POST(req);
+    await consumeTransformStream(res);
+    expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_123' }));
   });
 
   test('returns 400 for invalid payload', async () => {
@@ -107,11 +184,16 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    expect(res.headers.get('Content-Type')).toContain('text/event-stream');
+    const statuses: string[] = [];
+    const body = await consumeTransformStream(res, (e) => statuses.push(e.status));
+    expect(statuses).toContain('planning');
+    expect(statuses).toContain('applying');
+    expect(statuses).toContain('complete');
     expect(body.full).toBe(false);
     expect(Array.isArray(body.files)).toBe(true);
-    expect(body.files[0].path).toBe('index.html');
-    expect(body.files[0].content).toContain('New');
+    expect(body.files![0].path).toBe('index.html');
+    expect(body.files![0].content).toContain('New');
   });
 
   test('repairs malformed tool-call output automatically', async () => {
@@ -153,9 +235,8 @@ describe('POST /api/transform', () => {
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.files[0].content).toContain('Recovered');
+    const body = await consumeTransformStream(res);
+    expect(body.files![0].content).toContain('Recovered');
     expect(sendAndWait).toHaveBeenCalledTimes(2);
   });
 });

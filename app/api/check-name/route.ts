@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { projectExists, saveProject } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
+import { isHttpUrl, normalizeReferenceUrl } from '@/lib/url-reference';
 
 export async function POST(req: NextRequest) {
-  const { name, prompt, selectedModel, providerId } = await req.json();
+  const { name, prompt, selectedModel, providerId, referenceUrl } = await req.json();
 
   if (!name || name.trim().length === 0) {
     return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
 
   // "Reserve" the name by creating a pending project
   if (prompt) {
+    const ref = typeof referenceUrl === 'string' && referenceUrl.trim() ? referenceUrl.trim() : undefined;
+    const description = ref && isHttpUrl(ref) ? normalizeReferenceUrl(ref) : undefined;
     await saveProject({
       name: normalizedName,
       prompt,
@@ -35,6 +38,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       selectedModel,
       providerId,
+      description,
     });
   }
 

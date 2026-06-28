@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { assembleFullPage } from '@/lib/page-builder';
+import { assertCanAccessProject } from '@/lib/project-access';
 import { getFile, getFiles, getProject } from '@/lib/projects';
 
 export async function GET(
@@ -13,15 +14,13 @@ export async function GET(
   }
 
   const { projectName, path: segments } = await params;
-  const project = await getProject(projectName);
-  if (!project) {
-    return new NextResponse('Project not found', { status: 404 });
+  const projectRecord = await getProject(projectName);
+  const access = assertCanAccessProject(projectRecord, user?.id);
+  if (!access.ok) {
+    const status = access.status === 404 ? 404 : access.status;
+    return new NextResponse(access.message, { status });
   }
-
-  // Legacy projects may not have userId; allow authenticated previews to preserve compatibility.
-  if (project.userId && project.userId !== user.id) {
-    return new NextResponse('Forbidden', { status: 403 });
-  }
+  const project = access.project;
 
   const filePath = segments ? segments.join('/') : 'index.html';
   let file = await getFile(projectName, filePath);

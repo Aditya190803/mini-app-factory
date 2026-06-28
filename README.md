@@ -68,6 +68,9 @@ A powerful AI-powered web application that generates production-ready multi-page
    CEREBRAS_API_KEY=your_cerebras_api_key
    CEREBRAS_MODEL=llama-3.3-70b
    CEREBRAS_FALLBACK_MODEL=optional_cerebras_fallback_model
+
+   # Optional: reference URL → site content at generation (https://exa.ai)
+   EXA_API_KEY=your_exa_api_key
    
    # Convex
    CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev

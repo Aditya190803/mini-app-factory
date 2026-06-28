@@ -22,11 +22,12 @@ import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { extractNetlifySiteNameFromUrl, extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from '@/lib/deploy-shared';
-import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { useProjectTransform } from '@/hooks/use-project-transform';
+import { useEditorDeploy } from '@/hooks/use-editor-deploy';
 
 import EditorHeader from './editor/editor-header';
+import EditorDeployDialog from './editor/editor-deploy-dialog';
 import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
@@ -39,36 +40,6 @@ interface EditorWorkspaceProps {
   onBack: () => void;
 }
 
-const applyFileDelta = (currentFiles: ProjectFile[], updates: ProjectFile[], deletedPaths: string[] = []) => {
-  const map = new Map(currentFiles.map((file) => [file.path, file]));
-  for (const file of updates) {
-    map.set(file.path, file);
-  }
-  for (const path of deletedPaths) {
-    map.delete(path);
-  }
-  return Array.from(map.values());
-};
-
-const getTransformRecoverySuggestion = (code: string) => {
-  if (code === 'INVALID_TOOL_CALL') {
-    return 'Use a smaller change request, target a specific element, and avoid asking for many edits at once.';
-  }
-  if (code === 'RATE_LIMITED') {
-    return 'Wait a few seconds, then retry. Batch multiple tiny edits into a single transform.';
-  }
-  if (code === 'INVALID_FILE_STRUCTURE') {
-    return 'Restore required files (for example index.html) and retry.';
-  }
-  if (code === 'UNAUTHORIZED') {
-    return 'Sign in again, reload the editor, and retry.';
-  }
-  if (code === 'PROJECT_NOT_FOUND') {
-    return 'Return to dashboard, reopen the project, then retry.';
-  }
-  return 'Check your prompt, reduce scope, and retry. You can also apply part of the change manually, then run transform again.';
-};
-
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -77,25 +48,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
-  const [isTransforming, setIsTransforming] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [deployStatus, setDeployStatus] = useState<string | null>(null);
-  const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
-    githubConnected: false,
-    netlifyConnected: false,
-  });
-  const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
-  const [githubOrg, setGithubOrg] = useState<string>('personal');
-  const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
-  const [deployOption, setDeployOption] = useState<'github-netlify' | 'github-only' | 'maf-hosted'>('github-netlify');
-  const [repoName, setRepoName] = useState<string>(projectName);
-  const [netlifySiteName, setNetlifySiteName] = useState<string>('');
-  const [repoCheck, setRepoCheck] = useState<{ status: 'idle' | 'checking' | 'available' | 'taken' | 'error'; owner?: string; message?: string }>({ status: 'idle' });
-  const [deployResult, setDeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
-  const [deployError, setDeployError] = useState<string | null>(null);
-  const [deployNotice, setDeployNotice] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
@@ -117,7 +70,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [quickOpenSearch, setQuickOpenSearch] = useState('');
-  const lastProjectNameRef = useRef(projectName);
 
   // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
@@ -132,165 +84,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const projectFiles = useQuery(api.files.getFilesByProject, 
     projectData?._id ? { projectId: projectData._id } : "skip"
   );
-
-  const repoValidation = useMemo(() => validateRepoName(repoName), [repoName]);
-  const normalizedRepoName = repoValidation.normalized || normalizeRepoName(projectName);
-  const normalizedNetlifySiteName = useMemo(
-    () => normalizeNetlifySiteName(netlifySiteName || normalizedRepoName),
-    [netlifySiteName, normalizedRepoName]
-  );
-  const linkedRepoFullName = useMemo(
-    () => extractRepoFullNameFromUrl(projectData?.repoUrl),
-    [projectData?.repoUrl]
-  );
-  const linkedRepoName = useMemo(
-    () => extractRepoNameFromFullName(linkedRepoFullName),
-    [linkedRepoFullName]
-  );
-  const repoMismatch = useMemo(
-    () => !!(linkedRepoName && normalizedRepoName && linkedRepoName !== normalizedRepoName),
-    [linkedRepoName, normalizedRepoName]
-  );
-
-  const fetchIntegrationStatus = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/integrations/status');
-      if (resp.status === 401) {
-        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
-        return;
-      }
-      if (!resp.ok) {
-        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
-        return;
-      }
-      const data = await resp.json();
-      setIntegrationStatus({
-        githubConnected: !!data.githubConnected,
-        netlifyConnected: !!data.netlifyConnected,
-      });
-    } catch (err) {
-      console.error(err);
-      setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
-    }
-  }, []);
-
-  const fetchGithubOrgs = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/integrations/github/orgs');
-      if (!resp.ok) {
-        setGithubOrgs([]);
-        return;
-      }
-      const data = await resp.json();
-      setGithubOrgs(Array.isArray(data.orgs) ? data.orgs : []);
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isDeployDialogOpen) return;
-    fetchIntegrationStatus();
-  }, [isDeployDialogOpen, fetchIntegrationStatus]);
-
-  useEffect(() => {
-    if (!isDeployDialogOpen) return;
-    if (integrationStatus.githubConnected) {
-      fetchGithubOrgs();
-    }
-  }, [isDeployDialogOpen, integrationStatus.githubConnected, fetchGithubOrgs]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const connected = params.get('connected');
-    if (connected) {
-      setIsDeployDialogOpen(true);
-      params.delete('connected');
-      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
-      window.history.replaceState(null, '', next);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (linkedRepoName) {
-      setRepoName(linkedRepoName);
-      return;
-    }
-    if (repoName === '' || repoName === lastProjectNameRef.current) {
-      setRepoName(projectName);
-    }
-    lastProjectNameRef.current = projectName;
-  }, [projectName, repoName, linkedRepoName]);
-
-  useEffect(() => {
-    if (projectData?.netlifySiteName) {
-      setNetlifySiteName(projectData.netlifySiteName);
-    }
-  }, [projectData?.netlifySiteName]);
-
-  useEffect(() => {
-    if (!deployNotice) return;
-    const timer = window.setTimeout(() => setDeployNotice(null), 3000);
-    return () => window.clearTimeout(timer);
-  }, [deployNotice]);
-
-  useEffect(() => {
-    setDeployResult((prev) => (prev?.repoUrl || prev?.deploymentUrl || prev?.netlifySiteName ? prev : null));
-    setDeployError(null);
-  }, [deployOption]);
-
-  useEffect(() => {
-    if (!isDeployDialogOpen) return;
-    if (!projectData) return;
-    if (projectData.repoUrl || projectData.deploymentUrl || projectData.netlifySiteName) {
-      setDeployResult({
-        repoUrl: projectData.repoUrl ?? undefined,
-        deploymentUrl: projectData.deploymentUrl ?? undefined,
-        netlifySiteName: projectData.netlifySiteName ?? undefined,
-      });
-    }
-  }, [isDeployDialogOpen, projectData?.repoUrl, projectData?.deploymentUrl, projectData?.netlifySiteName, projectData]);
-
-  useEffect(() => {
-    if (!repoValidation.valid) {
-      setRepoCheck({ status: 'error', message: repoValidation.message });
-      return;
-    }
-    if (!normalizedRepoName) {
-      setRepoCheck({ status: 'idle' });
-      return;
-    }
-    if (deployOption === 'maf-hosted') return;
-    if (!integrationStatus.githubConnected) return;
-    if (projectData?.repoUrl) {
-      setRepoCheck({ status: 'available', message: 'Linked repo will be reused.' });
-      return;
-    }
-
-    const handle = window.setTimeout(async () => {
-      setRepoCheck({ status: 'checking' });
-      try {
-        const ownerParam = githubOrg === 'personal' ? '' : `&owner=${encodeURIComponent(githubOrg)}`;
-        const resp = await fetch(`/api/integrations/github/check-repo?name=${encodeURIComponent(normalizedRepoName)}${ownerParam}`);
-        if (!resp.ok) {
-          setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
-          return;
-        }
-        const data = await resp.json();
-        if (data.available) {
-          setRepoCheck({ status: 'available', owner: data.owner });
-        } else {
-          setRepoCheck({ status: 'taken', owner: data.owner, message: 'Name already exists.' });
-        }
-      } catch (err) {
-        console.error(err);
-        setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
-      }
-    }, 500);
-
-    return () => window.clearTimeout(handle);
-  }, [normalizedRepoName, repoValidation.valid, repoValidation.message, githubOrg, deployOption, integrationStatus.githubConnected, projectData?.repoUrl]);
 
   const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
@@ -412,6 +205,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     );
   }, [files, activeFilePath, projectName, projectData]);
 
+  const deploy = useEditorDeploy({
+    projectName,
+    initialPrompt,
+    files,
+    previewHtml,
+    userId: user?.id,
+    projectData,
+    saveProject: saveProject as (args: object) => Promise<unknown>,
+    publishProject,
+    addDeploymentHistory: addDeploymentHistory as (args: object) => Promise<unknown>,
+  });
+
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleEditorChange = (value: string | undefined) => {
@@ -455,72 +260,19 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return () => clearTimeout(timer);
   }, [files, user, projectData?._id, persistFiles]);
 
-  const runTransform = async () => {
-    if (!transformPrompt.trim()) return;
-    setIsTransforming(true);
-    try {
-      let finalPrompt = transformPrompt;
-
-      if (selectedElement) {
-        // Strip out the internal data-source-file attributes for better AI clarity
-        const cleanHtml = selectedElement.html
-          .replace(/ data-source-file="[^"]*"/g, '')
-          .replace(/ style="display: contents;"/g, '');
-        
-        const selectorLine = selectedElement.selector ? `CSS selector: ${selectedElement.selector}\n` : '';
-        finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${transformPrompt}`;
-      }
-
-      const response = await fetch('/api/transform', {
-        method: 'POST',
-        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ 
-          projectName,
-          activeFile: activeFilePath,
-          prompt: finalPrompt,
-          modelId: selectedModel.id || undefined,
-          providerId: selectedModel.providerId || undefined
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        const code = data.code || 'TRANSFORM_ERROR';
-        const message = data.error || 'Transform failed';
-        const requestId = typeof data.requestId === 'string' ? data.requestId : undefined;
-        const suggestion = getTransformRecoverySuggestion(code);
-        const description = requestId ? `${suggestion} (request: ${requestId})` : suggestion;
-
-        toast.error(message, { description });
-        throw new Error(message);
-      }
-
-      // Transition to streaming multi-file parser
-      // For now, assume it returns full files
-      const result = await response.json();
-      if (result.full) {
-        const fullFiles = Array.isArray(result.files) ? result.files : [];
-        if (fullFiles.length === 0) {
-          console.error('Transform returned full=true but no files array');
-          toast.error('Transform returned no files', { description: 'The server indicated a full replacement but provided no files.' });
-        }
-        setFiles(fullFiles);
-        addToHistory(fullFiles);
-        persistFiles(fullFiles);
-      } else if (Array.isArray(result.files)) {
-        const nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
-        setFiles(nextFiles);
-        addToHistory(nextFiles);
-        persistFiles(nextFiles);
-      }
-      setTransformPrompt('');
-      setSelectedElement(null);
-    } catch (err) {
-      console.error('Transform error', err);
-    } finally {
-      setIsTransforming(false);
-    }
-  };
+  const { isTransforming, transformProgress, runTransform, runPolish, cancelTransform } = useProjectTransform({
+    projectName,
+    activeFilePath,
+    files,
+    setFiles,
+    addToHistory,
+    persistFiles,
+    selectedModel,
+    transformPrompt,
+    setTransformPrompt,
+    selectedElement,
+    setSelectedElement,
+  });
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
@@ -851,41 +603,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
   const onPolishSubmit = async () => {
     setIsPolishDialogOpen(false);
-    setIsTransforming(true);
-    try {
-      const resp = await fetch('/api/transform', {
-        method: 'POST',
-        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ projectName, polishDescription }),
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        const message = data.error || 'Polish failed';
-        toast.error(message, { description: 'Try a shorter polish request or retry shortly.' });
-        throw new Error(message);
-      }
-
-      const result = await resp.json();
-      if (result.full) {
-        const fullFiles = Array.isArray(result.files) ? result.files : [];
-        if (fullFiles.length === 0) {
-          console.error('Polish returned full=true but no files array');
-          toast.error('Polish returned no files', { description: 'The server indicated a full replacement but provided no files.' });
-        }
-        setFiles(fullFiles);
-        addToHistory(fullFiles);
-        persistFiles(fullFiles);
-      } else if (Array.isArray(result.files)) {
-        const nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
-        setFiles(nextFiles);
-        addToHistory(nextFiles);
-        persistFiles(nextFiles);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsTransforming(false);
-    }
+    await runPolish(polishDescription);
   };
 
   const downloadZip = async () => {
@@ -939,145 +657,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  const startGithubConnect = () => {
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    window.location.href = `/api/integrations/github/start?returnTo=${encodeURIComponent(returnTo)}`;
-  };
-
-  const startNetlifyConnect = () => {
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    window.location.href = `/api/integrations/netlify/start?returnTo=${encodeURIComponent(returnTo)}`;
-  };
-
-  const handleHostedDeploy = async () => {
-    if (!user) {
-      window.location.href = '/handler/sign-in';
-      return;
-    }
-
-    setIsDeploying(true);
-    setDeployError(null);
-    setDeployResult(null);
-    setDeployNotice(null);
-    try {
-      const resultsPath = `/results/${projectName}`;
-      const resultsUrl = `${window.location.origin}${resultsPath}`;
-
-      await saveProject({
-        projectName,
-        prompt: initialPrompt,
-        html: previewHtml, // Keep for legacy / thumbnails
-        status: 'completed',
-        userId: user.id,
-        isPublished: true,
-        isMultiPage: files.length > 1,
-        pageCount: files.filter(f => f.fileType === 'page').length,
-        deploymentUrl: resultsUrl,
-        repoUrl: undefined,
-        deployProvider: 'maf-hosted',
-        deployedAt: Date.now(),
-        netlifySiteName: undefined,
-      });
-      await publishProject({
-        projectName,
-        userId: user.id,
-      });
-
-      setDeployResult({ deploymentUrl: resultsUrl });
-      if (projectData?._id) {
-        await addDeploymentHistory({
-          projectId: projectData._id,
-          provider: 'maf-hosted',
-          deploymentUrl: resultsUrl,
-        });
-      }
-      window.open(resultsPath, '_blank');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Publish failed';
-      const normalized = normalizeDeployError(message);
-      setDeployError(normalized);
-      toast.error('Deploy failed', { description: normalized });
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
-  const handleDeploy = async () => {
-    if (!user) {
-      window.location.href = '/handler/sign-in';
-      return;
-    }
-
-    if (deployOption === 'maf-hosted') {
-      await handleHostedDeploy();
-      return;
-    }
-
-    setIsDeploying(true);
-    setDeployStatus('Starting deployment...');
-    setDeployError(null);
-    setDeployResult(null);
-    setDeployNotice(null);
-    try {
-      const data = await performDeploy({
-        projectName,
-        prompt: initialPrompt,
-        repoVisibility,
-        githubOrg: githubOrg === 'personal' ? null : githubOrg,
-        deployMode: deployOption,
-        repoName: normalizedRepoName || projectName,
-        repoFullName: linkedRepoFullName,
-        netlifySiteName: deployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
-      }, (status) => {
-        setDeployStatus(status);
-      });
-      setDeployResult({ repoUrl: data.repoUrl, deploymentUrl: data.deploymentUrl, netlifySiteName: data.netlifySiteName });
-      await saveProject({
-        projectName,
-        prompt: initialPrompt,
-        html: previewHtml,
-        status: 'completed',
-        userId: user.id,
-        isPublished: projectData?.isPublished ?? false,
-        isMultiPage: files.length > 1,
-        pageCount: files.filter(f => f.fileType === 'page').length,
-        deploymentUrl: data.deploymentUrl ?? undefined,
-        repoUrl: data.repoUrl ?? undefined,
-        deployProvider: deployOption === 'github-only' ? 'github' : 'netlify',
-        deployedAt: Date.now(),
-        netlifySiteName: data.netlifySiteName ?? extractNetlifySiteNameFromUrl(data.deploymentUrl) ?? undefined,
-      });
-      if (projectData?._id) {
-        await addDeploymentHistory({
-          projectId: projectData._id,
-          provider: deployOption === 'github-only' ? 'github' : 'netlify',
-          deploymentUrl: data.deploymentUrl ?? undefined,
-          repoUrl: data.repoUrl ?? undefined,
-          netlifySiteName: data.netlifySiteName ?? undefined,
-        });
-      }
-      fetchIntegrationStatus();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Deploy failed';
-      const normalized = normalizeDeployError(message);
-      setDeployError(normalized);
-      toast.error('Deploy failed', { description: normalized });
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
-
-  const copyToClipboard = async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setDeployNotice(`${label} copied to clipboard.`);
-    } catch (err) {
-      console.error(err);
-      setDeployNotice(`Unable to copy ${label}.`);
-    }
-  };
-
   const handleOpenPreviewInNewTab = async () => {
     const previewPath = `/preview/${projectName}`;
 
@@ -1106,8 +685,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onBack={onBack}
         saveStatus={saveStatus}
         onExport={downloadZip}
-        onDeploy={() => setIsDeployDialogOpen(true)}
-        isDeploying={isDeploying}
+        onDeploy={() => deploy.setIsDeployDialogOpen(true)}
+        isDeploying={deploy.isDeploying}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={undo}
@@ -1234,6 +813,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 runTransform={runTransform}
                 runPolish={() => setIsPolishDialogOpen(true)}
                 isTransforming={isTransforming}
+                transformProgress={transformProgress}
+                onCancelTransform={cancelTransform}
               />
             </motion.div>
           )}
@@ -1354,286 +935,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isDeployDialogOpen} onOpenChange={setIsDeployDialogOpen}>
-        <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">Deploy to Netlify</DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Connect GitHub and Netlify, then deploy your project with one click.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
-              <button
-                type="button"
-                onClick={() => setDeployOption('github-netlify')}
-                className={cn(
-                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
-                  deployOption === 'github-netlify'
-                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
-                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
-                )}
-              >
-                GitHub + Netlify (Recommended)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeployOption('github-only')}
-                className={cn(
-                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
-                  deployOption === 'github-only'
-                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
-                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
-                )}
-              >
-                GitHub Repo Only
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeployOption('maf-hosted')}
-                className={cn(
-                  "w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all",
-                  deployOption === 'maf-hosted'
-                    ? "border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]"
-                    : "border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]"
-                )}
-              >
-                Deploy with us (Easiest and fastest)
-              </button>
-            </div>
-
-            {deployOption !== 'maf-hosted' && (
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
-                <Input
-                  value={repoName}
-                  onChange={(e) => setRepoName(e.target.value)}
-                  placeholder={projectName}
-                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                  disabled={!!linkedRepoFullName}
-                />
-                <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                  {linkedRepoFullName && `Linked repo: ${linkedRepoFullName}. Repo name locked. `}
-                  {repoMismatch && `Repo name mismatch: linked repo uses ${linkedRepoName}. `}
-                  {normalizedRepoName && `Slug: ${normalizedRepoName}. `}
-                  {repoCheck.status === 'checking' && 'Checking availability...'}
-                  {repoCheck.status === 'available' && `Available${repoCheck.owner ? ` under ${repoCheck.owner}` : ''}.`}
-                  {repoCheck.status === 'taken' && 'Name already exists.'}
-                  {repoCheck.status === 'error' && (repoCheck.message || 'Unable to verify repo name.')}
-                  {repoCheck.status === 'idle' && 'Leave blank to use the project name.'}
-                </div>
-              </div>
-            )}
-
-            {deployOption === 'github-netlify' && (
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
-                <Input
-                  value={netlifySiteName}
-                  onChange={(e) => setNetlifySiteName(e.target.value)}
-                  placeholder={normalizedRepoName || projectName}
-                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                />
-                <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                  Leave blank to reuse the repo name. Subdomain slug: {normalizedNetlifySiteName || '—'}.
-                </div>
-              </div>
-            )}
-
-            {deployOption !== 'maf-hosted' && (
-              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-                <div>
-                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
-                  <div className="text-[11px] text-[var(--muted-text)]">
-                    {integrationStatus.githubConnected ? 'Connected' : 'Not connected'}
-                  </div>
-                </div>
-                <Button
-                  onClick={startGithubConnect}
-                  variant="outline"
-                  className="font-mono uppercase text-[10px] border-[var(--border)]"
-                >
-                  {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
-                </Button>
-              </div>
-            )}
-
-            {deployOption === 'github-netlify' && (
-              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-                <div>
-                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
-                  <div className="text-[11px] text-[var(--muted-text)]">
-                    {integrationStatus.netlifyConnected ? 'Connected' : 'Not connected'}
-                  </div>
-                </div>
-                <Button
-                  onClick={startNetlifyConnect}
-                  variant="outline"
-                  className="font-mono uppercase text-[10px] border-[var(--border)]"
-                >
-                  {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
-                </Button>
-              </div>
-            )}
-
-            {deployOption !== 'maf-hosted' && (
-              <>
-                <div className="grid gap-2">
-                  <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Visibility</label>
-                  <select
-                    value={repoVisibility}
-                    onChange={(e) => setRepoVisibility(e.target.value as 'private' | 'public')}
-                    className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                  >
-                    <option value="private">Private (Recommended)</option>
-                    <option value="public">Public</option>
-                  </select>
-                </div>
-
-                <div className="grid gap-2">
-                  <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">GitHub Owner</label>
-                  <select
-                    value={githubOrg}
-                    onChange={(e) => setGithubOrg(e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                    disabled={!integrationStatus.githubConnected}
-                  >
-                    <option value="personal">Personal Account</option>
-                    {githubOrgs.map((org) => (
-                      <option key={org} value={org}>{org}</option>
-                    ))}
-                  </select>
-                  <div className="text-[10px] text-[var(--muted-text)] font-mono">
-                    Select an org only if your OAuth app has access to it.
-                  </div>
-                </div>
-              </>
-            )}
-
-            {deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected) && (
-              <div className="text-[11px] text-amber-500 font-mono">
-                Connect both GitHub and Netlify to enable this deploy option.
-              </div>
-            )}
-            {deployOption === 'github-only' && !integrationStatus.githubConnected && (
-              <div className="text-[11px] text-amber-500 font-mono">
-                Connect GitHub to enable this deploy option.
-              </div>
-            )}
-            {deployOption === 'maf-hosted' && (
-              <div className="text-[11px] text-amber-500 font-mono">
-                We will deploy your project to a hosted URL under Mini App Factory.
-              </div>
-            )}
-
-            {deployResult?.repoUrl && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Repo: <span className="text-[var(--primary)]">{deployResult.repoUrl}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase text-[10px] border-[var(--border)]"
-                    onClick={() => window.open(deployResult.repoUrl, '_blank')}
-                  >
-                    Open Repo
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase text-[10px] border-[var(--border)]"
-                    onClick={() => copyToClipboard(deployResult.repoUrl!, 'Repo URL')}
-                  >
-                    Copy Link
-                  </Button>
-                </div>
-              </div>
-            )}
-            {deployResult?.deploymentUrl && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Live URL: <span className="text-[var(--primary)]">{deployResult.deploymentUrl}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase text-[10px] border-[var(--border)]"
-                    onClick={() => window.open(deployResult.deploymentUrl, '_blank')}
-                  >
-                    Open Live URL
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase text-[10px] border-[var(--border)]"
-                    onClick={() => copyToClipboard(deployResult.deploymentUrl!, 'Live URL')}
-                  >
-                    Copy Link
-                  </Button>
-                </div>
-              </div>
-            )}
-            {deployResult?.netlifySiteName && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Netlify Site: <span className="text-[var(--primary)]">{deployResult.netlifySiteName}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="font-mono uppercase text-[10px] border-[var(--border)]"
-                    onClick={() => copyToClipboard(deployResult.netlifySiteName!, 'Netlify Site Name')}
-                  >
-                    Copy Name
-                  </Button>
-                </div>
-              </div>
-            )}
-            {deployNotice && (
-              <div className="text-[11px] text-[var(--muted-text)] font-mono">
-                {deployNotice}
-              </div>
-            )}
-            {deployError && (
-              <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
-                {deployError}
-              </div>
-            )}
-            {isDeploying && deployStatus && (
-              <div className="p-3 border border-[var(--border)] rounded-md bg-[var(--background-overlay)]/30 space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
-                  <span className="text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] tracking-wider">Deployment Status</span>
-                </div>
-                <div className="text-[12px] font-mono text-[var(--foreground)] pl-4 border-l-2 border-[var(--primary)]/30 py-1">
-                  {deployStatus}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsDeployDialogOpen(false)}
-              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
-            >
-              Close
-            </Button>
-            <Button
-              onClick={handleDeploy}
-              disabled={
-                isDeploying ||
-                (deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected)) ||
-                (deployOption === 'github-only' && !integrationStatus.githubConnected) ||
-                (deployOption !== 'maf-hosted' && (repoCheck.status === 'taken' || repoCheck.status === 'error' || !repoValidation.valid))
-              }
-              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-            >
-              {isDeploying ? 'Deploying...' : deployOption === 'github-only' ? 'Create Repo' : 'Deploy Now'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EditorDeployDialog projectName={projectName} deploy={deploy} />
 
       <Dialog open={isNewFileDialogOpen} onOpenChange={setIsNewFileDialogOpen}>
         <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
