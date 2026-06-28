@@ -8,10 +8,17 @@ export async function GET(
 ) {
   const requestId = crypto.randomUUID();
   const user = await stackServerApp.getUser();
+  if (!user?.id) {
+    return Response.json(
+      { error: 'Authentication required', code: 'UNAUTHORIZED', requestId },
+      { status: 401 }
+    );
+  }
+
   const { name } = await params;
   const project = await getProject(name);
 
-  const access = assertCanAccessProject(project, user?.id);
+  const access = assertCanAccessProject(project, user.id);
   if (!access.ok) {
     return Response.json(
       { error: access.message, code: access.status === 401 ? 'UNAUTHORIZED' : access.status === 404 ? 'PROJECT_NOT_FOUND' : 'FORBIDDEN', requestId },

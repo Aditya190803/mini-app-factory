@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
 import AccountMenu from "@/components/account-menu";
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { isHttpUrl } from '@/lib/url-reference';
 import { EXAMPLE_PROMPTS, PROMPT_TEMPLATE_CATEGORIES } from '@/lib/constants';
 import TemplateFillDialog from '@/components/template-fill-dialog';
 
@@ -65,6 +66,12 @@ export default function Home() {
       return;
     }
 
+    const trimmedReferenceUrl = referenceUrl.trim();
+    if (trimmedReferenceUrl && !isHttpUrl(trimmedReferenceUrl)) {
+      setError('Reference URL must be a valid http(s) URL.');
+      return;
+    }
+
     setIsChecking(true);
 
     try {
@@ -76,7 +83,7 @@ export default function Home() {
           prompt: prompt.trim(),
           selectedModel: selectedModel.id || undefined,
           providerId: selectedModel.providerId || undefined,
-          referenceUrl: referenceUrl.trim() || undefined,
+          referenceUrl: trimmedReferenceUrl || undefined,
         }),
       });
 

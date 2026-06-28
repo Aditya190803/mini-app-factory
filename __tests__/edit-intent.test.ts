@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectFile } from '@/lib/page-builder';
 import { buildHtmlManifest } from '@/lib/edit-intent/manifest';
 import { analyzeHtmlEditIntent } from '@/lib/edit-intent/analyze';
-import { selectFilesForHtmlEdit } from '@/lib/edit-intent/context';
+import { buildProjectContextWithIntent, selectFilesForHtmlEdit } from '@/lib/edit-intent/context';
 import { EditType } from '@/lib/edit-intent/types';
 
 const sampleFiles: ProjectFile[] = [
@@ -44,6 +44,19 @@ describe('edit-intent', () => {
     });
     expect(sel.primaryFiles[0]).toBe('header.html');
     expect(sel.focusPath).toBe('header.html');
+  });
+
+  it('buildProjectContextWithIntent keeps priority files under budget', () => {
+    const big: ProjectFile = {
+      path: 'index.html',
+      content: 'x'.repeat(50_000),
+      language: 'html',
+      fileType: 'page',
+    };
+    const sel = selectFilesForHtmlEdit('edit index', [big], { activeFile: 'index.html' });
+    const ctx = buildProjectContextWithIntent([big], sel, 2000);
+    expect(ctx.length).toBeLessThanOrEqual(2000);
+    expect(ctx).toContain('[priority]');
   });
 
   it('add page intent includes entry and partials', () => {

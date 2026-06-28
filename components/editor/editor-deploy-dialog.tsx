@@ -47,7 +47,6 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     repoMismatch,
     normalizedRepoName,
     normalizedNetlifySiteName,
-    repoValidation,
     startGithubConnect,
     startNetlifyConnect,
     handleDeploy,
@@ -204,7 +203,7 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
                 Repo: <span className="text-[var(--primary)]">{deployResult.repoUrl}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.repoUrl, '_blank')}>
+                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.repoUrl, '_blank', 'noopener,noreferrer')}>
                   Open Repo
                 </Button>
                 <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => copyToClipboard(deployResult.repoUrl!, 'Repo URL')}>
@@ -219,7 +218,7 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
                 Live URL: <span className="text-[var(--primary)]">{deployResult.deploymentUrl}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.deploymentUrl, '_blank')}>
+                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.deploymentUrl, '_blank', 'noopener,noreferrer')}>
                   Open Live URL
                 </Button>
                 <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => copyToClipboard(deployResult.deploymentUrl!, 'Live URL')}>

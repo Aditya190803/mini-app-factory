@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
-import { getProject, getFiles, saveProject } from '@/lib/projects';
+import { claimProjectOrphan, getProject, getFiles } from '@/lib/projects';
 import { canUserEditProject, isOrphanProject } from '@/lib/project-access';
 import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -56,7 +56,12 @@ export async function POST(request: Request) {
       adminConfig: globalAdminConfig,
       byokConfig: persistedSettings.byokConfig,
     };
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON payload', code: 'INVALID_JSON', requestId }, { status: 400 });
+    }
     const parsed = transformSchema.safeParse(body);
     if (!parsed.success) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
@@ -81,7 +86,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
     }
     if (project && isOrphanProject(project)) {
-      await saveProject({ ...project, userId: user.id });
+      await claimProjectOrphan(projectName!, user.id);
     }
 
     let finalFiles: ProjectFile[] = [];

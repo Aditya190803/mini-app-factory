@@ -72,6 +72,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   const [deployError, setDeployError] = useState<string | null>(null);
   const [deployNotice, setDeployNotice] = useState<string | null>(null);
   const lastProjectNameRef = useRef(projectName);
+  const repoCheckRequestRef = useRef(0);
 
   const repoValidation = useMemo(() => validateRepoName(repoName), [repoName]);
   const normalizedRepoName = repoValidation.normalized || normalizeRepoName(projectName);
@@ -192,25 +193,31 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       return;
     }
 
+    const requestId = ++repoCheckRequestRef.current;
+    setRepoCheck({ status: 'checking' });
+
     const handle = window.setTimeout(async () => {
-      setRepoCheck({ status: 'checking' });
       try {
         const ownerParam = githubOrg === 'personal' ? '' : `&owner=${encodeURIComponent(githubOrg)}`;
         const resp = await fetch(
           `/api/integrations/github/check-repo?name=${encodeURIComponent(normalizedRepoName)}${ownerParam}`
         );
+        if (repoCheckRequestRef.current !== requestId) return;
         if (!resp.ok) {
           setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
           return;
         }
         const data = await resp.json();
+        if (repoCheckRequestRef.current !== requestId) return;
         if (data.available) {
           setRepoCheck({ status: 'available', owner: data.owner });
         } else {
           setRepoCheck({ status: 'taken', owner: data.owner, message: 'Name already exists.' });
         }
       } catch {
-        setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
+        if (repoCheckRequestRef.current === requestId) {
+          setRepoCheck({ status: 'error', message: 'Unable to verify repo name.' });
+        }
       }
     }, 500);
 

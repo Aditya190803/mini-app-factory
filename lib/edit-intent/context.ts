@@ -60,6 +60,17 @@ export function formatIntentForPrompt(intent: HtmlEditIntent, primaryFiles: stri
   ].join('\n');
 }
 
+function fileBlock(file: ProjectFile, tag: string): string {
+  return `File: ${file.path} ${tag}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
+}
+
+function truncateBlock(block: string, maxLen: number): string {
+  if (block.length <= maxLen) return block;
+  const suffix = '\n```\n[content truncated for context budget]';
+  const keep = Math.max(80, maxLen - suffix.length);
+  return `${block.slice(0, keep)}${suffix}`;
+}
+
 export function buildProjectContextWithIntent(
   files: ProjectFile[],
   selection: HtmlFileSelection,
@@ -74,24 +85,39 @@ export function buildProjectContextWithIntent(
   };
 
   const prioritized = [...files].sort((a, b) => order(a.path) - order(b.path) || a.path.localeCompare(b.path));
-
-  const included: string[] = [];
+  const header = `Project Files: ${files.map((f) => f.path).join(', ')}`;
   const omitted: string[] = [];
-  let total = 0;
+  const included: string[] = [];
+  let total = header.length + 4;
+
+  const tryAdd = (block: string, path: string, force: boolean) => {
+    let b = block;
+    if (total + b.length > maxChars) {
+      if (!force) {
+        omitted.push(path);
+        return;
+      }
+      const room = maxChars - total - 4;
+      if (room < 80) {
+        omitted.push(path);
+        return;
+      }
+      b = truncateBlock(block, room);
+    }
+    included.push(b);
+    total += b.length + 2;
+  };
 
   for (const file of prioritized) {
-    const tag = selection.primaryFiles.includes(file.path) ? '[priority]' : '';
-    const block = `File: ${file.path} ${tag}\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
-    if (total + block.length > maxChars) {
-      omitted.push(file.path);
-      continue;
-    }
-    included.push(block);
-    total += block.length;
+    const isPrimary = selection.primaryFiles.includes(file.path);
+    const tag = isPrimary ? '[priority]' : '';
+    tryAdd(fileBlock(file, tag), file.path, isPrimary);
   }
 
-  const header = `Project Files: ${files.map((f) => f.path).join(', ')}`;
   const omittedNote = omitted.length > 0 ? `\n\n[Context Budget] Omitted files: ${omitted.join(', ')}` : '';
-
-  return `${header}\n\n${included.join('\n\n')}${omittedNote}`.trim();
+  let out = `${header}\n\n${included.join('\n\n')}${omittedNote}`.trim();
+  if (out.length > maxChars) {
+    out = `${out.slice(0, maxChars - 20)}\n[truncated]`;
+  }
+  return out;
 }

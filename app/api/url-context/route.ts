@@ -16,11 +16,16 @@ const bodySchema = z
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
 
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
+  }
+
   try {
     getServerEnv();
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Invalid environment';
-    return Response.json({ error: message, code: 'ENV_INVALID', requestId }, { status: 500 });
+    console.error('URL context env validation failed', { requestId, err });
+    return Response.json({ error: 'Invalid environment', code: 'ENV_INVALID', requestId }, { status: 500 });
   }
 
   const apiKey = process.env.EXA_API_KEY;
@@ -29,11 +34,6 @@ export async function POST(request: Request) {
       { error: 'EXA_API_KEY is not configured', code: 'EXA_NOT_CONFIGURED', requestId },
       { status: 503 }
     );
-  }
-
-  const user = await stackServerApp.getUser();
-  if (!user) {
-    return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
   }
 
   let payload: unknown;

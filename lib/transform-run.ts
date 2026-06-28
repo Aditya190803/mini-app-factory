@@ -46,7 +46,8 @@ function throwIfAborted(signal?: AbortSignal) {
 
 async function extractToolCallsWithRepair(
   rawContent: string,
-  session: { sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<{ data?: { content?: string } }> }
+  session: { sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<{ data?: { content?: string } }> },
+  signal?: AbortSignal
 ) {
   try {
     return extractToolCalls(rawContent);
@@ -68,9 +69,11 @@ async function extractToolCallsWithRepair(
       rawContent,
     ].join('\n');
 
+    throwIfAborted(signal);
     const repaired = await withRetry(() => session.sendAndWait({ prompt: repairPrompt }, 60000), {
       maxAttempts: 2,
       baseDelayMs: 500,
+      signal,
     });
     const repairedContent = repaired?.data?.content || '';
     return extractToolCalls(repairedContent);
@@ -202,12 +205,12 @@ Only return changes. No explanations.`;
     onEvent({ status: 'generating', message: 'Waiting for model…' });
     const response = await withRetry(
       () => session.sendAndWait({ prompt: userMessage }, 150000),
-      { maxAttempts: 3, baseDelayMs: 800 }
+      { maxAttempts: 3, baseDelayMs: 800, signal }
     );
     content = response?.data?.content || '';
     throwIfAborted(signal);
 
-    const toolCalls = await extractToolCallsWithRepair(content, session);
+    const toolCalls = await extractToolCallsWithRepair(content, session, signal);
     const total = toolCalls.length;
     for (let i = 0; i < toolCalls.length; i++) {
       throwIfAborted(signal);
@@ -235,7 +238,9 @@ Only return changes. No explanations.`;
       }
     }
   } catch (err) {
-    if (projectName) {
+    const code =
+      err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : undefined;
+    if (projectName || !content || code === 'ABORTED') {
       throw err;
     }
     const updatedFiles = parseMultiFileOutput(content);

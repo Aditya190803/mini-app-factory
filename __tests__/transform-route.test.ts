@@ -12,6 +12,7 @@ vi.mock('@/lib/projects', () => ({
   getFiles: vi.fn(),
   saveFiles: vi.fn(),
   saveProject: vi.fn(),
+  claimProjectOrphan: vi.fn(),
 }));
 
 vi.mock('@/lib/ai-client', () => ({
@@ -101,13 +102,13 @@ describe('POST /api/transform', () => {
   test('claims orphan project on first transform', async () => {
     const { POST } = await import('@/app/api/transform/route');
     const { stackServerApp } = await import('@/stack/server');
-    const { getProject, getFiles, saveFiles, saveProject } = await import('@/lib/projects');
+    const { getProject, getFiles, saveFiles, claimProjectOrphan } = await import('@/lib/projects');
     const { getAIClient } = await import('@/lib/ai-client');
 
     const orphan = { name: 'legacy', prompt: 'p', status: 'completed' as const, createdAt: 1 };
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(orphan);
-    (saveProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (claimProjectOrphan as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
     ]);
@@ -131,7 +132,7 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     await consumeTransformStream(res);
-    expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user_123' }));
+    expect(claimProjectOrphan).toHaveBeenCalledWith('legacy', 'user_123');
   });
 
   test('returns 400 for invalid payload', async () => {

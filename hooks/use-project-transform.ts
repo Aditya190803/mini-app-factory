@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
@@ -52,6 +52,11 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
   const [isTransforming, setIsTransforming] = useState(false);
   const [transformProgress, setTransformProgress] = useState<TransformProgressState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const filesRef = useRef(files);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   const cancelTransform = useCallback(() => {
     abortRef.current?.abort();
@@ -77,7 +82,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
           if (next) setTransformProgress(next);
         });
 
-        applyTransformComplete(result, files, setFiles, addToHistory, persistFiles);
+        applyTransformComplete(result, filesRef.current, setFiles, addToHistory, persistFiles);
         return result;
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
@@ -94,12 +99,14 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         toast.error(message, { description: requestId ? `${suggestion} (request: ${requestId})` : suggestion });
         throw err;
       } finally {
-        if (abortRef.current === ac) abortRef.current = null;
-        setIsTransforming(false);
-        setTransformProgress(null);
+        if (abortRef.current === ac) {
+          abortRef.current = null;
+          setIsTransforming(false);
+          setTransformProgress(null);
+        }
       }
     },
-    [files, setFiles, addToHistory, persistFiles]
+    [setFiles, addToHistory, persistFiles]
   );
 
   const runTransform = useCallback(async () => {
@@ -113,13 +120,14 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
       finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${transformPrompt}`;
     }
     try {
-      await postTransform({
+      const result = await postTransform({
         projectName,
         activeFile: activeFilePath,
         prompt: finalPrompt,
         modelId: selectedModel.id || undefined,
         providerId: selectedModel.providerId || undefined,
       });
+      if (!result) return;
       setTransformPrompt('');
       setSelectedElement(null);
     } catch {

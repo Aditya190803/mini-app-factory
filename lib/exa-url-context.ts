@@ -66,6 +66,7 @@ export async function fetchExaUrlContext(rawUrl: string, apiKey: string): Promis
       summary: { query: 'Site purpose, audience, visual tone, and main sections' },
       livecrawl: 'fallback',
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

@@ -3,6 +3,7 @@ type RetryOptions = {
   baseDelayMs: number;
   maxDelayMs?: number;
   shouldRetry?: (error: unknown) => boolean;
+  signal?: AbortSignal;
 };
 
 export function isTransientError(error: unknown): boolean {
@@ -20,14 +21,20 @@ export async function withRetry<T>(
   task: (attempt: number) => Promise<T>,
   options: RetryOptions
 ): Promise<T> {
-  const { maxAttempts, baseDelayMs, maxDelayMs = 8000, shouldRetry } = options;
+  const { maxAttempts, baseDelayMs, maxDelayMs = 8000, shouldRetry, signal } = options;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (signal?.aborted) {
+      throw Object.assign(new Error('Aborted'), { code: 'ABORTED' });
+    }
     try {
       return await task(attempt);
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) {
+        throw Object.assign(new Error('Aborted'), { code: 'ABORTED' });
+      }
       const retryable = shouldRetry ? shouldRetry(error) : isTransientError(error);
       if (!retryable || attempt >= maxAttempts) {
         throw error;

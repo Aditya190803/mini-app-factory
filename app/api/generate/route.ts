@@ -223,7 +223,7 @@ Return ONLY code blocks. No explanations.`;
       finalProject.status = 'completed';
       finalProject.isMultiPage = files.length > 1;
       finalProject.pageCount = files.filter(f => f.fileType === 'page').length;
-      finalProject.description = designSpec.slice(0, 500); // Save partial spec as description
+      finalProject.description = designSpec.slice(0, 500);
       
       await saveProject(finalProject).catch(err => {
         console.error('Failed to save completed project:', err);
@@ -310,17 +310,12 @@ export async function POST(request: Request) {
       );
     }
 
-    let finalPrompt = basePrompt;
-    try {
-      const enriched = await appendReferenceUrlToPrompt(basePrompt, {
-        referenceUrl,
-        storedDescription: project.description,
-      });
-      finalPrompt = enriched.prompt;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Reference URL fetch failed';
-      return Response.json({ error: message, code: 'REFERENCE_FETCH_FAILED', requestId }, { status: 502 });
-    }
+    const enriched = await appendReferenceUrlToPrompt(basePrompt, {
+      referenceUrl,
+      storedReferenceUrl: project.referenceUrl,
+      storedDescription: project.description,
+    });
+    const finalPrompt = enriched.prompt;
 
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();

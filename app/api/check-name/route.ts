@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   // "Reserve" the name by creating a pending project
   if (prompt) {
     const ref = typeof referenceUrl === 'string' && referenceUrl.trim() ? referenceUrl.trim() : undefined;
-    const description = ref && isHttpUrl(ref) ? normalizeReferenceUrl(ref) : undefined;
+    const storedRef = ref && isHttpUrl(ref) ? normalizeReferenceUrl(ref) : undefined;
     await saveProject({
       name: normalizedName,
       prompt,
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       selectedModel,
       providerId,
-      description,
+      referenceUrl: storedRef,
     });
   }
 

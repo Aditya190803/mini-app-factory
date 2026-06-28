@@ -27,6 +27,7 @@ export const saveProject = mutation({
     isMultiPage: v.optional(v.boolean()),
     pageCount: v.optional(v.number()),
     description: v.optional(v.string()),
+    referenceUrl: v.optional(v.string()),
     selectedModel: v.optional(v.string()),
     providerId: v.optional(v.string()),
     deploymentUrl: v.optional(v.string()),
@@ -55,6 +56,7 @@ export const saveProject = mutation({
         isMultiPage: args.isMultiPage ?? existing.isMultiPage ?? false,
         pageCount: args.pageCount ?? existing.pageCount ?? 0,
         description: args.description ?? existing.description,
+        referenceUrl: args.referenceUrl ?? existing.referenceUrl,
         selectedModel: args.selectedModel ?? existing.selectedModel,
         providerId: args.providerId ?? existing.providerId,
         deploymentUrl: args.deploymentUrl ?? existing.deploymentUrl,
@@ -76,6 +78,7 @@ export const saveProject = mutation({
         isMultiPage: args.isMultiPage ?? false,
         pageCount: args.pageCount ?? 0,
         description: args.description,
+        referenceUrl: args.referenceUrl,
         selectedModel: args.selectedModel,
         providerId: args.providerId,
         deploymentUrl: args.deploymentUrl,
@@ -87,6 +90,28 @@ export const saveProject = mutation({
         updatedAt: now,
       });
     }
+  },
+});
+
+/** Atomically claim an orphan project (userId unset). */
+export const claimProjectOrphan = mutation({
+  args: {
+    projectName: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
+      .first();
+    if (!project) throw new Error("Project not found");
+    if (project.userId && project.userId !== args.userId) {
+      throw new Error("Unauthorized to edit this project");
+    }
+    if (!project.userId) {
+      await ctx.db.patch(project._id, { userId: args.userId, updatedAt: Date.now() });
+    }
+    return project._id;
   },
 });
 
