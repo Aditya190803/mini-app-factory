@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import schema from '@/convex/schema';
 import { api } from '@/convex/_generated/api';
@@ -83,11 +83,6 @@ describe('Convex authorization', () => {
       await expect(t.mutation(api.uploads.generateUploadUrl, {})).rejects.toThrow();
     });
 
-    test('cannot run the full-table legacy cleanup', async () => {
-      const t = setup();
-      await expect(t.mutation(api.projects.cleanupLegacyFields, {})).rejects.toThrow();
-    });
-
     test('gets null for an unpublished project', async () => {
       const t = setup();
       await makeProject(t, ALICE, 'alice-private');
@@ -100,8 +95,16 @@ describe('Convex authorization', () => {
       await t.withIdentity(ALICE).mutation(api.projects.publishProject, { projectName: 'alice-public' });
 
       const project = await t.query(api.projects.getPublishedProject, { projectName: 'alice-public' });
-      expect(project).not.toBeNull();
-      expect(project?.projectName).toBe('alice-public');
+      expect(project).toEqual({
+        projectName: 'alice-public',
+        isPublished: true,
+        html: undefined,
+        favicon: undefined,
+        globalSeo: undefined,
+        seoData: undefined,
+      });
+      expect(project).not.toHaveProperty('userId');
+      expect(project).not.toHaveProperty('prompt');
     });
   });
 
@@ -161,6 +164,21 @@ describe('Convex authorization', () => {
 
       const aliceRecord = await t.withIdentity(ALICE).query(api.integrations.getIntegration, {});
       expect(aliceRecord?.githubAccessToken).toBe('alice-token');
+    });
+
+    test('a stale disconnect cannot clear a newly connected token', async () => {
+      const t = setup();
+      const alice = t.withIdentity(ALICE);
+      await alice.mutation(api.integrations.upsertIntegration, { githubAccessToken: 'old-token' });
+      await alice.mutation(api.integrations.upsertIntegration, { githubAccessToken: 'new-token' });
+
+      await alice.mutation(api.integrations.clearIntegration, {
+        provider: 'github',
+        expectedGithubAccessToken: 'old-token',
+      });
+
+      const integration = await alice.query(api.integrations.getIntegration, {});
+      expect(integration?.githubAccessToken).toBe('new-token');
     });
 
     test('BYOK settings are scoped per identity', async () => {
@@ -238,9 +256,40 @@ describe('Convex authorization', () => {
       });
       await t.withIdentity(ALICE).mutation(api.projects.publishProject, { projectName: 'alice-live' });
 
-      const files = await t.query(api.files.getFilesByProject, { projectId: project!._id });
-      expect(files).toHaveLength(1);
-      expect(files[0].content).toBe('<h1>hello</h1>');
+      expect(await t.query(api.files.getFilesByProject, { projectId: project!._id })).toEqual([]);
+
+      const files = await t.query(api.files.getPublishedFiles, { projectName: 'alice-live' });
+      expect(files).toEqual([
+        { path: 'index.html', content: '<h1>hello</h1>', language: 'html', fileType: 'page' },
+      ]);
+    });
+
+    test('cannot record an edit against a file from another project', async () => {
+      const t = setup();
+      await makeProject(t, ALICE, 'alice-first');
+      await makeProject(t, ALICE, 'alice-second');
+      const first = await t
+        .withIdentity(ALICE)
+        .query(api.projects.getProject, { projectName: 'alice-first' });
+      const second = await t
+        .withIdentity(ALICE)
+        .query(api.projects.getProject, { projectName: 'alice-second' });
+      const fileId = await t.withIdentity(ALICE).mutation(api.files.saveFile, {
+        projectId: first!._id,
+        path: 'index.html',
+        content: '<h1>x</h1>',
+        language: 'html',
+        fileType: 'page',
+      });
+
+      await expect(
+        t.withIdentity(ALICE).mutation(api.files.recordEdit, {
+          projectId: second!._id,
+          fileId,
+          operation: '{}',
+          previousContent: '<h1>x</h1>',
+        })
+      ).rejects.toThrow('File not found');
     });
   });
 
@@ -263,6 +312,18 @@ describe('Convex authorization', () => {
   });
 
   describe('name reservation', () => {
+    test('saveProject cannot create an unreserved project', async () => {
+      const t = setup();
+      await expect(
+        t.withIdentity(ALICE).mutation(api.projects.saveProject, {
+          projectName: 'not-reserved',
+          prompt: 'x',
+          status: 'pending',
+          isPublished: false,
+        })
+      ).rejects.toThrow('Project not found');
+    });
+
     test('a second reservation of the same name fails, even for the same user', async () => {
       const t = setup();
       await makeProject(t, ALICE, 'taken');
@@ -362,6 +423,12 @@ describe('Convex authorization', () => {
       });
 
       await t.withIdentity(ALICE).mutation(api.projects.deleteProject, { projectName: 'alice-cascade' });
+      vi.useFakeTimers();
+      try {
+        await t.finishAllScheduledFunctions(vi.runAllTimers);
+      } finally {
+        vi.useRealTimers();
+      }
 
       const orphanedFiles = await t.run(async (ctx) => ctx.db.query('projectFiles').collect());
       expect(orphanedFiles).toEqual([]);

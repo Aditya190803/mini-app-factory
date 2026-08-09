@@ -68,12 +68,8 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx): Promise<{
  * Mirrors `assertCanAccessProject` in lib/project-access.ts: the owner, or anyone signed in when
  * the project has no owner at all.
  *
- * The orphan branch is legacy-only and deliberately retained for now. Projects can no longer be
- * created without an owner — `saveProject` takes the id from the token — so the only rows that can
- * still match it predate this change. Removing the branch outright would strand those rows, so the
- * correct sequence is: backfill `userId` (see `backfillProjectOwners`), then delete this branch.
- * Until then any signed-in user can still reach an un-owned legacy project, which is the residual
- * part of that finding.
+ * The orphan branch is legacy-only. Backfill old rows with an audited one-off migration before
+ * removing it; new project creation always derives the owner from the verified identity.
  */
 export function canAccessProject(
   project: Doc<'projects'> | null,
