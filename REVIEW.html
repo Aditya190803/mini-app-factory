@@ -166,6 +166,10 @@
   .find.sv-high { border-left-color: var(--high); }
   .find.sv-med  { border-left-color: var(--med); }
   .find.sv-low  { border-left-color: var(--low); }
+  /* Status wins the stripe — after a remediation pass, "is it done" is what you scan for.
+     Severity stays legible in the chip. */
+  .find.is-fixed   { border-left-color: var(--good); }
+  .find.is-partial { border-left-color: var(--high); }
   .find-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 8px; }
   .fid { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--ink-faint); }
   .ftitle { font-weight: 600; font-size: 15.5px; flex: 1 1 260px; line-height: 1.35; }
@@ -182,6 +186,16 @@
   .chip.sv-med  { background: var(--med-soft);  color: var(--med); }
   .chip.sv-low  { background: var(--low-soft);  color: var(--low); }
   .chip.ck      { background: var(--good-soft); color: var(--good); }
+  .chip.st-fixed   { background: var(--good); color: var(--surface); }
+  .chip.st-partial { background: var(--high); color: var(--surface); }
+  .chip.st-open    { background: transparent; color: var(--ink-faint); box-shadow: inset 0 0 0 1px var(--rule-strong); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
+    color: var(--ink-faint); margin: -28px 0 40px;
+  }
+  .legend .sw { display: inline-block; width: 18px; height: 3px; margin-right: 6px; vertical-align: middle; }
 
   .loc {
     font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
@@ -238,16 +252,21 @@
 <div class="shell">
 
   <header class="mast">
-    <p class="eyebrow">Engineering review · 09 Aug 2026</p>
+    <p class="eyebrow">Engineering review · 09 Aug 2026 · revised after remediation</p>
     <h1>Mini App Factory: audit &amp; competitive position</h1>
     <p class="standfirst">
       A full-codebase review of the generation pipeline, editor, and security model — followed by an
       honest read of where this product sits against Lovable, bolt.new, and Emergent, and what is
       worth building next.
     </p>
+    <p class="standfirst">
+      <strong>Phase 1 of the roadmap has since shipped.</strong> Every finding below carries its
+      current status, and the text of each one describes the original defect — so the record of what
+      was wrong stays intact rather than being edited away.
+    </p>
     <div class="byline">
-      <span>main @ aa431cd</span>
-      <span>17,306 LOC across 165 files</span>
+      <span>branch security-hardening @ 5245b04</span>
+      <span>audited at main @ aa431cd</span>
       <span>Next.js 16 · Convex · Stack Auth</span>
     </div>
   </header>
@@ -273,11 +292,17 @@
     <main>
 
       <div class="stats">
-        <div class="stat is-crit"><div class="n">4</div><div class="l">Critical</div></div>
-        <div class="stat is-high"><div class="n">7</div><div class="l">High</div></div>
-        <div class="stat"><div class="n">39</div><div class="l">Total findings</div></div>
-        <div class="stat is-good"><div class="n">105</div><div class="l">Tests passing</div></div>
-        <div class="stat is-good"><div class="n">0</div><div class="l">Type errors</div></div>
+        <div class="stat is-good"><div class="n">10</div><div class="l">Fixed</div></div>
+        <div class="stat is-high"><div class="n">4</div><div class="l">Reduced</div></div>
+        <div class="stat"><div class="n">25</div><div class="l">Open</div></div>
+        <div class="stat is-good"><div class="n">0</div><div class="l">Critical left</div></div>
+        <div class="stat is-good"><div class="n">156</div><div class="l">Tests passing</div></div>
+      </div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--good)"></span>Fixed</span>
+        <span><span class="sw" style="background:var(--high)"></span>Reduced, not closed</span>
+        <span><span class="sw" style="background:var(--low)"></span>Open — stripe shows severity</span>
+        <span>Chips keep the original severity throughout</span>
       </div>
 
       <section id="verdict">
@@ -306,6 +331,46 @@
           <p>
             Fix Convex authorization first. It is the root of four of the five most serious findings, and
             almost nothing else on this list matters until it is done.
+          </p>
+        </div>
+
+        <h3>What changed since</h3>
+        <p>
+          That is now done. Identity in Convex comes from a verified Stack Auth JWT, and no handler
+          accepts a caller-supplied <code>userId</code> — the sole exception is an admin-gated
+          backfill where the id is the target to assign. <strong>All four criticals are closed</strong>,
+          along with three of the seven highs, and the test suite went from 105 to 156 with 28 of the
+          new tests asserting the authorization properties directly.
+        </p>
+        <p>
+          Shipped as seven commits on <code>security-hardening</code>. Only <code>HEAD</code> is green:
+          the Convex change moves function signatures, server wrappers, and React call sites together,
+          so intermediate commits do not individually build.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Commit</th><th>What it closes</th></tr></thead>
+            <tbody>
+              <tr><td class="f">b7a63ad</td><td>SEC-3 (contained), SEC-4</td></tr>
+              <tr><td class="f">761f224</td><td>SEC-5</td></tr>
+              <tr><td class="f">d9095cf</td><td>SEC-2</td></tr>
+              <tr><td class="f">729c3f3</td><td>SEC-7, ARC-1</td></tr>
+              <tr><td class="f">61e8565</td><td>SEC-1, SEC-9 (bounded), BUG-5, ARC-6, DX-2</td></tr>
+              <tr><td class="f">5245b04</td><td>DX-3</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <div class="nh">Required before this runs</div>
+          <p>
+            <code>STACK_PROJECT_ID</code> and <code>MAF_ADMIN_EMAILS</code> must be set on the Convex
+            deployment (<code>npx convex env set …</code>) and in the app environment. The admin gate
+            now fails closed, and <code>auth.config.ts</code> throws without the former. Deploy the app
+            and Convex together — the changed signatures mean a new client against an old backend fails.
+          </p>
+          <p>
+            <code>convex</code> was bumped 1.31.7 → 1.43.0, because no <code>convex-test</code> release
+            supports 1.31 and the harness is what makes the authorization tests possible.
           </p>
         </div>
       </section>
@@ -344,8 +409,8 @@
           <p>Findings marked <span class="chip ck">verified</span> I confirmed by reading the code directly rather than taking an agent's word for it.</p>
         </div>
 
-        <div class="find sv-crit">
-          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-1</span><span class="ftitle">Convex enforces no authorization at all — every API auth check is bypassable</span><span class="chip ck">verified</span></div>
+        <div class="find sv-crit is-fixed">
+          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-1</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Convex enforces no authorization at all — every API auth check is bypassable</span><span class="chip ck">verified</span></div>
           <p>
             Every function in <code>convex/*.ts</code> is exported as a public <code>query</code> or
             <code>mutation</code>. There is not a single <code>ctx.auth.getUserIdentity()</code>,
@@ -373,8 +438,8 @@
           <div class="loc"><span>convex/integrations.ts:4</span><span>convex/aiSettings.ts:62</span><span>convex/files.ts:88</span><span>convex/projects.ts:201</span><span>components/convex-client-provider.tsx:6</span></div>
         </div>
 
-        <div class="find sv-crit">
-          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-2</span><span class="ftitle">OAuth tokens and BYOK keys stored in plaintext; the encryption secret is declared but never used</span><span class="chip ck">verified</span></div>
+        <div class="find sv-crit is-fixed">
+          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-2</span><span class="chip st-fixed">Fixed</span><span class="ftitle">OAuth tokens and BYOK keys stored in plaintext; the encryption secret is declared but never used</span><span class="chip ck">verified</span></div>
           <p>
             <code>lib/env.ts:25</code> validates <code>INTEGRATION_TOKEN_SECRET</code> at 32+ characters and
             the README documents it — but it appears nowhere else in the codebase except test fixtures. I
@@ -390,8 +455,8 @@
           <div class="loc"><span>lib/env.ts:25</span><span>convex/schema.ts:96</span><span>app/api/integrations/github/callback/route.ts:64</span><span>app/api/integrations/disconnect/route.ts:32</span></div>
         </div>
 
-        <div class="find sv-crit">
-          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-3</span><span class="ftitle">Model-generated HTML is served on the app's own origin with no CSP or sandbox</span><span class="chip ck">verified</span></div>
+        <div class="find sv-crit is-partial">
+          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-3</span><span class="chip st-partial">Reduced</span><span class="ftitle">Model-generated HTML is served on the app's own origin with no CSP or sandbox</span><span class="chip ck">verified</span></div>
           <p>
             <code>/results/&lt;name&gt;/…</code> returns arbitrary generated HTML and JS with a
             <code>Content-Type</code> header and nothing else. There is no <code>middleware.ts</code>, no
@@ -415,8 +480,8 @@
           <div class="loc"><span>app/results/[projectName]/[[...path]]/route.ts:66</span><span>app/preview/[projectName]/[[...path]]/route.ts:72</span><span>lib/ai-admin-client.ts:49</span><span>components/editor-workspace.tsx:660</span></div>
         </div>
 
-        <div class="find sv-crit">
-          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-4</span><span class="ftitle">Stored HTML injection through unescaped metadata interpolation</span><span class="chip ck">verified</span></div>
+        <div class="find sv-crit is-fixed">
+          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">SEC-4</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Stored HTML injection through unescaped metadata interpolation</span><span class="chip ck">verified</span></div>
           <p>
             <code>lib/page-builder.ts</code> builds head tags by string template without escaping. Worth
             being precise here, because the audit overstated it slightly: for title, description, and
@@ -434,8 +499,8 @@
           <div class="loc"><span>lib/page-builder.ts:93</span><span>lib/page-builder.ts:101</span><span>lib/page-builder.ts:119</span><span>convex/projects.ts:141</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-5</span><span class="ftitle">Admin gate is a hardcoded email with no verification check</span></div>
+        <div class="find sv-high is-fixed">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-5</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Admin gate is a hardcoded email with no verification check</span></div>
           <p>
             <code>lib/admin-access.ts:1</code> hardcodes <code>aditya.mer@somaiya.edu</code> as the fallback
             when <code>MAF_ADMIN_EMAILS</code> is unset, in a public repo. No gate checks
@@ -446,8 +511,8 @@
           <div class="loc"><span>lib/admin-access.ts:1</span><span>app/api/admin/models/route.ts:158</span><span>app/api/ai/settings/route.ts:156</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-6</span><span class="ftitle">Rate limiting is an in-process Map, so it does nothing on serverless</span><span class="chip ck">verified</span></div>
+        <div class="find sv-high is-partial">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-6</span><span class="chip st-partial">Reduced</span><span class="ftitle">Rate limiting is an in-process Map, so it does nothing on serverless</span><span class="chip ck">verified</span></div>
           <p>
             <code>lib/rate-limit.ts:12</code> is a module-scope <code>Map</code>. On Vercel every lambda
             instance gets its own, so concurrency N multiplies every limit by N and cold starts reset it. It
@@ -459,8 +524,8 @@
           <div class="loc"><span>lib/rate-limit.ts:12</span><span>app/api/deploy/route.ts</span><span>app/api/check-name/route.ts</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-7</span><span class="ftitle">GET /api/ai/settings returns cleartext BYOK API keys to the browser</span></div>
+        <div class="find sv-high is-fixed">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-7</span><span class="chip st-fixed">Fixed</span><span class="ftitle">GET /api/ai/settings returns cleartext BYOK API keys to the browser</span></div>
           <p>
             <code>sanitizeBYOKConfig</code> only trims strings — it masks nothing — and the route returns
             <code>byokConfig</code> verbatim. The settings UI only needs to know <em>whether</em> a key is
@@ -470,8 +535,8 @@
           <div class="loc"><span>app/api/ai/settings/route.ts:140</span><span>lib/ai-admin-config.ts:102</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-8</span><span class="ftitle">/api/ai/status is entirely unauthenticated and leaks configuration</span></div>
+        <div class="find sv-high is-open">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-8</span><span class="chip st-open">Open</span><span class="ftitle">/api/ai/status is entirely unauthenticated and leaks configuration</span></div>
           <p>
             No <code>getUser()</code> call. It discloses which provider keys are configured, leaks raw
             exception text on error, and fires up to four outbound provider requests <em>using your server
@@ -481,8 +546,8 @@
           <div class="loc"><span>app/api/ai/status/route.ts:3</span><span>app/api/ai/status/route.ts:26</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-9</span><span class="ftitle">Orphan projects are readable, deployable, and claimable by any signed-in user</span></div>
+        <div class="find sv-high is-partial">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">SEC-9</span><span class="chip st-partial">Reduced</span><span class="ftitle">Orphan projects are readable, deployable, and claimable by any signed-in user</span></div>
           <p>
             <code>lib/project-access.ts:5</code> returns true when <code>!project.userId</code>. Any project
             with an unset owner is accessible to <em>everyone</em> authenticated — readable, previewable,
@@ -494,8 +559,8 @@
           <div class="loc"><span>lib/project-access.ts:5</span><span>convex/projects.ts:25</span><span>convex/projects.ts:193</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">SEC-10</span><span class="ftitle">Unvalidated <code>owner</code> turns check-repo into a general GitHub API proxy</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">SEC-10</span><span class="chip st-open">Open</span><span class="ftitle">Unvalidated <code>owner</code> turns check-repo into a general GitHub API proxy</span></div>
           <p>
             <code>check-repo/route.ts:41</code> interpolates <code>owner</code> straight from the query
             string with no validation and — unlike the adjacent <code>name</code> — no
@@ -507,8 +572,8 @@
           <div class="loc"><span>app/api/integrations/github/check-repo/route.ts:12</span><span>app/api/integrations/github/check-repo/route.ts:41</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">SEC-11</span><span class="ftitle">No per-user quotas, and error responses leak upstream bodies</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">SEC-11</span><span class="chip st-open">Open</span><span class="ftitle">No per-user quotas, and error responses leak upstream bodies</span></div>
           <p>
             No project cap, no storage cap, no file-size limit on <code>saveFiles</code> (unbounded
             <code>v.array</code> of unbounded strings), no AI spend cap, and
@@ -527,8 +592,8 @@
           <p>These are the ones a user will actually hit.</p>
         </div>
 
-        <div class="find sv-crit">
-          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">BUG-1</span><span class="ftitle">A first-load race can silently delete a multi-page generation</span></div>
+        <div class="find sv-crit is-open">
+          <div class="find-top"><span class="chip sv-crit">Critical</span><span class="fid">BUG-1</span><span class="chip st-open">Open</span><span class="ftitle">A first-load race can silently delete a multi-page generation</span></div>
           <p>
             <code>convex/files.ts:120</code> deletes every file not present in the input list. On first
             load, if the reactive <code>projectFiles</code> query resolves as <code>[]</code> before Convex
@@ -541,8 +606,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:117</span><span>convex/files.ts:120</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-2</span><span class="ftitle">The editor preview bridge script gets persisted and served publicly</span></div>
+        <div class="find sv-high is-open">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-2</span><span class="chip st-open">Open</span><span class="ftitle">The editor preview bridge script gets persisted and served publicly</span></div>
           <p>
             <code>editor-workspace.tsx:192</code> builds <code>previewHtml</code> with
             <code>isEditorPreview = true</code> — which injects a ~190-line VFS/element-selector bridge and
@@ -554,8 +619,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:192</span><span>hooks/use-editor-deploy.ts:265</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-3</span><span class="ftitle">A single failed tool call throws away the whole transform</span></div>
+        <div class="find sv-high is-open">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-3</span><span class="chip st-open">Open</span><span class="ftitle">A single failed tool call throws away the whole transform</span></div>
           <p>
             <code>lib/transform-run.ts:236</code> rethrows on the first tool failure, after earlier tools
             have already mutated <code>finalFiles</code>. Nothing is persisted; the user sees an error and
@@ -565,8 +630,8 @@
           <div class="loc"><span>lib/transform-run.ts:236</span></div>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-4</span><span class="ftitle">The AI README in ZIP export has never worked</span><span class="chip ck">verified</span></div>
+        <div class="find sv-high is-open">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">BUG-4</span><span class="chip st-open">Open</span><span class="ftitle">The AI README in ZIP export has never worked</span><span class="chip ck">verified</span></div>
           <p>
             <code>editor-workspace.tsx:626</code> posts <code>{ projectName, prompt, files }</code>. The
             route schema is <code>z.object({ projectName, prompt }).strict()</code>, so the unknown
@@ -576,8 +641,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:626</span><span>app/api/generate/readme/route.ts:8</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-5</span><span class="ftitle">Duplicate project names are possible; saveProject clobbers <code>html</code></span></div>
+        <div class="find sv-med is-fixed">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-5</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Duplicate project names are possible; saveProject clobbers <code>html</code></span></div>
           <p>
             <code>check-name</code> does <code>projectExists()</code> then <code>saveProject()</code> — a
             plain TOCTOU, with <code>.first()</code> on a non-unique index and nothing enforcing uniqueness.
@@ -588,8 +653,8 @@
           <div class="loc"><span>app/api/check-name/route.ts:25</span><span>convex/projects.ts:51</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-6</span><span class="ftitle">Deploy has no <code>maxDuration</code> and uploads files one at a time</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-6</span><span class="chip st-open">Open</span><span class="ftitle">Deploy has no <code>maxDuration</code> and uploads files one at a time</span></div>
           <p>
             Two sequential GitHub API calls per file, plus repo, deploy-key, webhook, and site calls — and
             unlike generate and transform, the route exports no <code>maxDuration</code>. A medium project
@@ -599,8 +664,8 @@
           <div class="loc"><span>app/api/deploy/route.ts:250</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-7</span><span class="ftitle">Transform and autosave can silently overwrite each other</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">BUG-7</span><span class="chip st-open">Open</span><span class="ftitle">Transform and autosave can silently overwrite each other</span></div>
           <p>
             The server re-reads files at request start, so any edit still inside the client's 2s autosave
             debounce is invisible to the model — and is then overwritten when the delta is applied and
@@ -610,8 +675,8 @@
           <div class="loc"><span>app/api/transform/route.ts:105</span><span>lib/editor-apply-transform.ts:66</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">BUG-8</span><span class="ftitle">The Delete key deletes the active file whenever focus isn't in an input</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">BUG-8</span><span class="chip st-open">Open</span><span class="ftitle">The Delete key deletes the active file whenever focus isn't in an input</span></div>
           <p>
             <code>editor-workspace.tsx:453</code>. Clicking the file tree and pressing Delete destroys the
             open file with no confirmation. Also: autosave failures only log to console and reset status to
@@ -626,8 +691,8 @@
           <h2>Architecture · 8 findings</h2>
         </div>
 
-        <div class="find sv-high">
-          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">ARC-1</span><span class="ftitle">Live API keys are transmitted on every request that no server reads</span></div>
+        <div class="find sv-high is-fixed">
+          <div class="find-top"><span class="chip sv-high">High</span><span class="fid">ARC-1</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Live API keys are transmitted on every request that no server reads</span></div>
           <p>
             <code>withAIAdminHeaders</code> base64-encodes BYOK keys into an <code>x-maf-ai-byok</code>
             header on four call sites. The only consumer,
@@ -639,8 +704,8 @@
           <div class="loc"><span>lib/ai-admin-server.ts:15</span><span>lib/ai-admin-client.ts:72</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-2</span><span class="ftitle"><code>editor-workspace.tsx</code> is a 1,214-line god component</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-2</span><span class="chip st-open">Open</span><span class="ftitle"><code>editor-workspace.tsx</code> is a 1,214-line god component</span></div>
           <p>
             28 <code>useState</code> hooks, all file CRUD, history, autosave, keyboard shortcuts, ZIP
             export, and six inline dialogs (~470 lines of JSX). The file-mutation logic is pure and should
@@ -652,8 +717,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:533</span><span>components/editor-workspace.tsx:567</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-3</span><span class="ftitle">File-type inference is implemented five times, and they disagree</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-3</span><span class="chip st-open">Open</span><span class="ftitle">File-type inference is implemented five times, and they disagree</span></div>
           <p>
             <code>file-parser.ts</code> marks <code>header*.html</code> as a <code>partial</code>;
             <code>tool-executor.ts</code> marks any non-CSS/JS file as a <code>page</code>. So a partial
@@ -664,8 +729,8 @@
           <div class="loc"><span>lib/file-parser.ts:33</span><span>lib/transform-files.ts:3</span><span>lib/tool-executor.ts:48</span><span>convex/files.ts:45</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-4</span><span class="ftitle">~600 lines of dead code, including a whole parallel build pipeline</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-4</span><span class="chip st-open">Open</span><span class="ftitle">~600 lines of dead code, including a whole parallel build pipeline</span></div>
           <p>
             <code>lib/site-builder.ts</code> (408 lines) contains an entire filesystem-based build system —
             <code>BuildJob</code>, <code>buildSite</code>, <code>runAISession</code>, an in-memory job
@@ -679,8 +744,8 @@
           <div class="loc"><span>lib/site-builder.ts</span><span>lib/ai-tools.ts</span><span>lib/ai-session.ts</span><span>app/api/generate/route.ts:101</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-5</span><span class="ftitle">The schema carries three generations of storage at once</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-5</span><span class="chip st-open">Open</span><span class="ftitle">The schema carries three generations of storage at once</span></div>
           <p>
             <code>html</code> (marked "will be removed later", still actively written and read),
             <code>pages</code> (never read or written by any code), and the actual
@@ -692,8 +757,8 @@
           <div class="loc"><span>convex/schema.ts:9</span><span>convex/schema.ts:32</span><span>convex/schema.ts:83</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-6</span><span class="ftitle">Deleting a project orphans all of its rows forever</span></div>
+        <div class="find sv-med is-fixed">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">ARC-6</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Deleting a project orphans all of its rows forever</span></div>
           <p>
             <code>deleteProject</code> deletes only the <code>projects</code> row. Rows in
             <code>projectFiles</code>, <code>editHistory</code>, and <code>deploymentHistory</code> are
@@ -703,8 +768,8 @@
           <div class="loc"><span>convex/projects.ts:197</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">ARC-7</span><span class="ftitle">Preview and results routes are 95% duplicates, and preview is cross-wired</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">ARC-7</span><span class="chip st-open">Open</span><span class="ftitle">Preview and results routes are 95% duplicates, and preview is cross-wired</span></div>
           <p>
             The two handlers differ only in the auth gate and cache header — but the <em>preview</em> route
             injects <code>&lt;base href="/results/&lt;name&gt;/"&gt;</code>, pointing authenticated previews at
@@ -713,8 +778,8 @@
           <div class="loc"><span>lib/page-builder.ts:65</span><span>app/preview/[projectName]/[[...path]]/route.ts:60</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">ARC-8</span><span class="ftitle">Transform SSE has no heartbeat; generate does</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">ARC-8</span><span class="chip st-open">Open</span><span class="ftitle">Transform SSE has no heartbeat; generate does</span></div>
           <p>
             Transform can hold a 150-second model call open with no keepalive bytes. Any intermediate proxy
             will drop it. Generate already has an 8s heartbeat — reuse the same pattern.
@@ -728,8 +793,8 @@
           <h2>Performance · 6 findings</h2>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-1</span><span class="ftitle">One preview render costs 4–7 <code>getProject</code> round-trips</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-1</span><span class="chip st-open">Open</span><span class="ftitle">One preview render costs 4–7 <code>getProject</code> round-trips</span></div>
           <p>
             Every helper in <code>lib/projects.ts</code> re-resolves the project independently —
             <code>getFiles</code>, <code>getFile</code>, and <code>saveFiles</code> each call
@@ -739,8 +804,8 @@
           <div class="loc"><span>lib/projects.ts:89</span><span>app/preview/[projectName]/[[...path]]/route.ts:17</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-2</span><span class="ftitle">Every keystroke fully reloads the preview iframe</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-2</span><span class="chip st-open">Open</span><span class="ftitle">Every keystroke fully reloads the preview iframe</span></div>
           <p>
             <code>previewHtml</code> is memoized on <code>files</code>, which changes on every keystroke, so
             each character triggers a full cheerio parse and serialize of the whole project, a new
@@ -752,8 +817,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:192</span><span>components/editor/preview-panel.tsx:39</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-3</span><span class="ftitle">Autosave rewrites the entire project every two seconds</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-3</span><span class="chip st-open">Open</span><span class="ftitle">Autosave rewrites the entire project every two seconds</span></div>
           <p>
             The 2s debounce sends all files to <code>saveFiles</code>, which loops sequential
             <code>ctx.db.patch</code> calls over every one. A 12-file project is 12 sequential writes every
@@ -762,8 +827,8 @@
           <div class="loc"><span>components/editor-workspace.tsx:253</span><span>convex/files.ts:130</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-4</span><span class="ftitle">The dashboard downloads every project's full HTML blob</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">PERF-4</span><span class="chip st-open">Open</span><span class="ftitle">The dashboard downloads every project's full HTML blob</span></div>
           <p>
             <code>getUserProjects</code> is an unpaginated <code>.collect()</code> and the returned rows
             include the legacy <code>html</code> field. Loading the dashboard pulls every project's entire
@@ -773,8 +838,8 @@
           <div class="loc"><span>convex/projects.ts:177</span><span>app/dashboard/page.tsx:29</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">PERF-5</span><span class="ftitle">1.6 seconds of artificial <code>setTimeout</code> inside the generate stream</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">PERF-5</span><span class="chip st-open">Open</span><span class="ftitle">1.6 seconds of artificial <code>setTimeout</code> inside the generate stream</span></div>
           <p>
             Four deliberate sleeps pace the fake progress messages. Once generation actually streams
             (ROAD-3) these should go — real progress is better theatre than fake progress.
@@ -782,8 +847,8 @@
           <div class="loc"><span>app/api/generate/route.ts:361</span><span>app/api/generate/route.ts:403</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">PERF-6</span><span class="ftitle">Undo history retains 50 deep copies of the whole project</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">PERF-6</span><span class="chip st-open">Open</span><span class="ftitle">Undo history retains 50 deep copies of the whole project</span></div>
           <p>
             <code>addToHistory</code> pushes a full deep copy of every file roughly every second of typing,
             capped at 50 entries. For a 500 KB project that is up to 25 MB retained in memory — and it is
@@ -798,8 +863,8 @@
           <h2>Tooling &amp; process · 6 findings</h2>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">DX-1</span><span class="ftitle">Route type checking is silently skipped in both CI and production builds</span><span class="chip ck">verified</span></div>
+        <div class="find sv-med is-open">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">DX-1</span><span class="chip st-open">Open</span><span class="ftitle">Route type checking is silently skipped in both CI and production builds</span><span class="chip ck">verified</span></div>
           <p>
             <code>next.config.mjs</code> sets <code>typescript.ignoreBuildErrors: true</code>. CI compensates
             with a separate <code>tsc --noEmit</code> — but <code>tsconfig.json</code> includes
@@ -816,8 +881,8 @@
           <div class="loc"><span>next.config.mjs:3</span><span>tsconfig.json:38</span><span>app/edit/[projectName]/page.tsx:8</span></div>
         </div>
 
-        <div class="find sv-med">
-          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">DX-2</span><span class="ftitle">Zero tests cover the Convex layer — precisely the SEC-1 blind spot</span></div>
+        <div class="find sv-med is-fixed">
+          <div class="find-top"><span class="chip sv-med">Medium</span><span class="fid">DX-2</span><span class="chip st-fixed">Fixed</span><span class="ftitle">Zero tests cover the Convex layer — precisely the SEC-1 blind spot</span></div>
           <p>
             The 105 passing tests cover <code>tool-executor</code>, the transform/deploy/generate routes,
             edit-intent, and project-access well. Nothing covers any function in <code>convex/</code>, and
@@ -830,8 +895,8 @@
           <div class="loc"><span>convex/</span><span>lib/oauth.ts</span><span>vitest.config.ts</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-3</span><span class="ftitle">No <code>testTimeout</code>, so a cold CI run flakes</span><span class="chip ck">verified</span></div>
+        <div class="find sv-low is-fixed">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-3</span><span class="chip st-fixed">Fixed</span><span class="ftitle">No <code>testTimeout</code>, so a cold CI run flakes</span><span class="chip ck">verified</span></div>
           <p>
             Running the suite cold, <strong>8 tests failed</strong> — all 5,000 ms timeouts across the
             generate, transform, and deploy route files. Re-running those same three files warm:
@@ -842,8 +907,8 @@
           <div class="loc"><span>vitest.config.ts</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-4</span><span class="ftitle">CI never builds; no <code>.env.example</code> can exist</span><span class="chip ck">verified</span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-4</span><span class="chip st-open">Open</span><span class="ftitle">CI never builds; no <code>.env.example</code> can exist</span><span class="chip ck">verified</span></div>
           <p>
             The workflow runs typecheck, lint, and tests but never <code>bun run build</code>, so a broken
             build reaches <code>main</code>. And <code>.gitignore</code> ignores <code>.env*</code> — which
@@ -854,8 +919,8 @@
           <div class="loc"><span>.github/workflows/ci.yml</span><span>.gitignore</span><span>README.md</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-5</span><span class="ftitle">61 buttons, one <code>aria-label</code></span></div>
+        <div class="find sv-low is-open">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-5</span><span class="chip st-open">Open</span><span class="ftitle">61 buttons, one <code>aria-label</code></span></div>
           <p>
             Icon-only controls rely on <code>title</code> alone for their accessible name. The ESLint config
             enables only three <code>jsx-a11y</code> rules, all at <code>warn</code>, so none of this
@@ -866,8 +931,8 @@
           <div class="loc"><span>eslint.config.cjs:32</span><span>app/dashboard/page.tsx:56</span></div>
         </div>
 
-        <div class="find sv-low">
-          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-6</span><span class="ftitle">No security headers, no error tracking, inconsistent request IDs</span></div>
+        <div class="find sv-low is-partial">
+          <div class="find-top"><span class="chip sv-low">Low</span><span class="fid">DX-6</span><span class="chip st-partial">Reduced</span><span class="ftitle">No security headers, no error tracking, inconsistent request IDs</span></div>
           <p>
             No <code>middleware.ts</code> and no <code>headers()</code>, so beyond SEC-3 there is also no
             <code>nosniff</code>, <code>Referrer-Policy</code>, HSTS, or <code>Permissions-Policy</code>.
@@ -989,10 +1054,10 @@
         </div>
 
         <div class="phase">
-          <div class="phase-n">01</div>
+          <div class="phase-n" style="background:var(--good)">01</div>
           <div class="phase-b">
-            <h4>Close the authorization hole</h4>
-            <div class="phase-meta">SEC-1 → SEC-4 · blocks everything else · ~1–2 weeks</div>
+            <h4>Close the authorization hole <span class="chip st-fixed">Shipped</span></h4>
+            <div class="phase-meta">SEC-1 → SEC-4 · done, see Verdict for commits</div>
             <ul>
               <li>Write the Convex authorization tests <em>first</em> — they are the regression guard (DX-2).</li>
               <li>Stack Auth JWTs into Convex; derive <code>userId</code> from <code>ctx.auth</code>; delete every <code>userId</code> argument.</li>
@@ -1001,6 +1066,18 @@
               <li>Encrypt tokens with the <code>INTEGRATION_TOKEN_SECRET</code> you already validate; stop returning BYOK keys to the browser; delete the dead <code>x-maf-ai-byok</code> header (ARC-1).</li>
               <li>Escape the favicon interpolation; add ownership to <code>updateMetadata</code>.</li>
             </ul>
+            <p style="margin-top:14px">
+              Pulled forward while rewriting these handlers, because leaving them would have meant
+              shipping known bugs: cascade delete (ARC-6), atomic name reservation and the
+              <code>saveProject</code> <code>html</code> clobber (BUG-5), a bounded deployment-history
+              query, validation and a rate limit on <code>check-name</code>, and the global audit log.
+            </p>
+            <p>
+              <strong>Not closed by this phase:</strong> SEC-3 is contained by a sandbox CSP but still
+              wants a separate origin. SEC-6 gained limits on two more routes but the store is still
+              in-process. SEC-9 can no longer produce new orphans, though legacy rows remain —
+              <code>backfillProjectOwners</code> exists to finish it.
+            </p>
           </div>
         </div>
 
@@ -1082,6 +1159,14 @@
           Locally executed, not inferred: <code>bun install</code>, <code>bun run typecheck</code> (clean),
           <code>bun run lint</code> (clean), and <code>bun run test:ci</code> (8 cold-start timeouts, all
           passing warm — see DX-3).
+        </p>
+        <p>
+          <strong>On the revision.</strong> Statuses reflect the state of
+          <code>security-hardening</code> at <code>5245b04</code>, where typecheck, lint, and 156 tests
+          pass. Each finding's prose still describes the original defect rather than the fix, so this
+          stays a record of what was found. "Reduced" means the exposure is materially smaller but the
+          finding is not closed — read the phase-01 note for exactly what remains in each case. Nothing
+          here has been verified against a live deployment.
         </p>
         <p>
           Two corrections to the raw agent output are folded in above. The metadata-injection finding was
