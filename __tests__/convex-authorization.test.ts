@@ -185,7 +185,7 @@ describe('Convex authorization', () => {
       const t = setup();
       await t.withIdentity(ALICE).mutation(api.aiSettings.upsertForUser, {
         adminConfigJson: '{}',
-        byokConfigJson: '{"groq":"alice-key"}',
+        byokConfigJson: '{"opencode":"alice-key"}',
       });
 
       expect(await t.withIdentity(BOB).query(api.aiSettings.getForCurrentUser, {})).toBeNull();

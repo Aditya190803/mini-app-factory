@@ -126,7 +126,7 @@ export async function runTransformWork(input: TransformWorkInput) {
   });
 
   const client = await getAIClient(runtimeConfig);
-  const effectiveModelId = modelId || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
+  const effectiveModelId = modelId || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
   const effectiveProviderId = isAIProviderId(providerId) ? providerId : undefined;
 
   const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 

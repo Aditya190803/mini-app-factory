@@ -11,7 +11,7 @@ export default defineConfig({
     testTimeout: 30_000,
     env: {
       NEXT_PUBLIC_CONVEX_URL: 'https://test.convex.cloud',
-      GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
+      OPENCODE_API_KEY: 'test-key',
       NEXT_PUBLIC_STACK_PROJECT_ID: 'stack-project',
       NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: 'stack-client',
       STACK_SECRET_SERVER_KEY: 'stack-secret',

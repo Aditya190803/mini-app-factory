@@ -20,10 +20,8 @@ type ProviderMeta = {
 };
 
 const PROVIDERS: ProviderMeta[] = [
-  { id: 'google', name: 'Google Gemini' },
-  { id: 'groq', name: 'Groq' },
+  { id: 'opencode', name: 'OpenCode Zen' },
   { id: 'openrouter', name: 'OpenRouter' },
-  { id: 'cerebras', name: 'Cerebras' },
 ];
 
 function addModel(

@@ -81,8 +81,8 @@ describe('POST /api/ai/settings', () => {
       ...DEFAULT_AI_ADMIN_CONFIG,
       providers: {
         ...DEFAULT_AI_ADMIN_CONFIG.providers,
-        google: {
-          ...DEFAULT_AI_ADMIN_CONFIG.providers.google,
+        opencode: {
+          ...DEFAULT_AI_ADMIN_CONFIG.providers.opencode,
           enabled: false,
         },
       },
@@ -93,7 +93,7 @@ describe('POST /api/ai/settings', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         adminConfig: modifiedAdmin,
-        byokConfig: { groq: 'user-key' },
+        byokConfig: { opencode: 'user-key' },
       }),
     });
 
@@ -122,7 +122,7 @@ describe('POST /api/ai/settings', () => {
     (getPersistedAISettings as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         adminConfig: DEFAULT_AI_ADMIN_CONFIG,
-        byokConfig: { groq: 'saved-key' },
+        byokConfig: { opencode: 'saved-key' },
         byokUnreadable: false,
         customModels: {},
       })
@@ -137,7 +137,7 @@ describe('POST /api/ai/settings', () => {
 
     const res = await POST(new Request('http://localhost/api/ai/settings', {
       method: 'POST',
-      body: JSON.stringify({ byokConfig: { groq: '' } }),
+      body: JSON.stringify({ byokConfig: { opencode: '' } }),
     }));
 
     expect(res.status).toBe(200);
@@ -162,7 +162,7 @@ describe('POST /api/ai/settings', () => {
 
     const res = await POST(new Request('http://localhost/api/ai/settings', {
       method: 'POST',
-      body: JSON.stringify({ byokConfig: { groq: 'new-key' } }),
+      body: JSON.stringify({ byokConfig: { opencode: 'new-key' } }),
     }));
 
     expect(res.status).toBe(409);

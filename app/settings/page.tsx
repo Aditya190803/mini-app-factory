@@ -22,17 +22,13 @@ type IntegrationStatus = {
 };
 
 const providerLabel: Record<AIProviderId, string> = {
-  google: 'Google',
-  groq: 'Groq',
+  opencode: 'OpenCode Zen',
   openrouter: 'OpenRouter',
-  cerebras: 'Cerebras',
 };
 
 const providerKeyUrl: Record<AIProviderId, string> = {
-  google: 'https://aistudio.google.com/app/apikey',
-  groq: 'https://console.groq.com/keys',
+  opencode: 'https://opencode.ai/zen',
   openrouter: 'https://openrouter.ai/keys',
-  cerebras: 'https://cloud.cerebras.ai/',
 };
 
 export default function SettingsPage() {
@@ -50,37 +46,27 @@ export default function SettingsPage() {
   const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
   const [customModelsConfig, setCustomModelsConfig] = useState<ProviderCustomModelsConfig>({});
   const [customModelInput, setCustomModelInput] = useState<Record<AIProviderId, string>>({
-    google: '',
-    groq: '',
+    opencode: '',
     openrouter: '',
-    cerebras: '',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isDisconnecting, setIsDisconnecting] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showKey, setShowKey] = useState<Record<AIProviderId, boolean>>({
-    google: false,
-    groq: false,
+    opencode: false,
     openrouter: false,
-    cerebras: false,
   });
   const [saveState, setSaveState] = useState<Record<AIProviderId, 'idle' | 'saving' | 'saved' | 'error'>>({
-    google: 'idle',
-    groq: 'idle',
+    opencode: 'idle',
     openrouter: 'idle',
-    cerebras: 'idle',
   });
   const [testState, setTestState] = useState<Record<AIProviderId, 'idle' | 'testing' | 'ok' | 'error'>>({
-    google: 'idle',
-    groq: 'idle',
+    opencode: 'idle',
     openrouter: 'idle',
-    cerebras: 'idle',
   });
   const [testMessage, setTestMessage] = useState<Record<AIProviderId, string>>({
-    google: '',
-    groq: '',
+    opencode: '',
     openrouter: '',
-    cerebras: '',
   });
 
   const formatConnectedAt = (value?: number) => (value ? new Date(value).toLocaleString() : '—');
@@ -578,6 +564,7 @@ export default function SettingsPage() {
                     </div>
                   )}
 
+                  {providerId === 'openrouter' && (
                   <div className="border border-[var(--border)] rounded-md p-2 space-y-2">
                     <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">Custom model IDs</div>
                     <div className="flex items-center gap-2">
@@ -613,6 +600,7 @@ export default function SettingsPage() {
                       <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models added.</div>
                     )}
                   </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -9,10 +9,8 @@ import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib
 import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
 const providerLabel: Record<AIProviderId, string> = {
-  google: 'Google',
-  groq: 'Groq',
+  opencode: 'OpenCode Zen',
   openrouter: 'OpenRouter',
-  cerebras: 'Cerebras',
 };
 
 type ProviderCatalog = {
@@ -39,10 +37,8 @@ export default function AIAdminConsole() {
   }>>([]);
   const [aiConfig, setAiConfig] = useState(() => getStoredAIAdminConfig());
   const [newModelInput, setNewModelInput] = useState<Record<AIProviderId, string>>({
-    google: '',
-    groq: '',
+    opencode: '',
     openrouter: '',
-    cerebras: '',
   });
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -305,6 +301,7 @@ export default function AIAdminConsole() {
                       </div>
                     </div>
 
+                    {providerId === 'openrouter' && (
                     <div className="space-y-2">
                       <div className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Custom models</div>
                       <div className="flex gap-2">
@@ -340,6 +337,7 @@ export default function AIAdminConsole() {
                         <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models configured.</div>
                       )}
                     </div>
+                    )}
                   </div>
                 );
               })}

@@ -1,10 +1,8 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createGroq } from '@ai-sdk/groq';
-import { createCerebras } from '@ai-sdk/cerebras';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
-import type { AIProviderId } from '@/lib/ai-admin-config';
+import { isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 
 export type SessionEvent = {
@@ -65,11 +63,11 @@ function loadEnv() {
 
 function getFriendlyModelName(modelId: string): string {
   const mapping: Record<string, string> = {
-    'gemini-3-flash-preview': 'Gemini 3 Flash',
-    'gemini-3-pro-preview': 'Gemini 3 Pro',
-    'gemini-2.5-pro': 'Gemini 2.5 Pro',
-    'gemini-2.5-flash': 'Gemini 2.5 Flash',
-    'gemma-3-27b': 'Gemma 3 27B',
+    'big-pickle': 'Big Pickle',
+    'mimo-v2.5-free': 'MiMo V2.5 Free',
+    'north-mini-code-free': 'North Mini Code Free',
+    'deepseek-v4-flash-free': 'DeepSeek V4 Flash Free',
+    'longcat-2.0-free': 'LongCat 2.0 Free',
   };
   return mapping[modelId] || modelId;
 }
@@ -77,31 +75,23 @@ function getFriendlyModelName(modelId: string): string {
 function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMap {
   const admin = runtimeConfig?.adminConfig.providers;
   const byok = runtimeConfig?.byokConfig;
+  const requestedOpenCodeModel = admin?.opencode?.defaultModel || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
+  const requestedOpenCodeFallback = process.env.OPENCODE_FALLBACK_MODEL;
 
   return {
-    google: {
-      enabled: admin?.google?.enabled ?? true,
-      apiKey: byok?.google || process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-      defaultModel: admin?.google?.defaultModel || process.env.GOOGLE_MODEL || 'gemini-3-flash-preview',
-      fallbackModel: process.env.GOOGLE_FALLBACK_MODEL || 'gemini-2.5-flash',
-    },
-    groq: {
-      enabled: admin?.groq?.enabled ?? true,
-      apiKey: byok?.groq || process.env.GROQ_API_KEY,
-      defaultModel: admin?.groq?.defaultModel || process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct-0905',
-      fallbackModel: process.env.GROQ_FALLBACK_MODEL || 'qwen/qwen3-32b',
+    opencode: {
+      enabled: admin?.opencode?.enabled ?? true,
+      apiKey: byok?.opencode || process.env.OPENCODE_API_KEY,
+      defaultModel: isAllowedProviderModel('opencode', requestedOpenCodeModel) ? requestedOpenCodeModel : 'deepseek-v4-flash-free',
+      fallbackModel: requestedOpenCodeFallback && isAllowedProviderModel('opencode', requestedOpenCodeFallback)
+        ? requestedOpenCodeFallback
+        : undefined,
     },
     openrouter: {
       enabled: admin?.openrouter?.enabled ?? true,
       apiKey: byok?.openrouter || process.env.OPENROUTER_API_KEY,
       defaultModel: admin?.openrouter?.defaultModel || process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
       fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL,
-    },
-    cerebras: {
-      enabled: admin?.cerebras?.enabled ?? true,
-      apiKey: byok?.cerebras || process.env.CEREBRAS_API_KEY,
-      defaultModel: admin?.cerebras?.defaultModel || process.env.CEREBRAS_MODEL || 'llama-3.3-70b',
-      fallbackModel: process.env.CEREBRAS_FALLBACK_MODEL,
     },
   };
 }
@@ -112,17 +102,16 @@ function hasConfiguredProvider(runtimeConfig?: AIRuntimeConfig) {
 }
 
 function buildProviderFactories(state: ProviderStateMap) {
-  const google = state.google.apiKey ? createGoogleGenerativeAI({ apiKey: state.google.apiKey }) : null;
-  const groq = state.groq.apiKey ? createGroq({ apiKey: state.groq.apiKey }) : null;
+  const opencode = state.opencode.apiKey
+    ? createOpenAICompatible({
+        name: 'opencode',
+        baseURL: 'https://opencode.ai/zen/v1',
+        apiKey: state.opencode.apiKey,
+      })
+    : null;
   const openrouter = state.openrouter.apiKey ? createOpenRouter({ apiKey: state.openrouter.apiKey }) : null;
-  const cerebras = state.cerebras.apiKey ? createCerebras({ apiKey: state.cerebras.apiKey }) : null;
 
-  return {
-    google,
-    groq,
-    openrouter,
-    cerebras,
-  };
+  return { opencode, openrouter };
 }
 
 function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: string; providerId?: AIProviderId }): ProviderStep[] {
@@ -141,12 +130,12 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
   const configuredOrder = runtimeConfig?.adminConfig.providerOrder;
   const order: AIProviderId[] = configuredOrder && configuredOrder.length > 0
     ? configuredOrder
-    : ['google', 'groq', 'openrouter', 'cerebras'];
+    : ['opencode', 'openrouter'];
   const prioritized = opts?.providerId
     ? [opts.providerId, ...order.filter((providerId) => providerId !== opts.providerId)]
     : order;
 
-  if (opts?.providerId && opts?.model) {
+  if (opts?.providerId && opts?.model && isAllowedProviderModel(opts.providerId, opts.model)) {
     const selectedModel = opts.model;
     const providerFactory = factories[opts.providerId];
     const providerState = state[opts.providerId];
@@ -156,7 +145,7 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
         providerId: opts.providerId,
         model: selectedModel,
         createModel: () => providerFactory(selectedModel),
-        maxAttempts: opts.providerId === 'google' ? 2 : 1,
+        maxAttempts: 1,
       });
     }
   }
@@ -171,7 +160,7 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
       providerId,
       model: providerState.defaultModel,
       createModel: () => providerFactory(providerState.defaultModel),
-      maxAttempts: providerId === 'google' ? 2 : 1,
+      maxAttempts: 1,
     });
 
     if (providerState.fallbackModel && providerState.fallbackModel !== providerState.defaultModel) {
@@ -254,7 +243,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
   loadEnv();
 
   if (!hasConfiguredProvider(runtimeConfig)) {
-    throw new Error('At least one AI provider key must be configured (Google, Groq, OpenRouter, or Cerebras).');
+    throw new Error('At least one AI provider key must be configured (OpenCode or OpenRouter).');
   }
 
   const client: AIClient = {

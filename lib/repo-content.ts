@@ -1,6 +1,4 @@
-import { generateText } from "ai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createGroq } from "@ai-sdk/groq";
+import { getAIClient } from "@/lib/ai-client";
 import { buildReadmePrompt } from "@/lib/site-builder";
 
 const FALLBACK_ATTRIBUTION = "Made by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)";
@@ -15,28 +13,12 @@ function cleanRepoDescription(text: string, maxLength = 160): string {
 }
 
 async function generateWithFallback(prompt: string): Promise<string> {
-  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-
-  if (googleKey) {
-    const google = createGoogleGenerativeAI({ apiKey: googleKey });
-    const { text } = await generateText({
-      model: google(process.env.GOOGLE_MODEL || "gemini-3-flash-preview"),
-      prompt,
-    });
-    return text;
+  const session = await (await getAIClient()).createSession();
+  try {
+    return (await session.sendAndWait({ prompt })).data.content;
+  } finally {
+    await session.destroy();
   }
-
-  if (groqKey) {
-    const groq = createGroq({ apiKey: groqKey });
-    const { text } = await generateText({
-      model: groq(process.env.GROQ_MODEL || "moonshotai/kimi-k2-instruct-0905"),
-      prompt,
-    });
-    return text;
-  }
-
-  return "";
 }
 
 export async function generateReadmeContent(opts: {

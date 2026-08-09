@@ -91,7 +91,7 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
   }, []);
 
   const selectedModel = models.find(m => m.id === selectedModelId && m.providerId === providerId);
-  const displayText = selectedModel ? selectedModel.fullName : 'Default (Google Gemini + Groq)';
+  const displayText = selectedModel ? selectedModel.fullName : 'Default (OpenCode + OpenRouter)';
 
   if (loading) {
     return (
@@ -161,7 +161,7 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
               {(!selectedModelId || !providerId) && <Check size={14} strokeWidth={3} />}
             </button>
 
-            {['google', 'groq', 'openrouter', 'cerebras'].map(pId => {
+            {['opencode', 'openrouter'].map(pId => {
               const providerModels = models.filter(m => m.providerId === pId);
               if (providerModels.length === 0) return null;
 

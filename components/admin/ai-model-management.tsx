@@ -31,10 +31,8 @@ type ProviderCatalog = {
 };
 
 const emptySearchState: Record<AIProviderId, string> = {
-  google: '',
-  groq: '',
+  opencode: '',
   openrouter: '',
-  cerebras: '',
 };
 
 export default function AIModelManagement() {

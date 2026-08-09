@@ -10,7 +10,7 @@ vi.mock('@/lib/exa-url-context', () => ({
 }));
 
 beforeAll(() => {
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
+  process.env.OPENCODE_API_KEY = 'test-key';
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
   process.env.NEXT_PUBLIC_STACK_PROJECT_ID = 'stack-project';
   process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = 'stack-client';

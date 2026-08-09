@@ -12,7 +12,7 @@ vi.mock('@/lib/ai-settings-store', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key';
+  process.env.OPENCODE_API_KEY = 'test-opencode-key';
 });
 
 describe('GET /api/ai/models admin guard', () => {
@@ -27,12 +27,10 @@ describe('GET /api/ai/models admin guard', () => {
     });
     (getGlobalAdminModelConfig as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       providers: {
-        google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] },
-        groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] },
+        opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] },
         openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] },
-        cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] },
       },
-      providerOrder: ['google', 'groq', 'openrouter', 'cerebras'],
+      providerOrder: ['opencode', 'openrouter'],
     });
     (getPersistedAISettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       adminConfig: {},
@@ -42,10 +40,8 @@ describe('GET /api/ai/models admin guard', () => {
 
     const maliciousHeader = toBase64JSON({
       providers: {
-        google: { enabled: false, defaultModel: 'x', customModels: [] },
-        groq: { enabled: false, defaultModel: 'x', customModels: [] },
+        opencode: { enabled: false, defaultModel: 'x', customModels: [] },
         openrouter: { enabled: false, defaultModel: 'x', customModels: [] },
-        cerebras: { enabled: false, defaultModel: 'x', customModels: [] },
       },
     });
 
@@ -59,6 +55,6 @@ describe('GET /api/ai/models admin guard', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.models)).toBe(true);
-    expect(body.models.some((m: { providerId: string }) => m.providerId === 'google')).toBe(true);
+    expect(body.models.some((m: { providerId: string }) => m.providerId === 'opencode')).toBe(true);
   });
 });

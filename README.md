@@ -30,10 +30,8 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Database & Backend**: [Convex](https://convex.dev/)
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
-   - Google Gemini (`@ai-sdk/google`)
-   - Groq (`@ai-sdk/groq`)
+   - OpenCode Zen free models (`@ai-sdk/openai-compatible`)
    - OpenRouter (`@openrouter/ai-sdk-provider`)
-   - Cerebras (`@ai-sdk/cerebras`)
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
 - **Runtime & Package Manager**: [Bun](https://bun.sh/)
@@ -56,18 +54,12 @@ A powerful AI-powered web application that generates production-ready multi-page
    
    ```bash
    # AI Providers
-   GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key
-   GOOGLE_MODEL=gemini-3-flash-preview
-   GOOGLE_FALLBACK_MODEL=gemini-2.5-flash
-   GROQ_API_KEY=your_groq_api_key
-   GROQ_MODEL=moonshotai/kimi-k2-instruct-0905
-   GROQ_FALLBACK_MODEL=qwen/qwen3-32b
+   OPENCODE_API_KEY=your_opencode_zen_api_key
+   OPENCODE_MODEL=deepseek-v4-flash-free
+   OPENCODE_FALLBACK_MODEL=longcat-2.0-free
    OPENROUTER_API_KEY=your_openrouter_api_key
    OPENROUTER_MODEL=openai/gpt-oss-120b
    OPENROUTER_FALLBACK_MODEL=optional_openrouter_fallback_model
-   CEREBRAS_API_KEY=your_cerebras_api_key
-   CEREBRAS_MODEL=llama-3.3-70b
-   CEREBRAS_FALLBACK_MODEL=optional_cerebras_fallback_model
 
    # Optional: reference URL → site content at generation (https://exa.ai)
    EXA_API_KEY=your_exa_api_key

@@ -27,20 +27,12 @@ type ProviderProbe = {
 };
 
 const providerProbe: Record<AIProviderId, ProviderProbe> = {
-  google: {
-    url: 'https://generativelanguage.googleapis.com/v1beta/models',
-    buildHeaders: (apiKey) => ({ 'x-goog-api-key': apiKey }),
-  },
-  groq: {
-    url: 'https://api.groq.com/openai/v1/models',
+  opencode: {
+    url: 'https://opencode.ai/zen/v1/models',
     buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
   },
   openrouter: {
     url: 'https://openrouter.ai/api/v1/models',
-    buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
-  },
-  cerebras: {
-    url: 'https://api.cerebras.ai/v1/models',
     buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
   },
 };

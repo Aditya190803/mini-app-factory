@@ -11,7 +11,7 @@ describe('secret-box', () => {
     });
 
     test('handles unicode and long values', () => {
-      const plain = JSON.stringify({ google: 'キー🔑', groq: 'x'.repeat(4000) });
+      const plain = JSON.stringify({ opencode: 'キー🔑', openrouter: 'x'.repeat(4000) });
       expect(decryptSecret(encryptSecret(plain))).toBe(plain);
     });
 

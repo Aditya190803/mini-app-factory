@@ -25,57 +25,17 @@ type ProviderConfig = {
 };
 
 const PROVIDERS: ProviderConfig[] = [
-  { id: 'google', name: 'Google Gemini' },
-  { id: 'groq', name: 'Groq', endpoint: 'https://api.groq.com/openai/v1/models' },
+  { id: 'opencode', name: 'OpenCode Zen' },
   { id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/models' },
-  { id: 'cerebras', name: 'Cerebras', endpoint: 'https://api.cerebras.ai/v1/models' },
 ];
 
-const GOOGLE_MODELS_ENDPOINTS = [
-  'https://generativelanguage.googleapis.com/v1beta/models',
-  'https://generativelanguage.googleapis.com/v1/models',
-] as const;
-
 function getProviderApiKey(providerId: AIProviderId, byok: Partial<Record<AIProviderId, string>>) {
-  if (providerId === 'google') return byok.google || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (providerId === 'groq') return byok.groq || process.env.GROQ_API_KEY;
-  if (providerId === 'openrouter') return byok.openrouter || process.env.OPENROUTER_API_KEY;
-  return byok.cerebras || process.env.CEREBRAS_API_KEY;
+  return providerId === 'opencode'
+    ? byok.opencode || process.env.OPENCODE_API_KEY
+    : byok.openrouter || process.env.OPENROUTER_API_KEY;
 }
 
 async function fetchProviderModels(provider: ProviderConfig, apiKey?: string): Promise<Array<{ id: string; name?: string }>> {
-  if (provider.id === 'google') {
-    if (!apiKey) return [];
-
-    for (const endpoint of GOOGLE_MODELS_ENDPOINTS) {
-      const url = `${endpoint}?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      });
-
-      if (!response.ok) continue;
-
-      const json = (await response.json()) as ProviderResponse;
-      const models = Array.isArray(json.models) ? json.models : [];
-
-      return models
-        .filter((model) => {
-          const id = (model.name || model.id || '').replace(/^models\//, '');
-          if (!id) return false;
-          return id.startsWith('gemini') || id.startsWith('gemma');
-        })
-        .map((model) => {
-          const id = (model.name || model.id || '').replace(/^models\//, '').trim();
-          return {
-            id,
-            name: model.displayName || id,
-          };
-        });
-    }
-
-    return [];
-  }
   if (!provider.endpoint) return [];
 
   const headers = new Headers({ Accept: 'application/json' });

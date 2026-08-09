@@ -12,9 +12,7 @@
     "test:ci": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/cerebras": "^2.0.33",
-    "@ai-sdk/google": "^3.0.29",
-    "@ai-sdk/groq": "^3.0.24",
+    "@ai-sdk/openai-compatible": "2.0.23",
     "@ai-sdk/react": "^3.0.0",
     "@codemirror/lang-html": "^6.4.11",
     "@emotion/is-prop-valid": "1.2.2",

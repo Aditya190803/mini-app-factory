@@ -1,4 +1,15 @@
-export const AI_PROVIDER_IDS = ['google', 'groq', 'openrouter', 'cerebras'] as const;
+export const AI_PROVIDER_IDS = ['opencode', 'openrouter'] as const;
+
+export const OPENCODE_FREE_MODELS = [
+  'big-pickle',
+  'mimo-v2.5-free',
+  'laguna-s-2.1-free',
+  'ling-3.0-tiny-free',
+  'longcat-2.0-free',
+  'north-mini-code-free',
+  'nemotron-3-ultra-free',
+  'deepseek-v4-flash-free',
+] as const;
 
 export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
 
@@ -26,25 +37,23 @@ export const AI_BYOK_STORAGE_KEY = 'mini_app_factory_ai_byok_v1';
 export const AI_USER_CUSTOM_MODELS_STORAGE_KEY = 'mini_app_factory_user_custom_models_v1';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
-  google: 'gemini-3-flash-preview',
-  groq: 'moonshotai/kimi-k2-instruct-0905',
+  opencode: 'deepseek-v4-flash-free',
   openrouter: 'openai/gpt-oss-120b',
-  cerebras: 'llama-3.3-70b',
 };
 
 export const DEFAULT_MODEL_OPTIONS: Record<AIProviderId, string[]> = {
-  google: ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemma-3-27b'],
-  groq: ['moonshotai/kimi-k2-instruct-0905', 'qwen/qwen3-32b', 'llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct'],
-  openrouter: ['openai/gpt-oss-120b', 'anthropic/claude-3.5-sonnet', 'google/gemini-2.5-pro', 'meta-llama/llama-3.3-70b-instruct'],
-  cerebras: ['llama-3.3-70b', 'qwen-3-32b', 'llama3.1-8b'],
+  opencode: [...OPENCODE_FREE_MODELS],
+  openrouter: ['openai/gpt-oss-120b', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct'],
 };
+
+export function isAllowedProviderModel(providerId: AIProviderId, modelId: string): boolean {
+  return providerId !== 'opencode' || (OPENCODE_FREE_MODELS as readonly string[]).includes(modelId);
+}
 
 export const DEFAULT_AI_ADMIN_CONFIG: AIAdminConfig = {
   providers: {
-    google: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.google, customModels: [], visibleModels: [] },
-    groq: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.groq, customModels: [], visibleModels: [] },
+    opencode: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.opencode, customModels: [], visibleModels: [] },
     openrouter: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.openrouter, customModels: [], visibleModels: [] },
-    cerebras: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.cerebras, customModels: [], visibleModels: [] },
   },
   providerOrder: [...AI_PROVIDER_IDS],
 };
@@ -70,21 +79,20 @@ export function sanitizeAIAdminConfig(input: unknown): AIAdminConfig {
       : {};
 
     const fallback = DEFAULT_AI_ADMIN_CONFIG.providers[providerId];
-    const defaultModel = typeof providerObj.defaultModel === 'string' && providerObj.defaultModel.trim().length > 0
+    const requestedDefault = typeof providerObj.defaultModel === 'string' && providerObj.defaultModel.trim().length > 0
       ? providerObj.defaultModel.trim()
       : fallback.defaultModel;
-
-    // Handle migration: if we have visibleModels, use it. 
-    // If not, but we have hiddenModels, we can't easily invert it here without the catalog,
-    // so we'll just ignore old hiddenModels for now to avoid complexity in the sanitizer.
-    // The UI or persistence layer can handle more complex migrations if needed.
-    const visibleModels = normalizeModelList(providerObj.visibleModels || [], 10000);
+    const defaultModel = isAllowedProviderModel(providerId, requestedDefault)
+      ? requestedDefault
+      : fallback.defaultModel;
+    const allowedModels = (value: unknown, max: number) => normalizeModelList(value, max)
+      .filter((modelId) => isAllowedProviderModel(providerId, modelId));
 
     acc[providerId] = {
       enabled: typeof providerObj.enabled === 'boolean' ? providerObj.enabled : fallback.enabled,
       defaultModel,
-      customModels: normalizeModelList(providerObj.customModels, 1000),
-      visibleModels,
+      customModels: allowedModels(providerObj.customModels, 1000),
+      visibleModels: allowedModels(providerObj.visibleModels, 10000),
     };
     return acc;
   }, {} as Record<AIProviderId, ProviderAdminConfig>);
@@ -121,7 +129,8 @@ export function sanitizeCustomModelsConfig(input: unknown): ProviderCustomModels
 
   for (const providerId of AI_PROVIDER_IDS) {
     const value = raw[providerId];
-    const models = normalizeModelList(value, 200);
+    const models = normalizeModelList(value, 200)
+      .filter((modelId) => isAllowedProviderModel(providerId, modelId));
     if (models.length > 0) {
       result[providerId] = models;
     }

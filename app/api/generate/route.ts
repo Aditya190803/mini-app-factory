@@ -16,7 +16,7 @@ import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-sett
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
 
-const MODEL = process.env.GOOGLE_MODEL || 'gemini-3-flash-preview';
+const MODEL = process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -32,17 +32,28 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
     const rawMsg = typeof raw === 'string' ? raw : (raw instanceof Error ? raw.message : String(raw));
     const m = rawMsg.toLowerCase();
 
-    if (m.includes('google_generative_ai_api_key') || m.includes('google api key') || m.includes('api_key')) {
+    if (
+      m.includes('at least one ai provider key') ||
+      m.includes('no enabled provider with a valid key') ||
+      m.includes('missing ai provider key')
+    ) {
       return {
         code: 'ENV_MISSING',
-        message: 'Missing GOOGLE_GENERATIVE_AI_API_KEY. To enable AI features, set GOOGLE_GENERATIVE_AI_API_KEY in your environment or deployment variables and restart the server.'
+        message: 'Missing AI provider key. Set OPENCODE_API_KEY or OPENROUTER_API_KEY and restart the server.'
       };
     }
 
-    if (m.includes('google') || m.includes('gemini') || m.includes('provider returned') || m.includes('rate-limited')) {
+    if (/authentication failed|unauthorized|invalid.*api key|\b401\b|\b403\b/.test(m)) {
+      return {
+        code: 'AI_AUTH_ERROR',
+        message: 'The AI provider rejected the configured key. Replace it in Settings or .env.local and try again.'
+      };
+    }
+
+    if (m.includes('opencode') || m.includes('openrouter') || m.includes('provider returned') || m.includes('rate-limited')) {
       return {
         code: 'AI_PROVIDER_ERROR',
-        message: 'AI provider error: the upstream model is temporarily unavailable or rate-limited. Check your GOOGLE_GENERATIVE_AI_API_KEY, switch providers, or try again shortly.'
+        message: 'The AI provider is unavailable or rate-limited. Check your provider key, switch providers, or try again shortly.'
       };
     }
 
@@ -115,7 +126,7 @@ export async function runGeneration(
           designSpec = cached;
         } else {
           const designResp = await withRetry(
-            () => designSession.sendAndWait({ prompt: finalPrompt }, 120000),
+            () => designSession.sendAndWait({ prompt: finalPrompt }, 60000),
             { maxAttempts: 3, baseDelayMs: 800 }
           );
           if (sessionError) throw sessionError;

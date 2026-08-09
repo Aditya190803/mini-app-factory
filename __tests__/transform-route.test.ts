@@ -21,18 +21,18 @@ vi.mock('@/lib/ai-client', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] }, groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] }, cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] } }, providerOrder: ['google', 'groq', 'openrouter', 'cerebras'] },
+    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { google: { enabled: true, defaultModel: 'gemini-3-flash-preview', customModels: [], visibleModels: [] }, groq: { enabled: true, defaultModel: 'moonshotai/kimi-k2-instruct-0905', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] }, cerebras: { enabled: true, defaultModel: 'llama-3.3-70b', customModels: [], visibleModels: [] } },
-    providerOrder: ['google', 'groq', 'openrouter', 'cerebras'],
+    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } },
+    providerOrder: ['opencode', 'openrouter'],
   }),
 }));
 
 beforeAll(() => {
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
+  process.env.OPENCODE_API_KEY = 'test-key';
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
   process.env.NEXT_PUBLIC_STACK_PROJECT_ID = 'stack-project';
   process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = 'stack-client';

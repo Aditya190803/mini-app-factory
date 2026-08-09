@@ -13,14 +13,14 @@ interface PromptPanelProps {
 
 export default function PromptPanel({ onGenerate, isLoading, error }: PromptPanelProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState('gemini-3-flash-preview');
+  const [model, setModel] = useState('deepseek-v4-flash-free');
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
     await onGenerate(prompt, model);
   };
 
-  const isProviderIssue = /GOOGLE|GEMINI|GROQ|API_KEY/i.test(error || '');
+  const isProviderIssue = /OPENCODE|OPENROUTER|API_KEY/i.test(error || '');
 
   return (
     <div
@@ -53,8 +53,8 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
               >
                 <p className="font-mono font-semibold">AI PROVIDER SETUP:</p>
                 <ol className="list-decimal list-inside space-y-1 text-xs">
-                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in your environment (or your deployment variables)</li>
-                  <li>Get your key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>aistudio.google.com/apikey</a></li>
+                  <li>Set <code style={{ color: 'var(--primary)' }} className="font-mono">OPENCODE_API_KEY</code> in your environment (or your deployment variables)</li>
+                  <li>Get your key from <a href="https://opencode.ai/zen" target="_blank" rel="noopener" style={{ color: 'var(--primary)' }}>opencode.ai/zen</a></li>
                   <li>Restart your dev server after adding the variable</li>
                 </ol>
               </div>
@@ -91,9 +91,9 @@ export default function PromptPanel({ onGenerate, isLoading, error }: PromptPane
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs font-mono uppercase" style={{ color: 'var(--secondary-text)' }}>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)} className="text-sm p-2 border" style={{ backgroundColor: 'var(--background-overlay)', borderColor: 'var(--border)', color: 'var(--secondary-text)' }}>
-              <option value="gemini-3-flash-preview">Gemini 3 Flash (Google)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
-              <option value="moonshotai/kimi-k2-instruct-0905">Moonshot Kimi K2 (Groq)</option>
+              <option value="deepseek-v4-flash-free">DeepSeek V4 Flash (OpenCode, free)</option>
+              <option value="longcat-2.0-free">LongCat 2.0 (OpenCode, free)</option>
+              <option value="big-pickle">Big Pickle (OpenCode, free)</option>
             </select>
           </div>
         </div>
