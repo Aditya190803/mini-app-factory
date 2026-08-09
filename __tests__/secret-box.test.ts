@@ -65,7 +65,7 @@ describe('secret-box', () => {
       const encrypted = encryptSecret('sensitive');
       // Flip a character in the payload, keeping the envelope prefix intact.
       const body = encrypted.slice('maf1.'.length);
-      const flipped = (body[10] === 'A' ? 'B' : 'A') + body.slice(1);
+      const flipped = body.slice(0, 10) + (body[10] === 'A' ? 'B' : 'A') + body.slice(11);
       expect(decryptSecret('maf1.' + flipped)).toBeNull();
     });
 
