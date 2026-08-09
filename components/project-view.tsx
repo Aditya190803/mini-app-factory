@@ -66,10 +66,11 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     setFallbackInfo(null);
 
     let streamFailed = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+      timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
 
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -77,8 +78,6 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         body: JSON.stringify({ projectName, prompt: project.prompt }),
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       await readStream(
         response,
@@ -149,6 +148,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         code: isAbort ? 'AI_TIMEOUT' : 'STREAM_ERROR'
       });
       streamFailed = true;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
     // If stream failed or ended without completion, poll the API
