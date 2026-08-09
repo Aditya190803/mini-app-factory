@@ -5,6 +5,10 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Cold runs spend ~45s just collecting modules (Next route handlers pull in a lot), which
+    // pushed several route tests past the 5s default and made CI flaky. The same tests finish in
+    // well under a second once warm — this is startup cost, not slow tests.
+    testTimeout: 30_000,
     env: {
       NEXT_PUBLIC_CONVEX_URL: 'https://test.convex.cloud',
       GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
