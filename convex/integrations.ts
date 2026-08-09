@@ -92,6 +92,9 @@ export const upsertIntegration = mutation({
 export const clearIntegration = mutation({
   args: {
     provider: v.union(v.literal("github"), v.literal("vercel"), v.literal("netlify"), v.literal("all")),
+    expectedGithubAccessToken: v.optional(v.string()),
+    expectedVercelAccessToken: v.optional(v.string()),
+    expectedNetlifyAccessToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -104,23 +107,28 @@ export const clearIntegration = mutation({
     if (!existing) return null;
 
     const updates: Record<string, undefined> = {};
-    if (args.provider === "github" || args.provider === "all") {
+    const targets = (provider: "github" | "vercel" | "netlify") =>
+      args.provider === provider || args.provider === "all";
+
+    if (targets("github") && existing.githubAccessToken === args.expectedGithubAccessToken) {
       updates.githubAccessToken = undefined;
       updates.githubConnectedAt = undefined;
     }
-    if (args.provider === "vercel" || args.provider === "all") {
+    if (targets("vercel") && existing.vercelAccessToken === args.expectedVercelAccessToken) {
       updates.vercelAccessToken = undefined;
       updates.vercelConnectedAt = undefined;
     }
-    if (args.provider === "netlify" || args.provider === "all") {
+    if (targets("netlify") && existing.netlifyAccessToken === args.expectedNetlifyAccessToken) {
       updates.netlifyAccessToken = undefined;
       updates.netlifyConnectedAt = undefined;
     }
 
-    await ctx.db.patch(existing._id, {
-      ...updates,
-      updatedAt: Date.now(),
-    });
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(existing._id, {
+        ...updates,
+        updatedAt: Date.now(),
+      });
+    }
 
     return existing._id;
   },

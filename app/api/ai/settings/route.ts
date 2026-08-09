@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { isAdminUser } from '@/lib/admin-access';
 import {
+  isAIProviderId,
   sanitizeAIAdminConfig,
   sanitizeBYOKConfig,
   sanitizeCustomModelsConfig,
@@ -191,14 +192,25 @@ export async function POST(request: Request) {
   // "clear this provider"; an absent provider is left untouched.
   if (parsedBody.data.byokConfig !== undefined) {
     const requestedByok = sanitizeBYOKConfig(parsedBody.data.byokConfig);
+    const rawByok =
+      typeof parsedBody.data.byokConfig === 'object' && parsedBody.data.byokConfig !== null
+        ? parsedBody.data.byokConfig as Record<string, unknown>
+        : {};
     const persisted = await getPersistedAISettings();
+    if (persisted.byokUnreadable) {
+      return NextResponse.json(
+        { error: 'Saved API keys could not be decrypted. Restore the encryption secret before changing them.' },
+        { status: 409 }
+      );
+    }
 
     const mergedByok = { ...persisted.byokConfig };
     for (const [providerId, key] of Object.entries(requestedByok)) {
-      if (typeof key === 'string' && key.length > 0) {
-        mergedByok[providerId as keyof typeof mergedByok] = key;
-      } else {
-        delete mergedByok[providerId as keyof typeof mergedByok];
+      mergedByok[providerId as keyof typeof mergedByok] = key;
+    }
+    for (const [providerId, value] of Object.entries(rawByok)) {
+      if (isAIProviderId(providerId) && typeof value === 'string' && value.trim().length === 0) {
+        delete mergedByok[providerId];
       }
     }
 

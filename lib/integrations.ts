@@ -26,6 +26,11 @@ export async function getIntegrationTokens() {
 
   return {
     ...integration,
+    tokenVersions: {
+      github: integration.githubAccessToken,
+      vercel: integration.vercelAccessToken,
+      netlify: integration.netlifyAccessToken,
+    },
     githubAccessToken: decryptSecret(integration.githubAccessToken) ?? undefined,
     vercelAccessToken: decryptSecret(integration.vercelAccessToken) ?? undefined,
     netlifyAccessToken: decryptSecret(integration.netlifyAccessToken) ?? undefined,

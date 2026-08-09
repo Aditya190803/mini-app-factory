@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { logout } from '@/lib/logout';
-import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical } from 'lucide-react';
+import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical, Save } from 'lucide-react';
 import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 
@@ -135,6 +135,9 @@ export default function SettingsPage() {
         body: JSON.stringify({ byokConfig: { [providerId]: key } }),
       });
       const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save API key');
+      }
       if (data.byokStatus && typeof data.byokStatus === 'object') {
         setByokStatus(data.byokStatus);
       }
@@ -450,7 +453,6 @@ export default function SettingsPage() {
                           saveByok(providerId);
                         }
                       }}
-                      onBlur={() => saveByok(providerId)}
                       className="text-[11px] font-mono"
                       aria-label={`${providerLabel[providerId]} API key`}
                       placeholder={
@@ -459,6 +461,16 @@ export default function SettingsPage() {
                           : `Paste ${providerLabel[providerId]} key`
                       }
                     />
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="text-[10px] font-mono uppercase border-[var(--border)]"
+                      aria-label="Save key"
+                      onClick={() => saveByok(providerId)}
+                      disabled={!byokDraft[providerId] || saveState[providerId] === 'saving'}
+                    >
+                      <Save className="w-3 h-3" />
+                    </Button>
                     <Button
                       variant="outline"
                       type="button"

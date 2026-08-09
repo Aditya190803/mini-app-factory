@@ -9,21 +9,17 @@ import { canAccessProject, getUserId, requireProjectAccessById, requireUserId } 
  * are keyed by `projectId`, and a bare `projectId` argument is not evidence of ownership. Before
  * this, `saveFiles` would happily rewrite or delete every file of any project it was pointed at.
  *
- * Reads additionally allow anonymous access when the project is published, because `/results/*`
- * serves those files to the public.
+ * Anonymous rendering uses the projected `getPublished*` queries below, which never expose
+ * database IDs, ownership, or timestamps.
  */
 
-/** Readable when the project is published, or by someone who may access it. */
+/** Full records are available only to the project owner. */
 export const getFilesByProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
-    if (!project) return [];
-
-    if (!project.isPublished) {
-      const userId = await getUserId(ctx);
-      if (!canAccessProject(project, userId)) return [];
-    }
+    const userId = await getUserId(ctx);
+    if (!canAccessProject(project, userId)) return [];
 
     return await ctx.db
       .query("projectFiles")
@@ -32,17 +28,12 @@ export const getFilesByProject = query({
   },
 });
 
-/** Same access rule as getFilesByProject, for a single path. */
 export const getFileByPath = query({
   args: { projectId: v.id("projects"), path: v.string() },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
-    if (!project) return null;
-
-    if (!project.isPublished) {
-      const userId = await getUserId(ctx);
-      if (!canAccessProject(project, userId)) return null;
-    }
+    const userId = await getUserId(ctx);
+    if (!canAccessProject(project, userId)) return null;
 
     return await ctx.db
       .query("projectFiles")
@@ -50,6 +41,53 @@ export const getFileByPath = query({
         q.eq("projectId", args.projectId).eq("path", args.path)
       )
       .first();
+  },
+});
+
+export const getPublishedFiles = query({
+  args: { projectName: v.string() },
+  handler: async (ctx, args) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
+      .first();
+    if (!project?.isPublished) return [];
+
+    const files = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .collect();
+    return files.map(({ path, content, language, fileType }) => ({
+      path,
+      content,
+      language,
+      fileType,
+    }));
+  },
+});
+
+export const getPublishedFile = query({
+  args: { projectName: v.string(), path: v.string() },
+  handler: async (ctx, args) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
+      .first();
+    if (!project?.isPublished) return null;
+
+    const file = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project_path", (q) =>
+        q.eq("projectId", project._id).eq("path", args.path)
+      )
+      .first();
+    if (!file) return null;
+    return {
+      path: file.path,
+      content: file.content,
+      language: file.language,
+      fileType: file.fileType,
+    };
   },
 });
 
@@ -204,6 +242,10 @@ export const recordEdit = mutation({
   handler: async (ctx, args) => {
     await requireProjectAccessById(ctx, args.projectId);
     const userId = await requireUserId(ctx);
+    const file = await ctx.db.get(args.fileId);
+    if (!file || file.projectId !== args.projectId) {
+      throw new Error("File not found");
+    }
 
     await ctx.db.insert("editHistory", {
       projectId: args.projectId,

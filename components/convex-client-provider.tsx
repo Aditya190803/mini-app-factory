@@ -3,6 +3,7 @@
 import { ReactNode, useCallback, useMemo } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { useUser } from "@stackframe/stack";
+import { stackClientApp } from "@/stack/client";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -22,16 +23,18 @@ function useAuthFromStack() {
   const isLoading = user === undefined;
   const isAuthenticated = Boolean(user);
 
-  const fetchAccessToken = useCallback(async () => {
+  const stackAuth = useMemo(
+    () => stackClientApp.getConvexClientAuth({ tokenStore: "nextjs-cookie" }),
+    []
+  );
+  const fetchAccessToken = useCallback(async (args: { forceRefreshToken: boolean }) => {
     if (!user) return null;
     try {
-      // Short-lived JWT; Stack refreshes it automatically when expired, so `forceRefreshToken`
-      // needs no special handling here.
-      return await user.getAccessToken();
+      return await stackAuth(args);
     } catch {
       return null;
     }
-  }, [user]);
+  }, [stackAuth, user]);
 
   return useMemo(
     () => ({ isLoading, isAuthenticated, fetchAccessToken }),

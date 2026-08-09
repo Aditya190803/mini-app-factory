@@ -33,9 +33,11 @@ export async function POST(req: Request) {
   // longer have the value, so the grant would stay live forever — which is exactly the window an
   // already-leaked token needs. Best-effort: a provider being down must not block disconnect.
   const wants = (p: string) => provider === 'all' || provider === p;
+  let tokenVersions: NonNullable<Awaited<ReturnType<typeof getIntegrationTokens>>>['tokenVersions'] | undefined;
   try {
     const tokens = await getIntegrationTokens();
     if (tokens) {
+      tokenVersions = tokens.tokenVersions;
       const revocations = [
         wants('github') && tokens.githubAccessToken
           ? revokeGithubToken(tokens.githubAccessToken)
@@ -62,7 +64,12 @@ export async function POST(req: Request) {
   }
 
   const convex = await getAuthedConvexClient();
-  await convex.mutation(api.integrations.clearIntegration, { provider });
+  await convex.mutation(api.integrations.clearIntegration, {
+    provider,
+    expectedGithubAccessToken: tokenVersions?.github,
+    expectedVercelAccessToken: tokenVersions?.vercel,
+    expectedNetlifyAccessToken: tokenVersions?.netlify,
+  });
 
   return Response.json({ success: true });
 }
