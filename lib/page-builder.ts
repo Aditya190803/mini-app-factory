@@ -88,39 +88,52 @@ export function assembleFullPage(
     finalTitle = `${global.siteName}${displayPath}`;
   }
 
+  // NOTE: metadata below is user-controlled and must never be interpolated into an HTML
+  // string. Build every node through cheerio's element/attribute API so values are escaped
+  // on serialize — a raw template here is a stored-XSS hole on the published site.
   if (finalTitle) {
     if ($('title').length > 0) $('title').text(finalTitle);
-    else if ($('head').length > 0) $('head').prepend(`<title>${finalTitle}</title>`);
-    else $.root().prepend(`<title>${finalTitle}</title>`);
+    else {
+      const titleEl = $('<title></title>').text(finalTitle);
+      if ($('head').length > 0) $('head').prepend(titleEl);
+      else $.root().prepend(titleEl);
+    }
   }
 
   // Description Logic: Page Description || Global Description
   const finalDesc = pageSeo?.description || global?.description;
   if (finalDesc) {
     if ($('meta[name="description"]').length > 0) $('meta[name="description"]').attr('content', finalDesc);
-    else if ($('head').length > 0) $('head').append(`<meta name="description" content="${finalDesc}">`);
+    else if ($('head').length > 0) {
+      $('head').append($('<meta>').attr('name', 'description').attr('content', finalDesc));
+    }
   }
 
   // OG Image Logic: Page OG || Global OG
   const finalOg = pageSeo?.ogImage || global?.ogImage;
   if (finalOg) {
     if ($('meta[property="og:image"]').length > 0) $('meta[property="og:image"]').attr('content', finalOg);
-    else if ($('head').length > 0) $('head').append(`<meta property="og:image" content="${finalOg}">`);
+    else if ($('head').length > 0) {
+      $('head').append($('<meta>').attr('property', 'og:image').attr('content', finalOg));
+    }
   }
 
   // Inject Favicon
   if (metadata?.favicon) {
-    let faviconTag = '';
     const isEmoji = !metadata.favicon.startsWith('http') && !metadata.favicon.startsWith('/') && metadata.favicon.length < 8;
-    
-    if (isEmoji) {
-      faviconTag = `<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${metadata.favicon}</text></svg>">`;
-    } else {
-      faviconTag = `<link rel="icon" href="${metadata.favicon}">`;
-    }
 
-    if ($('link[rel="icon"]').length > 0) $('link[rel="icon"]').replaceWith(faviconTag);
-    else if ($('head').length > 0) $('head').append(faviconTag);
+    // Percent-encode the emoji so it cannot terminate the inline SVG document either.
+    const href = isEmoji
+      ? 'data:image/svg+xml,' + encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
+          `<text y=".9em" font-size="90">${metadata.favicon}</text></svg>`
+        )
+      : metadata.favicon;
+
+    const faviconEl = $('<link>').attr('rel', 'icon').attr('href', href);
+
+    if ($('link[rel="icon"]').length > 0) $('link[rel="icon"]').replaceWith(faviconEl);
+    else if ($('head').length > 0) $('head').append(faviconEl);
   }
 
   // Handle Styles: Inline them into the preview so they actually load in srcDoc

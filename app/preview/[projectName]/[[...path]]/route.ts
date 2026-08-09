@@ -3,6 +3,7 @@ import { stackServerApp } from '@/stack/server';
 import { assembleFullPage } from '@/lib/page-builder';
 import { assertCanAccessProject } from '@/lib/project-access';
 import { getFile, getFiles, getProject } from '@/lib/projects';
+import { userContentHeaders } from '@/lib/user-content-headers';
 
 export async function GET(
   _request: NextRequest,
@@ -39,7 +40,7 @@ export async function GET(
   if (!file) {
     if (filePath === 'index.html' && project.html) {
       return new NextResponse(project.html, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        headers: userContentHeaders('text/html; charset=utf-8', { 'Cache-Control': 'no-store' }),
       });
     }
     return new NextResponse('File not found', { status: 404 });
@@ -70,9 +71,6 @@ export async function GET(
   }
 
   return new NextResponse(content, {
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'no-store',
-    },
+    headers: userContentHeaders(contentType, { 'Cache-Control': 'no-store' }),
   });
 }
