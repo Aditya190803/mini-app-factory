@@ -9,6 +9,7 @@
  */
 
 import type * as aiSettings from "../aiSettings.js";
+import type * as auth from "../auth.js";
 import type * as deployments from "../deployments.js";
 import type * as files from "../files.js";
 import type * as integrations from "../integrations.js";
@@ -23,6 +24,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   aiSettings: typeof aiSettings;
+  auth: typeof auth;
   deployments: typeof deployments;
   files: typeof files;
   integrations: typeof integrations;
