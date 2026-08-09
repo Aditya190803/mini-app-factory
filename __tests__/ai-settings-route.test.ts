@@ -110,9 +110,12 @@ describe('POST /api/ai/settings', () => {
     const { stackServerApp } = await import('@/stack/server');
     const { getPersistedAISettings, addAIAdminAudit, getGlobalAdminModelConfig, saveGlobalAdminModelConfig, getUserCustomModels } = await import('@/lib/ai-settings-store');
 
+    process.env.MAF_ADMIN_EMAILS = 'admin@example.com';
+
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       id: 'admin_1',
-      primaryEmail: 'aditya.mer@somaiya.edu',
+      primaryEmail: 'admin@example.com',
+      primaryEmailVerified: true,
     });
 
     // getGlobalAdminModelConfig called twice: once for diff, once for response

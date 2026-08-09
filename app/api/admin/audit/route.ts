@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { listAIAdminAudit } from '@/lib/ai-settings-store';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isAdminUser } from '@/lib/admin-access';
 
 export async function GET(req: Request) {
   try {
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!isAdminEmail(email)) {
+    if (!isAdminUser(user)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -22,10 +22,8 @@ export async function GET(req: Request) {
       ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
       : 25;
 
-    const entries = await listAIAdminAudit({
-      userId: user.id,
-      limit,
-    });
+    // Global log, not just this admin's own actions.
+    const entries = await listAIAdminAudit({ limit });
 
     return NextResponse.json({ entries });
   } catch {
