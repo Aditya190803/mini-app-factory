@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isAdminUser } from '@/lib/admin-access';
 import {
   sanitizeAIAdminConfig,
   sanitizeBYOKConfig,
@@ -23,6 +23,15 @@ const updateSchema = z.object({
   byokConfig: z.unknown().optional(),
   customModels: z.unknown().optional(),
 });
+
+/** Collapse a BYOK key map to a presence map, so no secret leaves the server. */
+function toByokStatus(byokConfig: Record<string, string | undefined>): Record<string, boolean> {
+  const status: Record<string, boolean> = {};
+  for (const [providerId, key] of Object.entries(byokConfig)) {
+    status[providerId] = typeof key === 'string' && key.length > 0;
+  }
+  return status;
+}
 
 function getAdminConfigDiff(previous: AIAdminConfig, next: AIAdminConfig) {
   const changedProviders: string[] = [];
@@ -127,17 +136,19 @@ export async function GET() {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const isAdmin = isAdminEmail(user.primaryEmail);
+  const isAdmin = isAdminUser(user);
 
   // Always read the global admin config (visible to all users for model filtering)
   const globalAdminConfig = await getGlobalAdminModelConfig();
 
-  const persisted = await getPersistedAISettings(user.id);
+  const persisted = await getPersistedAISettings();
 
   return NextResponse.json({
     isAdmin,
     adminConfig: globalAdminConfig,
-    byokConfig: persisted.byokConfig,
+    // Never return the keys themselves — only whether each provider has one. The UI only needs
+    // presence, and echoing secrets back to the browser turns any XSS into key exfiltration.
+    byokStatus: toByokStatus(persisted.byokConfig),
     customModels: persisted.customModels,
   });
 }
@@ -153,7 +164,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const isAdmin = isAdminEmail(user.primaryEmail);
+  const isAdmin = isAdminUser(user);
 
   // --- Admin config: save globally ---
   if (isAdmin && parsedBody.data.adminConfig !== undefined) {
@@ -168,8 +179,6 @@ export async function POST(request: Request) {
     const adminDiff = getAdminConfigDiff(previousGlobal, requestedAdmin);
     if (adminDiff.hasChanges) {
       await addAIAdminAudit({
-        userId: user.id,
-        email: user.primaryEmail || '',
         action: 'ai.admin_config.updated',
         details: adminDiff.details,
       });
@@ -177,13 +186,25 @@ export async function POST(request: Request) {
   }
 
   // --- BYOK config: save per-user ---
+  // Merge rather than replace. The client no longer holds the full key map (GET returns presence
+  // only), so it can only send the providers it actually changed. An explicit empty string means
+  // "clear this provider"; an absent provider is left untouched.
   if (parsedBody.data.byokConfig !== undefined) {
     const requestedByok = sanitizeBYOKConfig(parsedBody.data.byokConfig);
-    const persisted = await getPersistedAISettings(user.id);
+    const persisted = await getPersistedAISettings();
+
+    const mergedByok = { ...persisted.byokConfig };
+    for (const [providerId, key] of Object.entries(requestedByok)) {
+      if (typeof key === 'string' && key.length > 0) {
+        mergedByok[providerId as keyof typeof mergedByok] = key;
+      } else {
+        delete mergedByok[providerId as keyof typeof mergedByok];
+      }
+    }
+
     await savePersistedAISettings({
-      userId: user.id,
       adminConfig: persisted.adminConfig,
-      byokConfig: requestedByok,
+      byokConfig: mergedByok,
       customModels: persisted.customModels,
     });
   }
@@ -192,21 +213,20 @@ export async function POST(request: Request) {
   if (parsedBody.data.customModels !== undefined) {
     const requestedCustomModels = sanitizeCustomModelsConfig(parsedBody.data.customModels);
     await saveUserCustomModels({
-      userId: user.id,
       customModels: requestedCustomModels,
     });
   }
 
   // Return current state
   const globalAdminConfig = await getGlobalAdminModelConfig();
-  const userCustomModels = await getUserCustomModels(user.id);
-  const persisted = await getPersistedAISettings(user.id);
+  const userCustomModels = await getUserCustomModels();
+  const persisted = await getPersistedAISettings();
 
   return NextResponse.json({
     success: true,
     isAdmin,
     adminConfig: globalAdminConfig,
-    byokConfig: persisted.byokConfig,
+    byokStatus: toByokStatus(persisted.byokConfig),
     customModels: userCustomModels,
   });
 }

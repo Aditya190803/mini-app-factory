@@ -1,34 +1,15 @@
-import {
-  DEFAULT_AI_ADMIN_CONFIG,
-  type AIAdminConfig,
-  type ProviderBYOKConfig,
-  fromBase64JSON,
-  sanitizeAIAdminConfig,
-  sanitizeBYOKConfig,
-} from '@/lib/ai-admin-config';
+import type { AIAdminConfig, ProviderBYOKConfig } from '@/lib/ai-admin-config';
 
+/**
+ * Resolved AI configuration for a single server-side run.
+ *
+ * This is always built from Convex-persisted settings (see `lib/ai-settings-store.ts`) — never
+ * from request headers. A previous `getRuntimeAIConfigFromRequest` helper read an
+ * `x-maf-ai-byok` header; it had no callers and has been removed along with the client that
+ * sent it. Do not reintroduce a header-supplied variant: it would let a caller inject provider
+ * credentials and admin overrides into a server run.
+ */
 export type AIRuntimeConfig = {
   adminConfig: AIAdminConfig;
   byokConfig: ProviderBYOKConfig;
 };
-
-export function getRuntimeAIConfigFromRequest(
-  request: Request,
-  options?: { isAdmin?: boolean; isAuthenticated?: boolean }
-): AIRuntimeConfig {
-  const adminEncoded = request.headers.get('x-maf-ai-config');
-  const byokEncoded = request.headers.get('x-maf-ai-byok');
-
-  const adminConfig = options?.isAdmin
-    ? sanitizeAIAdminConfig(fromBase64JSON<unknown>(adminEncoded) ?? DEFAULT_AI_ADMIN_CONFIG)
-    : DEFAULT_AI_ADMIN_CONFIG;
-
-  const byokConfig = options?.isAuthenticated
-    ? sanitizeBYOKConfig(fromBase64JSON<unknown>(byokEncoded))
-    : {};
-
-  return {
-    adminConfig,
-    byokConfig,
-  };
-}

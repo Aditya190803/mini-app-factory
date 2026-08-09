@@ -2,11 +2,24 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { isAIProviderId, type AIProviderId } from '@/lib/ai-admin-config';
+import { getPersistedAISettings } from '@/lib/ai-settings-store';
+import { checkRateLimit } from '@/lib/rate-limit';
 
-const payloadSchema = z.object({
-  providerId: z.string(),
-  apiKey: z.string().min(1),
-});
+/**
+ * Either validate a key the user just typed (`apiKey`), or validate the one already stored for
+ * them (`useStored`). The stored-key path exists because the settings UI no longer receives saved
+ * keys from the server — it only knows a key is present — so it cannot send one back for testing.
+ */
+const payloadSchema = z
+  .object({
+    providerId: z.string().max(40),
+    apiKey: z.string().min(1).max(500).optional(),
+    useStored: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((v) => Boolean(v.apiKey) !== Boolean(v.useStored), {
+    message: 'Provide exactly one of apiKey or useStored',
+  });
 
 type ProviderProbe = {
   url: string;
@@ -38,14 +51,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
+  // Each call makes an outbound request to a third-party provider, so this needs a limit of its
+  // own regardless of what the caller is validating.
+  const limit = checkRateLimit({ key: `validate-key:${user.id}`, limit: 10, windowMs: 60_000 });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many key checks. Try again shortly.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((limit.resetAt - Date.now()) / 1000)) } }
+    );
+  }
+
   const parsed = payloadSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const { providerId, apiKey } = parsed.data;
+  const { providerId, useStored } = parsed.data;
   if (!isAIProviderId(providerId)) {
     return NextResponse.json({ error: 'Unsupported provider' }, { status: 400 });
+  }
+
+  let apiKey = parsed.data.apiKey;
+  if (useStored) {
+    const persisted = await getPersistedAISettings();
+    apiKey = persisted.byokConfig[providerId];
+    if (!apiKey) {
+      return NextResponse.json({ error: 'No saved key for this provider' }, { status: 400 });
+    }
+  }
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
   const probe = providerProbe[providerId];
