@@ -7,6 +7,7 @@ import MetadataDashboard from "@/components/metadata-dashboard";
 import { Button } from "@/components/ui/button";
 import { Globe, GitBranch, Activity, Settings2 } from "lucide-react";
 import { extractNetlifySiteNameFromUrl } from "@/lib/deploy-shared";
+import CloudflareProjectSettings from "@/components/cloudflare-project-settings";
 
 interface ProjectSettingsProps {
   projectName: string;
@@ -123,6 +124,14 @@ export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
             </div>
           )}
         </section>
+
+        <CloudflareProjectSettings
+          projectName={project.projectName}
+          cloudflareProjectName={project.cloudflareProjectName}
+          d1DatabaseName={project.cloudflareD1DatabaseName}
+          customDomain={project.cloudflareCustomDomain}
+          deployments={deploymentHistory || []}
+        />
 
         <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
           <div className="flex items-center gap-2 text-[var(--secondary-text)]">

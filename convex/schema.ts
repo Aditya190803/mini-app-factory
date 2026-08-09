@@ -50,6 +50,12 @@ export default defineSchema({
     deployProvider: v.optional(v.string()),
     deployedAt: v.optional(v.number()),
     netlifySiteName: v.optional(v.string()),
+    cloudflareProjectName: v.optional(v.string()),
+    cloudflareDeploymentId: v.optional(v.string()),
+    cloudflareD1DatabaseId: v.optional(v.string()),
+    cloudflareD1DatabaseName: v.optional(v.string()),
+    cloudflareCustomDomain: v.optional(v.string()),
+    cloudflareEnvVarsEncrypted: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -65,13 +71,16 @@ export default defineSchema({
     language: v.union(
       v.literal("html"),
       v.literal("css"),
-      v.literal("javascript")
+      v.literal("javascript"),
+      v.literal("sql")
     ),
     fileType: v.union(
       v.literal("page"),
       v.literal("partial"),
       v.literal("style"),
-      v.literal("script")
+      v.literal("script"),
+      v.literal("worker"),
+      v.literal("migration")
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -96,9 +105,14 @@ export default defineSchema({
     githubAccessToken: v.optional(v.string()),
     vercelAccessToken: v.optional(v.string()),
     netlifyAccessToken: v.optional(v.string()),
+    cloudflareApiToken: v.optional(v.string()),
+    cloudflareTokenId: v.optional(v.string()),
+    cloudflareAccountId: v.optional(v.string()),
+    cloudflareAccountName: v.optional(v.string()),
     githubConnectedAt: v.optional(v.number()),
     vercelConnectedAt: v.optional(v.number()),
     netlifyConnectedAt: v.optional(v.number()),
+    cloudflareConnectedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -110,6 +124,8 @@ export default defineSchema({
     deploymentUrl: v.optional(v.string()),
     repoUrl: v.optional(v.string()),
     netlifySiteName: v.optional(v.string()),
+    cloudflareProjectName: v.optional(v.string()),
+    cloudflareDeploymentId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])

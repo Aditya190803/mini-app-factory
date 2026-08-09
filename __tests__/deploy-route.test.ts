@@ -14,6 +14,10 @@ vi.mock('@/lib/integrations', () => ({
   getIntegrationTokens: vi.fn(),
 }));
 
+vi.mock('@/lib/cloudflare-deploy', () => ({
+  deployProjectToCloudflare: vi.fn(),
+}));
+
 beforeAll(() => {
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
@@ -128,6 +132,40 @@ describe('POST /api/deploy', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  test('streams success for Cloudflare direct deploy without GitHub', async () => {
+    const { POST } = await import('@/app/api/deploy/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFiles } = await import('@/lib/projects');
+    const { getIntegrationTokens } = await import('@/lib/integrations');
+    const { deployProjectToCloudflare } = await import('@/lib/cloudflare-deploy');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'demo-project', userId: 'user_123' });
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ path: 'index.html', content: '<h1>Hello</h1>' }]);
+    (getIntegrationTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      cloudflareApiToken: 'cf-token',
+      cloudflareAccountId: 'account-1',
+    });
+    (deployProjectToCloudflare as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      deploymentId: 'deployment-1',
+      deploymentUrl: 'https://demo-project.pages.dev',
+      cloudflareProjectName: 'demo-project',
+    });
+
+    const req = new Request('http://localhost/api/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName: 'demo-project', deployMode: 'cloudflare' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('https://demo-project.pages.dev');
+    expect(deployProjectToCloudflare).toHaveBeenCalledWith(expect.objectContaining({
+      token: 'cf-token',
+      accountId: 'account-1',
+    }));
   });
 
   test('streams success for github-only deploy', async () => {

@@ -36,6 +36,15 @@ export function normalizeNetlifySiteName(input: string) {
   return normalizeRepoName(input);
 }
 
+export function normalizeCloudflareProjectName(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 58);
+}
+
 export function extractRepoFullNameFromUrl(url?: string | null) {
   if (!url) return undefined;
   const match = url.match(/github\.com\/([^/]+\/[^/]+)(?:\.git)?$/i);

@@ -3,10 +3,10 @@ import { api } from "@/convex/_generated/api";
 import { z } from "zod";
 import { getIntegrationTokens } from "@/lib/integrations";
 import { getAuthedConvexClient } from "@/lib/convex-server";
-import { revokeGithubToken, revokeNetlifyToken, revokeVercelToken } from "@/lib/oauth-revoke";
+import { revokeCloudflareToken, revokeGithubToken, revokeNetlifyToken, revokeVercelToken } from "@/lib/oauth-revoke";
 const disconnectSchema = z
   .object({
-    provider: z.enum(["github", "vercel", "netlify", "all"]).optional(),
+    provider: z.enum(["github", "vercel", "netlify", "cloudflare", "all"]).optional(),
   })
   .strict();
 
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let provider: "github" | "vercel" | "netlify" | "all" = "all";
+  let provider: "github" | "vercel" | "netlify" | "cloudflare" | "all" = "all";
   try {
     const parsed = disconnectSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -45,6 +45,9 @@ export async function POST(req: Request) {
           : null,
         wants('vercel') && tokens.vercelAccessToken
           ? revokeVercelToken(tokens.vercelAccessToken)
+          : null,
+        wants('cloudflare') && tokens.cloudflareApiToken
+          ? revokeCloudflareToken(tokens.cloudflareApiToken)
           : null,
       ].filter(Boolean) as Promise<{ provider: string; revoked: boolean; reason?: string }>[];
 

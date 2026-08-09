@@ -36,6 +36,12 @@ export interface ProjectMetadata {
   deployProvider?: string;
   deployedAt?: number;
   netlifySiteName?: string;
+  cloudflareProjectName?: string;
+  cloudflareDeploymentId?: string;
+  cloudflareD1DatabaseId?: string;
+  cloudflareD1DatabaseName?: string;
+  cloudflareCustomDomain?: string;
+  cloudflareEnvVarsEncrypted?: string;
   globalSeo?: {
     siteName?: string;
     description?: string;
@@ -93,6 +99,20 @@ export async function saveProject(metadata: ProjectMetadata) {
     deployedAt: metadata.deployedAt,
     netlifySiteName: metadata.netlifySiteName,
   });
+}
+
+export async function updateCloudflareProjectConfig(params: {
+  projectName: string;
+  cloudflareProjectName?: string | null;
+  cloudflareDeploymentId?: string | null;
+  cloudflareD1DatabaseId?: string | null;
+  cloudflareD1DatabaseName?: string | null;
+  cloudflareCustomDomain?: string | null;
+  cloudflareEnvVarsEncrypted?: string | null;
+  deploymentUrl?: string | null;
+}) {
+  const convex = await getConvex();
+  await convex.mutation(api.projects.updateCloudflareConfig, params);
 }
 
 export async function getProject(name: string): Promise<ProjectMetadata | null> {

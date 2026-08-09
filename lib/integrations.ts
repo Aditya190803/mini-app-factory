@@ -6,9 +6,13 @@ export interface IntegrationStatus {
   githubConnected: boolean;
   vercelConnected: boolean;
   netlifyConnected: boolean;
+  cloudflareConnected: boolean;
   githubConnectedAt?: number;
   vercelConnectedAt?: number;
   netlifyConnectedAt?: number;
+  cloudflareConnectedAt?: number;
+  cloudflareAccountId?: string;
+  cloudflareAccountName?: string;
 }
 
 /**
@@ -29,6 +33,7 @@ export async function getIntegrationTokens() {
     githubAccessToken: decryptSecret(integration.githubAccessToken) ?? undefined,
     vercelAccessToken: decryptSecret(integration.vercelAccessToken) ?? undefined,
     netlifyAccessToken: decryptSecret(integration.netlifyAccessToken) ?? undefined,
+    cloudflareApiToken: decryptSecret(integration.cloudflareApiToken) ?? undefined,
   };
 }
 
@@ -36,6 +41,10 @@ export async function upsertIntegrationTokens(params: {
   githubAccessToken?: string;
   vercelAccessToken?: string;
   netlifyAccessToken?: string;
+  cloudflareApiToken?: string;
+  cloudflareTokenId?: string;
+  cloudflareAccountId?: string;
+  cloudflareAccountName?: string;
 }) {
   const convex = await getAuthedConvexClient();
   await convex.mutation(api.integrations.upsertIntegration, {
@@ -45,6 +54,11 @@ export async function upsertIntegrationTokens(params: {
       params.vercelAccessToken === undefined ? undefined : encryptSecret(params.vercelAccessToken),
     netlifyAccessToken:
       params.netlifyAccessToken === undefined ? undefined : encryptSecret(params.netlifyAccessToken),
+    cloudflareApiToken:
+      params.cloudflareApiToken === undefined ? undefined : encryptSecret(params.cloudflareApiToken),
+    cloudflareTokenId: params.cloudflareTokenId,
+    cloudflareAccountId: params.cloudflareAccountId,
+    cloudflareAccountName: params.cloudflareAccountName,
   });
 }
 
@@ -54,8 +68,12 @@ export async function getIntegrationStatus(): Promise<IntegrationStatus> {
     githubConnected: !!integration?.githubAccessToken,
     vercelConnected: !!integration?.vercelAccessToken,
     netlifyConnected: !!integration?.netlifyAccessToken,
+    cloudflareConnected: !!integration?.cloudflareApiToken && !!integration?.cloudflareAccountId,
     githubConnectedAt: integration?.githubConnectedAt,
     vercelConnectedAt: integration?.vercelConnectedAt,
     netlifyConnectedAt: integration?.netlifyConnectedAt,
+    cloudflareConnectedAt: integration?.cloudflareConnectedAt,
+    cloudflareAccountId: integration?.cloudflareAccountId,
+    cloudflareAccountName: integration?.cloudflareAccountName,
   };
 }

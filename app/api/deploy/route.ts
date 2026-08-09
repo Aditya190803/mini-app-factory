@@ -8,6 +8,7 @@ import { getServerEnv } from "@/lib/env";
 import { assertCanAccessProject } from "@/lib/project-access";
 import { createSSEWriter } from "@/lib/sse-writer";
 import { z } from "zod";
+import { deployProjectToCloudflare } from "@/lib/cloudflare-deploy";
 
 type DeployFile = {
   path: string;
@@ -20,8 +21,9 @@ type DeployRequest = {
   files?: DeployFile[];
   repoVisibility?: "private" | "public";
   githubOrg?: string | null;
-  deployMode?: "github-vercel" | "github-netlify" | "github-only";
+  deployMode?: "github-vercel" | "github-netlify" | "github-only" | "cloudflare";
   repoName?: string;
+  cloudflareProjectName?: string;
   repoFullName?: string;
   netlifySiteName?: string;
 };
@@ -31,8 +33,9 @@ const deploySchema = z.object({
   prompt: z.string().trim().min(1).max(8_000).optional(),
   repoVisibility: z.enum(["private", "public"]).optional(),
   githubOrg: z.string().trim().min(1).max(120).nullable().optional(),
-  deployMode: z.enum(["github-vercel", "github-netlify", "github-only"]).optional(),
+  deployMode: z.enum(["github-vercel", "github-netlify", "github-only", "cloudflare"]).optional(),
   repoName: z.string().trim().min(1).max(120).optional(),
+  cloudflareProjectName: z.string().trim().min(1).max(58).optional(),
   repoFullName: z.string().trim().min(1).max(240).optional(),
   netlifySiteName: z.string().trim().min(1).max(120).optional(),
 }).strict();
@@ -139,14 +142,20 @@ export async function POST(req: Request) {
   const deployMode =
     body.deployMode === "github-only"
       ? "github-only"
-      : body.deployMode === "github-netlify"
-        ? "github-netlify"
-        : body.deployMode === "github-vercel"
-          ? "github-vercel"
-          : "github-netlify";
+      : body.deployMode === "cloudflare"
+        ? "cloudflare"
+        : body.deployMode === "github-netlify"
+          ? "github-netlify"
+          : body.deployMode === "github-vercel"
+            ? "github-vercel"
+            : "github-netlify";
 
   const integrations = await getIntegrationTokens();
-  if (!integrations?.githubAccessToken) {
+  if (deployMode === "cloudflare") {
+    if (!integrations?.cloudflareApiToken || !integrations.cloudflareAccountId) {
+      return Response.json({ error: "Cloudflare connection required" }, { status: 400 });
+    }
+  } else if (!integrations?.githubAccessToken) {
     return Response.json({ error: "GitHub connection required" }, { status: 400 });
   }
   if (deployMode === "github-vercel" && !integrations?.vercelAccessToken) {
@@ -161,6 +170,19 @@ export async function POST(req: Request) {
       const writer = createSSEWriter(controller);
 
       try {
+        if (deployMode === "cloudflare") {
+          const result = await deployProjectToCloudflare({
+            token: integrations.cloudflareApiToken!,
+            accountId: integrations.cloudflareAccountId!,
+            requestedProjectName: body.cloudflareProjectName,
+            project: project!,
+            files: deployFiles,
+            onProgress: (message) => writer.write({ status: "progress", message }),
+          });
+          writer.write({ status: "success", data: result });
+          return;
+        }
+
         writer.write({ status: "progress", message: "Preparing repository details" });
 
         const githubToken = integrations.githubAccessToken!;

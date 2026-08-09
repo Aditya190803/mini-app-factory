@@ -14,6 +14,8 @@ import {
   FolderOpen,
   Edit2,
   Copy,
+  CloudCog,
+  Database,
 } from 'lucide-react';
 import { ProjectFile } from '@/lib/page-builder';
 import { cn } from '@/lib/utils';
@@ -83,6 +85,8 @@ export default function FileTree({
     if (file.fileType === 'partial') return <Puzzle className="w-4 h-4 text-purple-400" />;
     if (file.fileType === 'style') return <Palette className="w-4 h-4 text-pink-400" />;
     if (file.fileType === 'script') return <Code className="w-4 h-4 text-yellow-400" />;
+    if (file.fileType === 'worker') return <CloudCog className="w-4 h-4 text-orange-400" />;
+    if (file.fileType === 'migration') return <Database className="w-4 h-4 text-emerald-400" />;
     return <FileCode className="w-4 h-4 text-gray-400" />;
   };
 
@@ -195,6 +199,24 @@ export default function FileTree({
             title="New Partial"
           >
             <Puzzle className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-[#2d2d2d]"
+            onClick={() => onNewFile('worker')}
+            title="New Cloudflare Worker"
+          >
+            <CloudCog className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-[#2d2d2d]"
+            onClick={() => onNewFile('migration')}
+            title="New D1 Migration"
+          >
+            <Database className="w-4 h-4" />
           </Button>
           <Button 
             variant="ghost" 
@@ -316,6 +338,13 @@ export default function FileTree({
                                   >
                                     <Code className="mr-2 h-3.5 w-3.5 text-yellow-400" />
                                     <span>New Script</span>
+                                  </ContextMenuItem>
+                                  <ContextMenuItem
+                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    onClick={() => onNewFileInFolder?.(item.path, 'migration')}
+                                  >
+                                    <Database className="mr-2 h-3.5 w-3.5 text-emerald-400" />
+                                    <span>New D1 Migration</span>
                                   </ContextMenuItem>
                                 </ContextMenuSubContent>
                               </ContextMenuSub>

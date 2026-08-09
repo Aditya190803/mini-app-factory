@@ -42,6 +42,21 @@ alert('hello');
     });
   });
 
+  test('parses Cloudflare worker and D1 migration files', () => {
+    const files = parseMultiFileOutput(`
+\`\`\`javascript:_worker.js
+export default { fetch(request, env) { return env.ASSETS.fetch(request); } };
+\`\`\`
+\`\`\`sql:migrations/0001_init.sql
+CREATE TABLE messages(id INTEGER PRIMARY KEY);
+\`\`\`
+`);
+    expect(files).toEqual([
+      expect.objectContaining({ path: '_worker.js', language: 'javascript', fileType: 'worker' }),
+      expect.objectContaining({ path: 'migrations/0001_init.sql', language: 'sql', fileType: 'migration' }),
+    ]);
+  });
+
   test('parseMultiFileOutput handles missing paths with defaults', () => {
     const output = "\`\`\`html\n<h1>No path</h1>\n\`\`\`";
     const files = parseMultiFileOutput(output);

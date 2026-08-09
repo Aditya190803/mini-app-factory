@@ -61,14 +61,17 @@ export const saveFile = mutation({
     language: v.union(
       v.literal("html"),
       v.literal("css"),
-      v.literal("javascript")
+      v.literal("javascript"),
+      v.literal("sql")
     ),
     fileType: v.union(
       v.literal("page"),
       v.literal("html"),
       v.literal("partial"),
       v.literal("style"),
-      v.literal("script")
+      v.literal("script"),
+      v.literal("worker"),
+      v.literal("migration")
     ),
   },
   handler: async (ctx, args) => {
@@ -127,14 +130,17 @@ export const saveFiles = mutation({
         language: v.union(
           v.literal("html"),
           v.literal("css"),
-          v.literal("javascript")
+          v.literal("javascript"),
+          v.literal("sql")
         ),
         fileType: v.union(
           v.literal("page"),
           v.literal("html"),
           v.literal("partial"),
           v.literal("style"),
-          v.literal("script")
+          v.literal("script"),
+          v.literal("worker"),
+          v.literal("migration")
         ),
       })
     ),

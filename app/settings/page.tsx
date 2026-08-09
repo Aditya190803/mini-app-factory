@@ -9,12 +9,16 @@ import { logout } from '@/lib/logout';
 import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical } from 'lucide-react';
 import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
+import CloudflareConnect from '@/components/cloudflare-connect';
 
 type IntegrationStatus = {
   githubConnected: boolean;
   netlifyConnected: boolean;
+  cloudflareConnected: boolean;
   githubConnectedAt?: number;
   netlifyConnectedAt?: number;
+  cloudflareConnectedAt?: number;
+  cloudflareAccountName?: string;
 };
 
 const providerLabel: Record<AIProviderId, string> = {
@@ -38,6 +42,7 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<IntegrationStatus>({
     githubConnected: false,
     netlifyConnected: false,
+    cloudflareConnected: false,
   });
   // Saved keys never come back from the server — we only learn which providers have one.
   // `byokDraft` holds what the user is currently typing, and is cleared once saved.
@@ -96,8 +101,11 @@ export default function SettingsPage() {
           setStatus({
             githubConnected: !!data.githubConnected,
             netlifyConnected: !!data.netlifyConnected,
+            cloudflareConnected: !!data.cloudflareConnected,
             githubConnectedAt: data.githubConnectedAt,
             netlifyConnectedAt: data.netlifyConnectedAt,
+            cloudflareConnectedAt: data.cloudflareConnectedAt,
+            cloudflareAccountName: data.cloudflareAccountName,
           });
         }
 
@@ -254,7 +262,7 @@ export default function SettingsPage() {
     window.location.href = `/api/integrations/netlify/start?returnTo=${encodeURIComponent('/settings')}`;
   };
 
-  const disconnect = async (provider: 'github' | 'netlify' | 'all') => {
+  const disconnect = async (provider: 'github' | 'netlify' | 'cloudflare' | 'all') => {
     setIsDisconnecting(provider);
     try {
       await fetch('/api/integrations/disconnect', {
@@ -265,8 +273,11 @@ export default function SettingsPage() {
       setStatus((prev) => ({
         githubConnected: provider === 'github' || provider === 'all' ? false : prev.githubConnected,
         netlifyConnected: provider === 'netlify' || provider === 'all' ? false : prev.netlifyConnected,
+        cloudflareConnected: provider === 'cloudflare' || provider === 'all' ? false : prev.cloudflareConnected,
         githubConnectedAt: provider === 'github' || provider === 'all' ? undefined : prev.githubConnectedAt,
         netlifyConnectedAt: provider === 'netlify' || provider === 'all' ? undefined : prev.netlifyConnectedAt,
+        cloudflareConnectedAt: provider === 'cloudflare' || provider === 'all' ? undefined : prev.cloudflareConnectedAt,
+        cloudflareAccountName: provider === 'cloudflare' || provider === 'all' ? undefined : prev.cloudflareAccountName,
       }));
     } finally {
       setIsDisconnecting(null);
@@ -350,7 +361,7 @@ export default function SettingsPage() {
               <div className="grid gap-4">
                 <div className="border border-[var(--border)] rounded-md px-3 py-2">
                   <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)] mb-2">Global Status</div>
-                  <div className="grid md:grid-cols-2 gap-2 text-[10px] font-mono text-[var(--muted-text)]">
+                  <div className="grid md:grid-cols-3 gap-2 text-[10px] font-mono text-[var(--muted-text)]">
                     <div>
                       GitHub: {status.githubConnected ? 'Connected' : 'Not connected'}
                       <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
@@ -358,6 +369,10 @@ export default function SettingsPage() {
                     <div>
                       Netlify: {status.netlifyConnected ? 'Connected' : 'Not connected'}
                       <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
+                    </div>
+                    <div>
+                      Cloudflare: {status.cloudflareConnected ? 'Connected' : 'Not connected'}
+                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.cloudflareConnectedAt)}</div>
                     </div>
                   </div>
                 </div>
@@ -406,6 +421,29 @@ export default function SettingsPage() {
                       </Button>
                     )}
                   </div>
+                </div>
+
+                <div className="border border-[var(--border)] rounded-md px-3 py-3 space-y-3">
+                  <CloudflareConnect
+                    connected={status.cloudflareConnected}
+                    accountName={status.cloudflareAccountName}
+                    onConnected={(account) => setStatus((current) => ({
+                      ...current,
+                      cloudflareConnected: true,
+                      cloudflareConnectedAt: Date.now(),
+                      cloudflareAccountName: account.name,
+                    }))}
+                  />
+                  {status.cloudflareConnected && (
+                    <Button
+                      onClick={() => disconnect('cloudflare')}
+                      variant="outline"
+                      className="font-mono uppercase text-[10px] border-[var(--border)]"
+                      disabled={isDisconnecting === 'cloudflare'}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

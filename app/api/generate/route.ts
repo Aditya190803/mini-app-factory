@@ -137,6 +137,7 @@ Return files using code blocks with the format:
 \`\`\`html:filename.html
 Code here...
 \`\`\`
+Use \`javascript:_worker.js\` for a Cloudflare backend and \`sql:migrations/0001_init.sql\` for D1 migrations.
 
 Mandatory requirements:
 1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
@@ -159,6 +160,13 @@ Mandatory requirements:
    - **Relative Paths Only**: Always use relative filenames like \`about.html\`. NEVER use absolute paths like \`/about.html\` or \`/index.html\`.
    - **Internal Anchors**: If you link to an anchor (e.g. \`#features\`), the target element with \`id=\"features\"\` must actually exist in the same HTML file.
    - **Footer Policy**: Legal pages (Privacy Policy, Terms of Service) are often generated as empty links. You are FORBIDDEN from adding these unless you also generate the corresponding \`privacy.html\` or \`terms.html\` files. Omit footer links if they would point nowhere.
+
+7. **Optional Cloudflare Backend**:
+   - Only when the request needs server-side endpoints, generate one import-free \`_worker.js\` using module Worker syntax: \`export default { async fetch(request, env) { ... } }\`.
+   - Route API requests inside that fetch handler and fall through to static assets with \`return env.ASSETS.fetch(request)\`.
+   - Do not generate a \`functions/\` directory; this deployment path uses Pages advanced mode.
+   - Only when relational persistence is needed, access D1 as \`env.DB\` and generate ordered, idempotent SQL files under \`migrations/\`.
+   - Never put credentials in generated files; read configured secrets from \`env\`.
 
 You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
