@@ -50,7 +50,11 @@ export function validateToolCall(toolName: string, args: Record<string, unknown>
     if (raw === 'html') return 'page';
     if (raw === 'css') return 'style';
     if (raw === 'js' || raw === 'javascript') return 'script';
-    if (raw === 'page' || raw === 'partial' || raw === 'style' || raw === 'script') {
+    if (raw === 'sql') return 'migration';
+    if (
+      raw === 'page' || raw === 'partial' || raw === 'style' || raw === 'script' ||
+      raw === 'worker' || raw === 'migration'
+    ) {
       return raw as ProjectFile['fileType'];
     }
     return null;
@@ -224,11 +228,13 @@ function handleUpdateFile(args: { file: string; content: string }, files: Projec
     return { success: true, message: 'File updated', updatedFiles: [existing] };
   }
 
-  const language = path.endsWith('.html') ? 'html' :
-    path.endsWith('.css') ? 'css' :
+  const language: ProjectFile['language'] = path.endsWith('.html') ? 'html' :
+    path.endsWith('.css') ? 'css' : path.endsWith('.sql') ? 'sql' :
       path.endsWith('.js') ? 'javascript' : 'html';
 
-  const fileType = path.endsWith('.css') ? 'style' : path.endsWith('.js') ? 'script' : 'page';
+  const fileType: ProjectFile['fileType'] = path === '_worker.js' ? 'worker' :
+    path.startsWith('migrations/') && path.endsWith('.sql') ? 'migration' :
+      path.endsWith('.css') ? 'style' : path.endsWith('.js') ? 'script' : 'page';
   const newFile: ProjectFile = { path, content, language, fileType };
   return { success: true, message: 'File created', updatedFiles: [newFile] };
 }
@@ -535,11 +541,11 @@ function handleCreateFile(args: { path: string; content: string; fileType: Proje
   const existing = files.find(f => f.path === path);
   if (existing) return { success: false, message: `File already exists: ${path}` };
 
-  const language = path.endsWith('.html') ? 'html' : 
-                   path.endsWith('.css') ? 'css' : 
-                   path.endsWith('.js') ? 'javascript' : 'html';
+  const language: ProjectFile['language'] = path.endsWith('.html') ? 'html' :
+    path.endsWith('.css') ? 'css' : path.endsWith('.sql') ? 'sql' :
+      path.endsWith('.js') ? 'javascript' : 'html';
 
-  const newFile: ProjectFile = { path, content, language: language as ProjectFile['language'], fileType };
+  const newFile: ProjectFile = { path, content, language, fileType };
   return { success: true, message: 'File created', updatedFiles: [newFile] };
 }
 

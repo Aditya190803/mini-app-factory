@@ -210,6 +210,36 @@ export const claimProjectOrphan = mutation({
   },
 });
 
+export const updateCloudflareConfig = mutation({
+  args: {
+    projectName: v.string(),
+    cloudflareProjectName: v.optional(v.union(v.string(), v.null())),
+    cloudflareDeploymentId: v.optional(v.union(v.string(), v.null())),
+    cloudflareD1DatabaseId: v.optional(v.union(v.string(), v.null())),
+    cloudflareD1DatabaseName: v.optional(v.union(v.string(), v.null())),
+    cloudflareCustomDomain: v.optional(v.union(v.string(), v.null())),
+    cloudflareEnvVarsEncrypted: v.optional(v.union(v.string(), v.null())),
+    deploymentUrl: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const project = await requireProjectAccess(ctx, args.projectName);
+    const patch: Record<string, string | number | undefined> = { updatedAt: Date.now() };
+    for (const key of [
+      "cloudflareProjectName",
+      "cloudflareDeploymentId",
+      "cloudflareD1DatabaseId",
+      "cloudflareD1DatabaseName",
+      "cloudflareCustomDomain",
+      "cloudflareEnvVarsEncrypted",
+      "deploymentUrl",
+    ] as const) {
+      if (args[key] !== undefined) patch[key] = args[key] ?? undefined;
+    }
+    await ctx.db.patch(project._id, patch);
+    return project._id;
+  },
+});
+
 export const publishProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {

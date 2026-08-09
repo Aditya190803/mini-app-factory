@@ -85,3 +85,8 @@ export async function revokeNetlifyToken(accessToken: string): Promise<RevokeRes
 export async function revokeVercelToken(_accessToken: string): Promise<RevokeResult> {
   return { provider: 'vercel', revoked: false, reason: 'no_revocation_endpoint' };
 }
+
+/** User-created API tokens must be revoked from Cloudflare's API Tokens dashboard. */
+export async function revokeCloudflareToken(_accessToken: string): Promise<RevokeResult> {
+  return { provider: 'cloudflare', revoked: false, reason: 'revoke_in_cloudflare_dashboard' };
+}

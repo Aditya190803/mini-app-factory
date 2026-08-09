@@ -133,6 +133,7 @@ export async function runTransformWork(input: TransformWorkInput) {
 You will be given the complete project context comprising all files.
 
 Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
+For Cloudflare backends, keep all request routing in a single import-free \`_worker.js\`, use \`env.ASSETS.fetch(request)\` for static fallthrough, access D1 through \`env.DB\`, and put versioned SQL in \`migrations/\`.
 
 **Target Element Context**:
 - If the user prompt mentions a "Target element", prioritize modifications to that specific piece of code.
@@ -159,7 +160,7 @@ Available tools:
 2. replaceElement(file, selector, newContent) - Replace the matching element ENTIRELY with newContent.
 3. insertContent(file, position, selector, content) - position: before, after, prepend, append.
 4. deleteContent(file, selector) - Remove an element.
-5. createFile(path, content, fileType) - Create a new page, style, script or partial.
+5. createFile(path, content, fileType) - Create a page, partial, style, script, Cloudflare worker, or D1 migration.
 6. deleteFile(path) - Remove a file.
 7. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
 8. updateFile(file, content) - Replace an entire file when changes are too complex for other tools.

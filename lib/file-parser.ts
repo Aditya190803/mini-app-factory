@@ -10,7 +10,7 @@ import { ProjectFile } from './page-builder';
 export function parseMultiFileOutput(output: string): ProjectFile[] {
   const files: ProjectFile[] = [];
   // More flexible regex that handles missing filenames or different casing
-  const regex = /```(html|css|javascript|js)(?::([^\n]+))?\n([\s\S]*?)```/gi;
+  const regex = /```(html|css|javascript|js|sql)(?::([^\n]+))?\n([\s\S]*?)```/gi;
   let match;
 
   while ((match = regex.exec(output)) !== null) {
@@ -23,15 +23,19 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
       if (lang === 'html') path = 'index.html';
       else if (lang === 'css') path = 'styles.css';
       else if (lang === 'javascript' || lang === 'js') path = 'script.js';
+      else if (lang === 'sql') path = `migrations/${String(files.length + 1).padStart(4, '0')}_migration.sql`;
       else path = `file-${files.length + 1}.${lang}`;
     }
 
-    let language: 'html' | 'css' | 'javascript' = 'html';
+    let language: ProjectFile['language'] = 'html';
     if (lang === 'css') language = 'css';
     if (lang === 'javascript' || lang === 'js') language = 'javascript';
+    if (lang === 'sql') language = 'sql';
 
-    let fileType: 'page' | 'partial' | 'style' | 'script' = 'page';
-    if (path.endsWith('.css')) fileType = 'style';
+    let fileType: ProjectFile['fileType'] = 'page';
+    if (path === '_worker.js') fileType = 'worker';
+    else if (path.startsWith('migrations/') && path.endsWith('.sql')) fileType = 'migration';
+    else if (path.endsWith('.css')) fileType = 'style';
     else if (path.endsWith('.js')) fileType = 'script';
     else if (path.includes('partial') || path.startsWith('header') || path.startsWith('footer')) fileType = 'partial';
     else fileType = 'page';

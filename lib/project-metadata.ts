@@ -26,6 +26,12 @@ export const projectRecordSchema = z.object({
   deployProvider: z.string().optional(),
   deployedAt: z.coerce.number().optional(),
   netlifySiteName: z.string().optional(),
+  cloudflareProjectName: z.string().optional(),
+  cloudflareDeploymentId: z.string().optional(),
+  cloudflareD1DatabaseId: z.string().optional(),
+  cloudflareD1DatabaseName: z.string().optional(),
+  cloudflareCustomDomain: z.string().optional(),
+  cloudflareEnvVarsEncrypted: z.string().optional(),
   seoData: z.array(z.object({
     path: z.string(),
     title: z.string().optional(),
@@ -37,8 +43,15 @@ export const projectRecordSchema = z.object({
 export const projectFileRecordSchema = z.object({
   path: z.string(),
   content: z.string(),
-  language: z.union([z.literal('html'), z.literal('css'), z.literal('javascript')]),
-  fileType: z.union([z.literal('page'), z.literal('partial'), z.literal('style'), z.literal('script')]),
+  language: z.union([z.literal('html'), z.literal('css'), z.literal('javascript'), z.literal('sql')]),
+  fileType: z.union([
+    z.literal('page'),
+    z.literal('partial'),
+    z.literal('style'),
+    z.literal('script'),
+    z.literal('worker'),
+    z.literal('migration'),
+  ]),
   createdAt: z.coerce.number().optional(),
   updatedAt: z.coerce.number().optional(),
 }).passthrough();
@@ -66,6 +79,12 @@ export function normalizeProjectMetadata(record: unknown) {
     deployProvider: parsed.deployProvider,
     deployedAt: parsed.deployedAt,
     netlifySiteName: parsed.netlifySiteName,
+    cloudflareProjectName: parsed.cloudflareProjectName,
+    cloudflareDeploymentId: parsed.cloudflareDeploymentId,
+    cloudflareD1DatabaseId: parsed.cloudflareD1DatabaseId,
+    cloudflareD1DatabaseName: parsed.cloudflareD1DatabaseName,
+    cloudflareCustomDomain: parsed.cloudflareCustomDomain,
+    cloudflareEnvVarsEncrypted: parsed.cloudflareEnvVarsEncrypted,
     seoData: parsed.seoData,
   };
 }

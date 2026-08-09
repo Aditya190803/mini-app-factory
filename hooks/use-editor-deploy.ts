@@ -7,19 +7,21 @@ import {
   extractNetlifySiteNameFromUrl,
   extractRepoFullNameFromUrl,
   extractRepoNameFromFullName,
+  normalizeCloudflareProjectName,
   normalizeNetlifySiteName,
   normalizeRepoName,
   validateRepoName,
 } from '@/lib/deploy-shared';
 import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
 
-export type DeployOption = 'github-netlify' | 'github-only' | 'maf-hosted';
+export type DeployOption = 'github-netlify' | 'github-only' | 'cloudflare' | 'maf-hosted';
 
 type ProjectDeployMeta = {
   _id?: string;
   repoUrl?: string | null;
   deploymentUrl?: string | null;
   netlifySiteName?: string | null;
+  cloudflareProjectName?: string | null;
   isPublished?: boolean;
 };
 
@@ -52,13 +54,19 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState<string | null>(null);
-  const [integrationStatus, setIntegrationStatus] = useState({ githubConnected: false, netlifyConnected: false });
+  const [integrationStatus, setIntegrationStatus] = useState({
+    githubConnected: false,
+    netlifyConnected: false,
+    cloudflareConnected: false,
+    cloudflareAccountName: undefined as string | undefined,
+  });
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
   const [deployOption, setDeployOption] = useState<DeployOption>('github-netlify');
   const [repoName, setRepoName] = useState(projectName);
   const [netlifySiteName, setNetlifySiteName] = useState('');
+  const [cloudflareProjectName, setCloudflareProjectName] = useState('');
   const [repoCheck, setRepoCheck] = useState<{
     status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
     owner?: string;
@@ -68,6 +76,9 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     repoUrl?: string;
     deploymentUrl?: string;
     netlifySiteName?: string;
+    deploymentId?: string;
+    previewUrl?: string;
+    cloudflareProjectName?: string;
   } | null>(null);
   const [deployError, setDeployError] = useState<string | null>(null);
   const [deployNotice, setDeployNotice] = useState<string | null>(null);
@@ -80,6 +91,10 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     () => normalizeNetlifySiteName(netlifySiteName || normalizedRepoName),
     [netlifySiteName, normalizedRepoName]
   );
+  const normalizedCloudflareProjectName = useMemo(
+    () => normalizeCloudflareProjectName(cloudflareProjectName || projectName),
+    [cloudflareProjectName, projectName]
+  );
   const linkedRepoFullName = useMemo(() => extractRepoFullNameFromUrl(projectData?.repoUrl), [projectData?.repoUrl]);
   const linkedRepoName = useMemo(() => extractRepoNameFromFullName(linkedRepoFullName), [linkedRepoFullName]);
   const repoMismatch = useMemo(
@@ -88,19 +103,27 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   );
 
   const fetchIntegrationStatus = useCallback(async () => {
+    const disconnected = {
+      githubConnected: false,
+      netlifyConnected: false,
+      cloudflareConnected: false,
+      cloudflareAccountName: undefined,
+    };
     try {
       const resp = await fetch('/api/integrations/status');
       if (!resp.ok) {
-        setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+        setIntegrationStatus(disconnected);
         return;
       }
       const data = await resp.json();
       setIntegrationStatus({
         githubConnected: !!data.githubConnected,
         netlifyConnected: !!data.netlifyConnected,
+        cloudflareConnected: !!data.cloudflareConnected,
+        cloudflareAccountName: data.cloudflareAccountName,
       });
     } catch {
-      setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+      setIntegrationStatus(disconnected);
     }
   }, []);
 
@@ -156,13 +179,19 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   }, [projectData?.netlifySiteName]);
 
   useEffect(() => {
+    setCloudflareProjectName(projectData?.cloudflareProjectName || projectName);
+  }, [projectData?.cloudflareProjectName, projectName]);
+
+  useEffect(() => {
     if (!deployNotice) return;
     const timer = window.setTimeout(() => setDeployNotice(null), 3000);
     return () => window.clearTimeout(timer);
   }, [deployNotice]);
 
   useEffect(() => {
-    setDeployResult((prev) => (prev?.repoUrl || prev?.deploymentUrl || prev?.netlifySiteName ? prev : null));
+    setDeployResult((prev) =>
+      prev?.repoUrl || prev?.deploymentUrl || prev?.netlifySiteName || prev?.cloudflareProjectName ? prev : null
+    );
     setDeployError(null);
   }, [deployOption]);
 
@@ -186,7 +215,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       setRepoCheck({ status: 'idle' });
       return;
     }
-    if (deployOption === 'maf-hosted') return;
+    if (deployOption === 'maf-hosted' || deployOption === 'cloudflare') return;
     if (!integrationStatus.githubConnected) return;
     if (projectData?.repoUrl) {
       setRepoCheck({ status: 'available', message: 'Linked repo will be reused.' });
@@ -344,6 +373,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
           repoName: normalizedRepoName || projectName,
           repoFullName: linkedRepoFullName,
           netlifySiteName: deployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+          cloudflareProjectName: deployOption === 'cloudflare' ? normalizedCloudflareProjectName : undefined,
         },
         (status) => setDeployStatus(status)
       );
@@ -351,20 +381,25 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         repoUrl: data.repoUrl,
         deploymentUrl: data.deploymentUrl,
         netlifySiteName: data.netlifySiteName,
+        deploymentId: data.deploymentId,
+        previewUrl: data.previewUrl,
+        cloudflareProjectName: data.cloudflareProjectName,
       });
       await persistDeployMeta({
         deploymentUrl: data.deploymentUrl ?? undefined,
         repoUrl: data.repoUrl ?? undefined,
-        deployProvider: deployOption === 'github-only' ? 'github' : 'netlify',
+        deployProvider: deployOption === 'github-only' ? 'github' : deployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
         netlifySiteName: data.netlifySiteName ?? extractNetlifySiteNameFromUrl(data.deploymentUrl) ?? undefined,
       });
       if (projectData?._id) {
         await addDeploymentHistory({
           projectId: projectData._id,
-          provider: deployOption === 'github-only' ? 'github' : 'netlify',
+          provider: deployOption === 'github-only' ? 'github' : deployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
           deploymentUrl: data.deploymentUrl ?? undefined,
           repoUrl: data.repoUrl ?? undefined,
           netlifySiteName: data.netlifySiteName ?? undefined,
+          cloudflareProjectName: data.cloudflareProjectName ?? undefined,
+          cloudflareDeploymentId: data.deploymentId ?? undefined,
         });
       }
       fetchIntegrationStatus();
@@ -386,17 +421,27 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     normalizedRepoName,
     linkedRepoFullName,
     normalizedNetlifySiteName,
+    normalizedCloudflareProjectName,
     persistDeployMeta,
     projectData?._id,
     addDeploymentHistory,
     fetchIntegrationStatus,
   ]);
 
+  const markCloudflareConnected = useCallback((account: { name: string }) => {
+    setIntegrationStatus((current) => ({
+      ...current,
+      cloudflareConnected: true,
+      cloudflareAccountName: account.name,
+    }));
+  }, []);
+
   const deployDisabled =
     isDeploying ||
     (deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected)) ||
     (deployOption === 'github-only' && !integrationStatus.githubConnected) ||
-    (deployOption !== 'maf-hosted' &&
+    (deployOption === 'cloudflare' && (!integrationStatus.cloudflareConnected || !normalizedCloudflareProjectName)) ||
+    ((deployOption === 'github-netlify' || deployOption === 'github-only') &&
       (repoCheck.status === 'taken' || repoCheck.status === 'error' || !repoValidation.valid));
 
   return {
@@ -410,6 +455,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setRepoName,
     netlifySiteName,
     setNetlifySiteName,
+    cloudflareProjectName,
+    setCloudflareProjectName,
     repoVisibility,
     setRepoVisibility,
     githubOrg,
@@ -425,9 +472,11 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     repoMismatch,
     normalizedRepoName,
     normalizedNetlifySiteName,
+    normalizedCloudflareProjectName,
     repoValidation,
     startGithubConnect,
     startNetlifyConnect,
+    markCloudflareConnected,
     handleDeploy,
     copyToClipboard,
     deployDisabled,

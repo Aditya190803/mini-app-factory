@@ -6,7 +6,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 
 interface CodePanelProps {
     html: string;
-    language?: 'html' | 'css' | 'javascript';
+    language?: 'html' | 'css' | 'javascript' | 'sql';
     onChange: (val: string | undefined) => void;
     onReset: () => void;
     searchText?: string;

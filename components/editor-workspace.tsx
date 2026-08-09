@@ -40,6 +40,15 @@ interface EditorWorkspaceProps {
   onBack: () => void;
 }
 
+const newFileCopy: Record<ProjectFile['fileType'], { label: string; description: string; placeholder: string }> = {
+  page: { label: 'Page', description: 'Create a high-level route such as pricing.html.', placeholder: 'about.html' },
+  partial: { label: 'Partial', description: 'Create reusable HTML included with <!-- include:filename.html -->.', placeholder: 'navbar.html' },
+  style: { label: 'Stylesheet', description: 'Create a CSS file.', placeholder: 'components.css' },
+  script: { label: 'Script', description: 'Create a browser JavaScript file.', placeholder: 'analytics.js' },
+  worker: { label: 'Cloudflare Worker', description: 'Create the import-free Pages backend entrypoint.', placeholder: '_worker.js' },
+  migration: { label: 'D1 Migration', description: 'Create an ordered SQL migration under migrations/.', placeholder: 'migrations/0001_init.sql' },
+};
+
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -275,7 +284,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
-    setNewFileName('');
+    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : '');
     setNewFileInFolderPath(null);
     setIsNewFileDialogOpen(true);
   };
@@ -283,7 +292,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const handleNewFileInFolder = (folderPath: string, type: ProjectFile['fileType']) => {
     setNewFileInFolderPath(folderPath);
     setNewFileType(type);
-    setNewFileName('');
+    setNewFileName(type === 'migration' ? '0001_init.sql' : '');
     setIsNewFileDialogOpen(true);
   };
 
@@ -327,15 +336,31 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       finalPath = `${folder}${newFileName}`;
     }
 
+    if (newFileType === 'worker' && finalPath !== '_worker.js') {
+      alert('The Cloudflare Worker entrypoint must be named _worker.js at the project root');
+      return;
+    }
+    if (newFileType === 'migration' && !finalPath.startsWith('migrations/')) {
+      finalPath = `migrations/${finalPath.replace(/^\/+/, '')}`;
+    }
+
     if (files.some(f => f.path === finalPath)) {
       alert('File already exists');
       return;
     }
 
-    const lang: ProjectFile['language'] = finalPath.endsWith('.css') ? 'css' : finalPath.endsWith('.js') ? 'javascript' : 'html';
+    const lang: ProjectFile['language'] = finalPath.endsWith('.css')
+      ? 'css'
+      : finalPath.endsWith('.sql')
+        ? 'sql'
+        : finalPath.endsWith('.js')
+          ? 'javascript'
+          : 'html';
     const newFile: ProjectFile = {
       path: finalPath,
-      content: '', // Template could be added here
+      content: newFileType === 'worker'
+        ? "export default {\n  async fetch(request, env) {\n    return env.ASSETS.fetch(request);\n  },\n};"
+        : '',
       language: lang,
       fileType: newFileType as ProjectFile['fileType']
     };
@@ -940,12 +965,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase text-sm tracking-tight">
-              New {newFileType === 'page' ? 'Page' : 'Partial'}
+              New {newFileCopy[newFileType].label}
             </DialogTitle>
             <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              {newFileType === 'page' 
-                ? "Enter a name for the new page. High-level routes like 'pricing.html'." 
-                : "Partials are reusable components (like navbars or buttons) that you can include in pages using <!-- include:filename.html -->."}
+              {newFileCopy[newFileType].description}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -953,7 +976,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               type="text"
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
-              placeholder={newFileType === 'page' ? 'about.html' : 'navbar.html'}
+              placeholder={newFileCopy[newFileType].placeholder}
               className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

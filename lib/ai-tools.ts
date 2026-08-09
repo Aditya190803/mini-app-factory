@@ -50,7 +50,7 @@ export const editTools = {
       properties: {
         path: { type: "string" },
         content: { type: "string" },
-        fileType: { type: "string", enum: ["page", "partial", "style", "script"] }
+        fileType: { type: "string", enum: ["page", "partial", "style", "script", "worker", "migration"] }
       },
       required: ["path", "content", "fileType"]
     }

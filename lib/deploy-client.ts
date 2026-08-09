@@ -17,6 +17,12 @@ export function normalizeDeployError(message: string) {
   if (/Netlify connection required/i.test(message)) {
     return "Please connect Netlify before deploying.";
   }
+  if (/Cloudflare connection required/i.test(message)) {
+    return "Please connect Cloudflare before deploying.";
+  }
+  if (/Cloudflare API error: 403/i.test(message)) {
+    return "Cloudflare permission denied. Check the token's Pages and D1 account permissions.";
+  }
   if (/Netlify API error: 422/i.test(message)) {
     return "Netlify rejected the site creation. Try a different site name.";
   }
@@ -32,17 +38,23 @@ export type DeployApiPayload = {
   files?: Array<{ path: string; content: string }>;
   repoVisibility?: "private" | "public";
   githubOrg?: string | null;
-  deployMode?: "github-netlify" | "github-only";
+  deployMode?: "github-netlify" | "github-only" | "cloudflare";
   repoName?: string;
+  cloudflareProjectName?: string;
   repoFullName?: string;
   netlifySiteName?: string;
 };
 
 export type DeployApiResult = {
-  repo: string;
+  repo?: string;
   repoUrl?: string;
   deploymentUrl?: string;
   netlifySiteName?: string;
+  deploymentId?: string;
+  previewUrl?: string;
+  cloudflareProjectName?: string;
+  d1DatabaseId?: string;
+  d1DatabaseName?: string;
 };
 
 type DeployStreamEvent = StreamEvent & {

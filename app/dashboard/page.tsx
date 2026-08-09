@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from "@/lib/deploy-shared";
 import { normalizeDeployError, performDeploy } from "@/lib/deploy-client";
 import AccountMenu from "@/components/account-menu";
+import CloudflareConnect from "@/components/cloudflare-connect";
 
 export default function DashboardPage() {
   const user = useUser();
@@ -33,17 +34,24 @@ export default function DashboardPage() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isRedeployDialogOpen, setIsRedeployDialogOpen] = useState(false);
   const [redeployProject, setRedeployProject] = useState<NonNullable<typeof projects>[number] | null>(null);
-  const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only'>('github-netlify');
+  const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only' | 'cloudflare'>('github-netlify');
   const [redeployRepoName, setRedeployRepoName] = useState('');
+  const [redeployCloudflareProjectName, setRedeployCloudflareProjectName] = useState('');
   const [redeployNetlifySiteName, setRedeployNetlifySiteName] = useState('');
   const [redeployResult, setRedeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
   const [redeployError, setRedeployError] = useState<string | null>(null);
   const [isRedeploying, setIsRedeploying] = useState(false);
   const [redeployStatus, setRedeployStatus] = useState<string | null>(null);
   const [isIntegrationLoading, setIsIntegrationLoading] = useState(false);
-  const [integrationStatus, setIntegrationStatus] = useState<{ githubConnected: boolean; netlifyConnected: boolean }>({
+  const [integrationStatus, setIntegrationStatus] = useState<{
+    githubConnected: boolean;
+    netlifyConnected: boolean;
+    cloudflareConnected: boolean;
+    cloudflareAccountName?: string;
+  }>({
     githubConnected: false,
     netlifyConnected: false,
+    cloudflareConnected: false,
   });
 
   const redeployFiles = useQuery(
@@ -80,12 +88,18 @@ export default function DashboardPage() {
     () => normalizeNetlifySiteName(redeployNetlifySiteName || normalizedRepoName),
     [redeployNetlifySiteName, normalizedRepoName]
   );
+  const isGithubRedeploy = redeployOption === 'github-netlify' || redeployOption === 'github-only';
 
   useEffect(() => {
     if (!redeployProject) return;
-    const provider = redeployProject.deployProvider === 'github' ? 'github-only' : 'github-netlify';
+    const provider = redeployProject.deployProvider === 'cloudflare'
+      ? 'cloudflare'
+      : redeployProject.deployProvider === 'github'
+        ? 'github-only'
+        : 'github-netlify';
     setRedeployOption(provider);
     setRedeployRepoName(linkedRepoName || redeployProject.projectName);
+    setRedeployCloudflareProjectName(redeployProject.cloudflareProjectName || redeployProject.projectName);
     setRedeployNetlifySiteName(redeployProject.netlifySiteName || '');
     setRedeployResult(null);
     setRedeployError(null);
@@ -98,13 +112,15 @@ export default function DashboardPage() {
       try {
         const resp = await fetch('/api/integrations/status');
         if (!resp.ok) {
-          setIntegrationStatus({ githubConnected: false, netlifyConnected: false });
+          setIntegrationStatus({ githubConnected: false, netlifyConnected: false, cloudflareConnected: false });
           return;
         }
         const data = await resp.json();
         setIntegrationStatus({
           githubConnected: !!data.githubConnected,
           netlifyConnected: !!data.netlifyConnected,
+          cloudflareConnected: !!data.cloudflareConnected,
+          cloudflareAccountName: data.cloudflareAccountName,
         });
       } finally {
         setIsIntegrationLoading(false);
@@ -152,6 +168,7 @@ export default function DashboardPage() {
         repoName: normalizedRepoName || redeployProject.projectName,
         repoFullName: linkedRepoFullName,
         netlifySiteName: redeployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
+        cloudflareProjectName: redeployOption === 'cloudflare' ? redeployCloudflareProjectName : undefined,
       }, (status) => {
         setRedeployStatus(status);
       });
@@ -175,17 +192,19 @@ export default function DashboardPage() {
         providerId: redeployProject.providerId,
         deploymentUrl: data.deploymentUrl ?? undefined,
         repoUrl: data.repoUrl ?? undefined,
-        deployProvider: redeployOption === 'github-only' ? 'github' : 'netlify',
+        deployProvider: redeployOption === 'github-only' ? 'github' : redeployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
         deployedAt: Date.now(),
         netlifySiteName: data.netlifySiteName ?? undefined,
       });
 
       await addDeploymentHistory({
         projectId: redeployProject._id,
-        provider: redeployOption === 'github-only' ? 'github' : 'netlify',
+        provider: redeployOption === 'github-only' ? 'github' : redeployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
         deploymentUrl: data.deploymentUrl ?? undefined,
         repoUrl: data.repoUrl ?? undefined,
         netlifySiteName: data.netlifySiteName ?? undefined,
+        cloudflareProjectName: data.cloudflareProjectName ?? undefined,
+        cloudflareDeploymentId: data.deploymentId ?? undefined,
       });
 
       toast.success('Redeploy complete', { description: data.deploymentUrl || 'Deployment finished.' });
@@ -477,8 +496,19 @@ export default function DashboardPage() {
               >
                 GitHub Repo Only
               </button>
+              <button
+                type="button"
+                onClick={() => setRedeployOption('cloudflare')}
+                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'cloudflare'
+                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
+                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
+                  }`}
+              >
+                Cloudflare Pages
+              </button>
             </div>
 
+            {isGithubRedeploy && (
             <div className="grid gap-2">
               <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
               <Input
@@ -494,6 +524,18 @@ export default function DashboardPage() {
                 {!repoValidation.valid && repoValidation.message}
               </div>
             </div>
+            )}
+
+            {redeployOption === 'cloudflare' && (
+              <div className="grid gap-2">
+                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Pages Project Name</label>
+                <Input
+                  value={redeployCloudflareProjectName}
+                  onChange={(event) => setRedeployCloudflareProjectName(event.target.value)}
+                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)]"
+                />
+              </div>
+            )}
 
             {redeployOption === 'github-netlify' && (
               <div className="grid gap-2">
@@ -510,6 +552,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {isGithubRedeploy && (
             <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
               <div>
                 <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
@@ -525,6 +568,21 @@ export default function DashboardPage() {
                 {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
               </Button>
             </div>
+            )}
+
+            {redeployOption === 'cloudflare' && (
+              <div className="border border-[var(--border)] rounded-md px-3 py-3">
+                <CloudflareConnect
+                  connected={integrationStatus.cloudflareConnected}
+                  accountName={integrationStatus.cloudflareAccountName}
+                  onConnected={(account) => setIntegrationStatus((current) => ({
+                    ...current,
+                    cloudflareConnected: true,
+                    cloudflareAccountName: account.name,
+                  }))}
+                />
+              </div>
+            )}
 
             {redeployOption === 'github-netlify' && (
               <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
@@ -600,9 +658,10 @@ export default function DashboardPage() {
               onClick={handleRedeploy}
               disabled={
                 isRedeploying ||
-                !repoValidation.valid ||
+                (isGithubRedeploy && !repoValidation.valid) ||
                 (redeployOption === 'github-netlify' && !integrationStatus.netlifyConnected) ||
-                !integrationStatus.githubConnected ||
+                (isGithubRedeploy && !integrationStatus.githubConnected) ||
+                (redeployOption === 'cloudflare' && !integrationStatus.cloudflareConnected) ||
                 redeployFiles === undefined
               }
               className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"

@@ -12,6 +12,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { useEditorDeploy } from '@/hooks/use-editor-deploy';
+import CloudflareConnect from '@/components/cloudflare-connect';
 
 type DeployState = ReturnType<typeof useEditorDeploy>;
 
@@ -32,6 +33,8 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     setRepoName,
     netlifySiteName,
     setNetlifySiteName,
+    cloudflareProjectName,
+    setCloudflareProjectName,
     repoVisibility,
     setRepoVisibility,
     githubOrg,
@@ -47,20 +50,23 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     repoMismatch,
     normalizedRepoName,
     normalizedNetlifySiteName,
+    normalizedCloudflareProjectName,
     startGithubConnect,
     startNetlifyConnect,
+    markCloudflareConnected,
     handleDeploy,
     copyToClipboard,
     deployDisabled,
   } = deploy;
+  const isGithubDeploy = deployOption === 'github-netlify' || deployOption === 'github-only';
 
   return (
     <Dialog open={isDeployDialogOpen} onOpenChange={setIsDeployDialogOpen}>
       <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
         <DialogHeader>
-          <DialogTitle className="font-mono uppercase text-sm tracking-tight">Deploy to Netlify</DialogTitle>
+          <DialogTitle className="font-mono uppercase text-sm tracking-tight">Deploy Project</DialogTitle>
           <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-            Connect GitHub and Netlify, then deploy your project with one click.
+            Publish directly or connect a provider you control.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -70,6 +76,7 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
               [
                 ['github-netlify', 'GitHub + Netlify (Recommended)'],
                 ['github-only', 'GitHub Repo Only'],
+                ['cloudflare', 'Cloudflare Pages + Worker + D1'],
                 ['maf-hosted', 'Deploy with us (Easiest and fastest)'],
               ] as const
             ).map(([value, label]) => (
@@ -89,7 +96,7 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
             ))}
           </div>
 
-          {deployOption !== 'maf-hosted' && (
+          {isGithubDeploy && (
             <div className="grid gap-2">
               <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
               <Input
@@ -112,6 +119,22 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
             </div>
           )}
 
+          {deployOption === 'cloudflare' && (
+            <div className="grid gap-2">
+              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Pages Project Name</label>
+              <Input
+                value={cloudflareProjectName}
+                onChange={(event) => setCloudflareProjectName(event.target.value)}
+                placeholder={projectName}
+                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+                disabled={!!deployResult?.cloudflareProjectName}
+              />
+              <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                Production URL: https://{normalizedCloudflareProjectName || 'project'}.pages.dev
+              </div>
+            </div>
+          )}
+
           {deployOption === 'github-netlify' && (
             <div className="grid gap-2">
               <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
@@ -127,7 +150,7 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
             </div>
           )}
 
-          {deployOption !== 'maf-hosted' && (
+          {isGithubDeploy && (
             <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
               <div>
                 <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
@@ -155,7 +178,17 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
             </div>
           )}
 
-          {deployOption !== 'maf-hosted' && (
+          {deployOption === 'cloudflare' && (
+            <div className="border border-[var(--border)] rounded-md px-3 py-3">
+              <CloudflareConnect
+                connected={integrationStatus.cloudflareConnected}
+                accountName={integrationStatus.cloudflareAccountName}
+                onConnected={markCloudflareConnected}
+              />
+            </div>
+          )}
+
+          {isGithubDeploy && (
             <>
               <div className="grid gap-2">
                 <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Visibility</label>
@@ -192,6 +225,9 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
           )}
           {deployOption === 'github-only' && !integrationStatus.githubConnected && (
             <div className="text-[11px] text-amber-500 font-mono">Connect GitHub to enable this deploy option.</div>
+          )}
+          {deployOption === 'cloudflare' && !integrationStatus.cloudflareConnected && (
+            <div className="text-[11px] text-amber-500 font-mono">Connect Cloudflare to enable direct deployment.</div>
           )}
           {deployOption === 'maf-hosted' && (
             <div className="text-[11px] text-amber-500 font-mono">We will deploy your project to a hosted URL under Mini App Factory.</div>

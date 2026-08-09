@@ -14,6 +14,8 @@ export const addDeploymentHistory = mutation({
     deploymentUrl: v.optional(v.string()),
     repoUrl: v.optional(v.string()),
     netlifySiteName: v.optional(v.string()),
+    cloudflareProjectName: v.optional(v.string()),
+    cloudflareDeploymentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireProjectAccessById(ctx, args.projectId);
@@ -24,6 +26,8 @@ export const addDeploymentHistory = mutation({
       deploymentUrl: args.deploymentUrl,
       repoUrl: args.repoUrl,
       netlifySiteName: args.netlifySiteName,
+      cloudflareProjectName: args.cloudflareProjectName,
+      cloudflareDeploymentId: args.cloudflareDeploymentId,
       createdAt: Date.now(),
     });
   },
