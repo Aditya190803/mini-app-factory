@@ -56,6 +56,7 @@ export default defineSchema({
     cloudflareD1DatabaseName: v.optional(v.string()),
     cloudflareCustomDomain: v.optional(v.string()),
     cloudflareEnvVarsEncrypted: v.optional(v.string()),
+    cloudflareResourcesJson: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -72,7 +73,8 @@ export default defineSchema({
       v.literal("html"),
       v.literal("css"),
       v.literal("javascript"),
-      v.literal("sql")
+      v.literal("sql"),
+      v.literal("json")
     ),
     fileType: v.union(
       v.literal("page"),
@@ -80,7 +82,8 @@ export default defineSchema({
       v.literal("style"),
       v.literal("script"),
       v.literal("worker"),
-      v.literal("migration")
+      v.literal("migration"),
+      v.literal("config")
     ),
     createdAt: v.number(),
     updatedAt: v.number(),

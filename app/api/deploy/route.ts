@@ -24,6 +24,7 @@ type DeployRequest = {
   deployMode?: "github-vercel" | "github-netlify" | "github-only" | "cloudflare";
   repoName?: string;
   cloudflareProjectName?: string;
+  confirmCloudflareResources?: boolean;
   repoFullName?: string;
   netlifySiteName?: string;
 };
@@ -36,6 +37,7 @@ const deploySchema = z.object({
   deployMode: z.enum(["github-vercel", "github-netlify", "github-only", "cloudflare"]).optional(),
   repoName: z.string().trim().min(1).max(120).optional(),
   cloudflareProjectName: z.string().trim().min(1).max(58).optional(),
+  confirmCloudflareResources: z.boolean().optional(),
   repoFullName: z.string().trim().min(1).max(240).optional(),
   netlifySiteName: z.string().trim().min(1).max(120).optional(),
 }).strict();
@@ -177,6 +179,7 @@ export async function POST(req: Request) {
             requestedProjectName: body.cloudflareProjectName,
             project: project!,
             files: deployFiles,
+            allowResourceCreation: body.confirmCloudflareResources,
             onProgress: (message) => writer.write({ status: "progress", message }),
           });
           writer.write({ status: "success", data: result });

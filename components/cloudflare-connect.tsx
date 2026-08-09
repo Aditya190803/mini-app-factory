@@ -72,8 +72,8 @@ export default function CloudflareConnect({ connected, accountName, onConnected 
   return (
     <div className="grid gap-3">
       <div className="text-[10px] font-mono text-[var(--muted-text)]">
-        Create a scoped token with <strong>Cloudflare Pages: Edit</strong> and <strong>D1: Edit</strong>.
-        Add <strong>Zone DNS: Edit</strong> only for custom domains.
+        Create a scoped token with <strong>Cloudflare Pages: Edit</strong>. Add D1, Workers KV, R2, Queues,
+        Vectorize, Browser Rendering, and Zone DNS edit permissions only when the project uses them.
       </div>
       <a
         href="https://dash.cloudflare.com/profile/api-tokens"

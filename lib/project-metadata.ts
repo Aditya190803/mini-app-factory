@@ -32,6 +32,7 @@ export const projectRecordSchema = z.object({
   cloudflareD1DatabaseName: z.string().optional(),
   cloudflareCustomDomain: z.string().optional(),
   cloudflareEnvVarsEncrypted: z.string().optional(),
+  cloudflareResourcesJson: z.string().optional(),
   seoData: z.array(z.object({
     path: z.string(),
     title: z.string().optional(),
@@ -43,7 +44,7 @@ export const projectRecordSchema = z.object({
 export const projectFileRecordSchema = z.object({
   path: z.string(),
   content: z.string(),
-  language: z.union([z.literal('html'), z.literal('css'), z.literal('javascript'), z.literal('sql')]),
+  language: z.union([z.literal('html'), z.literal('css'), z.literal('javascript'), z.literal('sql'), z.literal('json')]),
   fileType: z.union([
     z.literal('page'),
     z.literal('partial'),
@@ -51,6 +52,7 @@ export const projectFileRecordSchema = z.object({
     z.literal('script'),
     z.literal('worker'),
     z.literal('migration'),
+    z.literal('config'),
   ]),
   createdAt: z.coerce.number().optional(),
   updatedAt: z.coerce.number().optional(),
@@ -85,6 +87,7 @@ export function normalizeProjectMetadata(record: unknown) {
     cloudflareD1DatabaseName: parsed.cloudflareD1DatabaseName,
     cloudflareCustomDomain: parsed.cloudflareCustomDomain,
     cloudflareEnvVarsEncrypted: parsed.cloudflareEnvVarsEncrypted,
+    cloudflareResourcesJson: parsed.cloudflareResourcesJson,
     seoData: parsed.seoData,
   };
 }

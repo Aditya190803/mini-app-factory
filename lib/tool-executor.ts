@@ -51,9 +51,10 @@ export function validateToolCall(toolName: string, args: Record<string, unknown>
     if (raw === 'css') return 'style';
     if (raw === 'js' || raw === 'javascript') return 'script';
     if (raw === 'sql') return 'migration';
+    if (raw === 'json') return 'config';
     if (
       raw === 'page' || raw === 'partial' || raw === 'style' || raw === 'script' ||
-      raw === 'worker' || raw === 'migration'
+      raw === 'worker' || raw === 'migration' || raw === 'config'
     ) {
       return raw as ProjectFile['fileType'];
     }
@@ -230,9 +231,9 @@ function handleUpdateFile(args: { file: string; content: string }, files: Projec
 
   const language: ProjectFile['language'] = path.endsWith('.html') ? 'html' :
     path.endsWith('.css') ? 'css' : path.endsWith('.sql') ? 'sql' :
-      path.endsWith('.js') ? 'javascript' : 'html';
+      path.endsWith('.json') ? 'json' : path.endsWith('.js') ? 'javascript' : 'html';
 
-  const fileType: ProjectFile['fileType'] = path === '_worker.js' ? 'worker' :
+  const fileType: ProjectFile['fileType'] = path === 'cloudflare.json' ? 'config' : path === '_worker.js' ? 'worker' :
     path.startsWith('migrations/') && path.endsWith('.sql') ? 'migration' :
       path.endsWith('.css') ? 'style' : path.endsWith('.js') ? 'script' : 'page';
   const newFile: ProjectFile = { path, content, language, fileType };
@@ -543,7 +544,7 @@ function handleCreateFile(args: { path: string; content: string; fileType: Proje
 
   const language: ProjectFile['language'] = path.endsWith('.html') ? 'html' :
     path.endsWith('.css') ? 'css' : path.endsWith('.sql') ? 'sql' :
-      path.endsWith('.js') ? 'javascript' : 'html';
+      path.endsWith('.json') ? 'json' : path.endsWith('.js') ? 'javascript' : 'html';
 
   const newFile: ProjectFile = { path, content, language, fileType };
   return { success: true, message: 'File created', updatedFiles: [newFile] };

@@ -42,6 +42,7 @@ export interface ProjectMetadata {
   cloudflareD1DatabaseName?: string;
   cloudflareCustomDomain?: string;
   cloudflareEnvVarsEncrypted?: string;
+  cloudflareResourcesJson?: string;
   globalSeo?: {
     siteName?: string;
     description?: string;
@@ -109,6 +110,7 @@ export async function updateCloudflareProjectConfig(params: {
   cloudflareD1DatabaseName?: string | null;
   cloudflareCustomDomain?: string | null;
   cloudflareEnvVarsEncrypted?: string | null;
+  cloudflareResourcesJson?: string | null;
   deploymentUrl?: string | null;
 }) {
   const convex = await getConvex();

@@ -47,6 +47,7 @@ const newFileCopy: Record<ProjectFile['fileType'], { label: string; description:
   script: { label: 'Script', description: 'Create a browser JavaScript file.', placeholder: 'analytics.js' },
   worker: { label: 'Cloudflare Worker', description: 'Create the import-free Pages backend entrypoint.', placeholder: '_worker.js' },
   migration: { label: 'D1 Migration', description: 'Create an ordered SQL migration under migrations/.', placeholder: 'migrations/0001_init.sql' },
+  config: { label: 'Cloudflare Config', description: 'Declare resource bindings for this project.', placeholder: 'cloudflare.json' },
 };
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
@@ -284,7 +285,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
-    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : '');
+    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : type === 'config' ? 'cloudflare.json' : '');
     setNewFileInFolderPath(null);
     setIsNewFileDialogOpen(true);
   };
@@ -343,6 +344,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (newFileType === 'migration' && !finalPath.startsWith('migrations/')) {
       finalPath = `migrations/${finalPath.replace(/^\/+/, '')}`;
     }
+    if (newFileType === 'config' && finalPath !== 'cloudflare.json') {
+      alert('The Cloudflare resource manifest must be named cloudflare.json at the project root');
+      return;
+    }
 
     if (files.some(f => f.path === finalPath)) {
       alert('File already exists');
@@ -353,14 +358,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       ? 'css'
       : finalPath.endsWith('.sql')
         ? 'sql'
-        : finalPath.endsWith('.js')
+        : finalPath.endsWith('.json')
+          ? 'json'
+          : finalPath.endsWith('.js')
           ? 'javascript'
           : 'html';
     const newFile: ProjectFile = {
       path: finalPath,
       content: newFileType === 'worker'
         ? "export default {\n  async fetch(request, env) {\n    return env.ASSETS.fetch(request);\n  },\n};"
-        : '',
+        : newFileType === 'config'
+          ? '{\n  "version": 1,\n  "bindings": {}\n}'
+          : '',
       language: lang,
       fileType: newFileType as ProjectFile['fileType']
     };

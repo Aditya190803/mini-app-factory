@@ -129,6 +129,7 @@ export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
           projectName={project.projectName}
           cloudflareProjectName={project.cloudflareProjectName}
           d1DatabaseName={project.cloudflareD1DatabaseName}
+          resourcesJson={project.cloudflareResourcesJson}
           customDomain={project.cloudflareCustomDomain}
           deployments={deploymentHistory || []}
         />

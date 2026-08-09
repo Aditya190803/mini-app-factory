@@ -159,6 +159,29 @@ export default function DashboardPage() {
     setRedeployError(null);
     setRedeployResult(null);
     try {
+      let confirmCloudflareResources = false;
+      if (redeployOption === 'cloudflare') {
+        setRedeployStatus('Planning Cloudflare resources...');
+        const response = await fetch('/api/cloudflare/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectName: redeployProject.projectName,
+            cloudflareProjectName: redeployCloudflareProjectName,
+          }),
+        });
+        const plan = await response.json();
+        if (!response.ok) throw new Error(plan.error || 'Unable to plan Cloudflare resources');
+        if (plan.needsConfirmation) {
+          const creates = plan.actions
+            .filter((item: { action: string }) => item.action === 'create')
+            .map((item: { binding: string; name: string }) => `${item.binding}: ${item.name}`)
+            .join('\n');
+          if (!window.confirm(`Create these Cloudflare resources?\n\n${creates}`)) return;
+          confirmCloudflareResources = true;
+        }
+      }
+
       const data = await performDeploy({
         projectName: redeployProject.projectName,
         prompt: redeployProject.prompt,
@@ -169,6 +192,7 @@ export default function DashboardPage() {
         repoFullName: linkedRepoFullName,
         netlifySiteName: redeployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
         cloudflareProjectName: redeployOption === 'cloudflare' ? redeployCloudflareProjectName : undefined,
+        confirmCloudflareResources: redeployOption === 'cloudflare' ? confirmCloudflareResources : undefined,
       }, (status) => {
         setRedeployStatus(status);
       });

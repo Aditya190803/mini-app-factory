@@ -2,6 +2,7 @@ import type { ProjectFile } from '@/lib/page-builder';
 
 export function fileTypeFromPath(path: string): ProjectFile['fileType'] {
   const lowerPath = path.toLowerCase();
+  if (lowerPath === 'cloudflare.json') return 'config';
   if (lowerPath === '_worker.js') return 'worker';
   if (lowerPath.startsWith('migrations/') && lowerPath.endsWith('.sql')) return 'migration';
   if (lowerPath.endsWith('.css')) return 'style';
@@ -15,9 +16,10 @@ export function normalizeFileType(raw: unknown, path: string): ProjectFile['file
   if (value === 'css') return 'style';
   if (value === 'js' || value === 'javascript') return path === '_worker.js' ? 'worker' : 'script';
   if (value === 'sql') return 'migration';
+  if (value === 'json') return 'config';
   if (
     value === 'page' || value === 'partial' || value === 'style' || value === 'script' ||
-    value === 'worker' || value === 'migration'
+    value === 'worker' || value === 'migration' || value === 'config'
   ) {
     return value as ProjectFile['fileType'];
   }
