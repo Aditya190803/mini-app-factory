@@ -1,9 +1,9 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import {
   canAccessProject,
   getUserId,
-  requireAdmin,
   requireProjectAccess,
   requireUserId,
 } from "./auth";
@@ -35,7 +35,14 @@ export const getPublishedProject = query({
       .first();
 
     if (!project || !project.isPublished) return null;
-    return project;
+    return {
+      projectName: project.projectName,
+      isPublished: true as const,
+      html: project.html,
+      favicon: project.favicon,
+      globalSeo: project.globalSeo,
+      seoData: project.seoData,
+    };
   },
 });
 
@@ -133,27 +140,7 @@ export const saveProject = mutation({
       return existing._id;
     }
 
-    return await ctx.db.insert("projects", {
-      projectName: args.projectName,
-      prompt: args.prompt,
-      html: args.html,
-      status: args.status,
-      userId,
-      isPublished: args.isPublished,
-      isMultiPage: args.isMultiPage ?? false,
-      pageCount: args.pageCount ?? 0,
-      description: args.description,
-      referenceUrl: args.referenceUrl,
-      selectedModel: args.selectedModel,
-      providerId: args.providerId,
-      deploymentUrl: args.deploymentUrl,
-      repoUrl: args.repoUrl,
-      deployProvider: args.deployProvider,
-      deployedAt: args.deployedAt,
-      netlifySiteName: args.netlifySiteName,
-      createdAt: now,
-      updatedAt: now,
-    });
+    throw new Error("Project not found");
   },
 });
 
@@ -314,68 +301,47 @@ export const getUserProjects = query({
   },
 });
 
+const DELETE_BATCH_SIZE = 50;
+
+export const deleteProjectData = internalMutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const files = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .take(DELETE_BATCH_SIZE);
+    const history = await ctx.db
+      .query("editHistory")
+      .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
+      .take(DELETE_BATCH_SIZE);
+    const deployments = await ctx.db
+      .query("deploymentHistory")
+      .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
+      .take(DELETE_BATCH_SIZE);
+
+    for (const row of [...files, ...history, ...deployments]) {
+      await ctx.db.delete(row._id);
+    }
+
+    if (
+      files.length === DELETE_BATCH_SIZE ||
+      history.length === DELETE_BATCH_SIZE ||
+      deployments.length === DELETE_BATCH_SIZE
+    ) {
+      await ctx.scheduler.runAfter(0, internal.projects.deleteProjectData, args);
+    }
+  },
+});
+
 export const deleteProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {
     const project = await requireProjectAccess(ctx, args.projectName);
 
-    // Cascade. Deleting only the project row stranded every projectFiles, editHistory, and
-    // deploymentHistory row with no way to reach or reclaim them.
-    const files = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project", (q) => q.eq("projectId", project._id))
-      .collect();
-    for (const file of files) await ctx.db.delete(file._id);
-
-    const history = await ctx.db
-      .query("editHistory")
-      .withIndex("by_project_time", (q) => q.eq("projectId", project._id))
-      .collect();
-    for (const entry of history) await ctx.db.delete(entry._id);
-
-    const deployments = await ctx.db
-      .query("deploymentHistory")
-      .withIndex("by_project_time", (q) => q.eq("projectId", project._id))
-      .collect();
-    for (const entry of deployments) await ctx.db.delete(entry._id);
-
+    // Remove the parent first so no new child rows can be written while cleanup runs in batches.
     await ctx.db.delete(project._id);
-  },
-});
-
-/**
- * Assign an owner to legacy projects that have none, so the orphan branch in `canAccessProject`
- * can eventually be removed. Admin-only, and reports what it changed rather than running silently.
- */
-export const backfillProjectOwners = mutation({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
-    const projects = await ctx.db.query("projects").collect();
-    const orphans = projects.filter((p) => !p.userId);
-    for (const project of orphans) {
-      await ctx.db.patch(project._id, { userId: args.userId, updatedAt: Date.now() });
-    }
-    return { scanned: projects.length, claimed: orphans.length };
-  },
-});
-
-export const cleanupLegacyFields = mutation({
-  args: {},
-  handler: async (ctx) => {
-    // Full-table write — was callable by anyone.
-    await requireAdmin(ctx);
-
-    const projects = await ctx.db.query("projects").collect();
-    for (const project of projects) {
-      await ctx.db.patch(project._id, {
-        // Remove legacy visual reference fields that are no longer in schema
-        visualReferences: undefined,
-        visualAnalysis: undefined,
-        isStrictRecreation: undefined,
-      } as Record<string, undefined>);
-    }
-    return { updated: projects.length };
+    await ctx.scheduler.runAfter(0, internal.projects.deleteProjectData, {
+      projectId: project._id,
+    });
   },
 });

@@ -28,6 +28,7 @@ type StoredAISettingsRow = {
 export type PersistedAISettings = {
   adminConfig: AIAdminConfig;
   byokConfig: ProviderBYOKConfig;
+  byokUnreadable: boolean;
   customModels: ProviderCustomModelsConfig;
 };
 
@@ -50,15 +51,18 @@ export async function getPersistedAISettings(): Promise<PersistedAISettings> {
     return {
       adminConfig: DEFAULT_AI_ADMIN_CONFIG,
       byokConfig: {},
+      byokUnreadable: false,
       customModels: {},
     };
   }
 
+  const decryptedByok = row.byokConfigJson ? decryptSecret(row.byokConfigJson) : null;
+
   return {
     adminConfig: sanitizeAIAdminConfig(safeParse(row.adminConfigJson, DEFAULT_AI_ADMIN_CONFIG)),
-    // The BYOK blob is encrypted at rest — see lib/secret-box.ts. Rows written before that are
-    // returned as-is by decryptSecret, so they keep parsing and re-encrypt on next save.
-    byokConfig: sanitizeBYOKConfig(safeParse(decryptSecret(row.byokConfigJson) ?? undefined, {})),
+    // Rows written before encryption are returned as-is by decryptSecret and re-encrypted on save.
+    byokConfig: sanitizeBYOKConfig(safeParse(decryptedByok ?? undefined, {})),
+    byokUnreadable: Boolean(row.byokConfigJson) && decryptedByok === null,
     customModels: sanitizeCustomModelsConfig(safeParse(row.customModelsJson, {})),
   };
 }
