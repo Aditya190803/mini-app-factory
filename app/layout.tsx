@@ -27,7 +27,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        <StackProvider app={stackClientApp}>
+        <React.Suspense fallback={null}>
+          <StackProvider app={stackClientApp}>
           <StackTheme>
             <ConvexClientProvider>
               {children}
@@ -53,7 +54,8 @@ export default function RootLayout({
               <Analytics />
             </ConvexClientProvider>
           </StackTheme>
-        </StackProvider>
+          </StackProvider>
+        </React.Suspense>
       </body>
     </html>
   )
