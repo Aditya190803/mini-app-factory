@@ -9,7 +9,6 @@ import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
 import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
-import { withRetry } from '@/lib/ai-retry';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
@@ -125,10 +124,10 @@ export async function runGeneration(
         if (cached) {
           designSpec = cached;
         } else {
-          const designResp = await withRetry(
-            () => designSession.sendAndWait({ prompt: finalPrompt }, 60000),
-            { maxAttempts: 3, baseDelayMs: 800 }
-          );
+          const designResp = await designSession.sendAndWait({
+            prompt: finalPrompt,
+            maxOutputTokens: 1600,
+          }, 60000);
           if (sessionError) throw sessionError;
           designSpec = designResp?.data?.content || '';
           if (designSpec) setCachedDesignSpec(cacheKey, designSpec);
@@ -206,12 +205,10 @@ Return ONLY code blocks. No explanations.`;
 
       try {
         const mainPrompt = buildMainPrompt(finalPrompt);
-        const htmlResp = await withRetry(
-          () => htmlSession.sendAndWait({
-            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`
-          }, 120000),
-          { maxAttempts: 3, baseDelayMs: 800 }
-        );
+        const htmlResp = await htmlSession.sendAndWait({
+          prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`,
+          maxOutputTokens: 8000,
+        }, 120000);
         if (sessionError) throw sessionError;
         
         const content = htmlResp?.data?.content || '';

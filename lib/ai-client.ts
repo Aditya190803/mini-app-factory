@@ -25,7 +25,7 @@ export interface AIClient {
 }
 
 export interface AIClientSession {
-  sendAndWait: (opts: { prompt: string; images?: Array<{ url: string }> }, timeout?: number) => Promise<{ data: { content: string } }>;
+  sendAndWait: (opts: { prompt: string; images?: Array<{ url: string }>; maxOutputTokens?: number }, timeout?: number) => Promise<{ data: { content: string } }>;
   stream: (opts: { prompt: string }) => Promise<AsyncIterable<string>>;
   on: (cb: (e: SessionEvent) => void) => () => void;
   destroy: () => Promise<void>;
@@ -265,7 +265,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
           };
         },
 
-        async sendAndWait({ prompt, images }: { prompt: string; images?: Array<{ url: string }> }, timeout = 180000) {
+        async sendAndWait({ prompt, images, maxOutputTokens }: { prompt: string; images?: Array<{ url: string }>; maxOutputTokens?: number }, timeout = 180000) {
           return runWithFallbackChain(chain, async (step) => {
             const controller = new AbortController();
             controllers.add(controller);
@@ -288,8 +288,12 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
               const result = await generateText({
                 model: step.createModel() as never,
                 messages,
+                maxOutputTokens,
                 maxRetries: 0,
                 abortSignal: controller.signal,
+                providerOptions: step.providerId === 'opencode'
+                  ? { opencode: { reasoningEffort: 'none', textVerbosity: 'low' } }
+                  : undefined,
               });
 
               const content = result.text || '';
