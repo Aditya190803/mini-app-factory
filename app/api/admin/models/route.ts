@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
-import { isAdminEmail } from '@/lib/admin-access';
+import { isAdminUser } from '@/lib/admin-access';
 import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -155,12 +155,12 @@ function addModel(
 
 export async function GET(_request: Request) {
   const user = await stackServerApp.getUser();
-  if (!user || !isAdminEmail(user.primaryEmail)) {
+  if (!user || !isAdminUser(user)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const adminConfig = await getGlobalAdminModelConfig();
-  const persisted = await getPersistedAISettings(user.id);
+  const persisted = await getPersistedAISettings();
   const byokConfig = persisted.byokConfig;
 
   const providers = await Promise.all(

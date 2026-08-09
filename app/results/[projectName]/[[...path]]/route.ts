@@ -1,5 +1,8 @@
-import { getProject, getFile, getFiles } from '@/lib/projects';
+// Published sites are served to logged-out visitors, so this route must use the anonymous
+// client throughout. The authenticated helpers throw when there is no signed-in user.
+import { getPublishedProject, getPublishedFile, getPublishedFiles } from '@/lib/projects';
 import { assembleFullPage } from '@/lib/page-builder';
+import { userContentHeaders } from '@/lib/user-content-headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
@@ -7,25 +10,25 @@ export async function GET(
   { params }: { params: Promise<{ projectName: string, path?: string[] }> }
 ) {
   const { projectName, path: segments } = await params;
-  const project = await getProject(projectName);
+  const project = await getPublishedProject(projectName);
 
   if (!project || !project.isPublished) {
     return new NextResponse('Project not found or not published', { status: 404 });
   }
 
   const filePath = segments ? segments.join('/') : 'index.html';
-  let file = await getFile(projectName, filePath);
+  let file = await getPublishedFile(projectName, filePath);
 
   if (!file) {
     // 1. Try directory routing: folder/ -> folder/index.html
     const indexInFolder = filePath.endsWith('/') 
       ? `${filePath}index.html` 
       : `${filePath}/index.html`;
-    file = await getFile(projectName, indexInFolder);
+    file = await getPublishedFile(projectName, indexInFolder);
 
     // 2. Try adding .html extension if not found and no extension provided
     if (!file && !filePath.includes('.')) {
-      file = await getFile(projectName, `${filePath}.html`);
+      file = await getPublishedFile(projectName, `${filePath}.html`);
     }
   }
 
@@ -33,7 +36,7 @@ export async function GET(
     // If it's the root and no index.html, fallback to project.html for legacy
     if (filePath === 'index.html' && project.html) {
       return new NextResponse(project.html, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        headers: userContentHeaders('text/html; charset=utf-8'),
       });
     }
     return new NextResponse('File not found', { status: 404 });
@@ -43,7 +46,7 @@ export async function GET(
   let contentType = 'text/plain';
 
   if (file.fileType === 'page' || file.path.endsWith('.html')) {
-    const allFiles = await getFiles(projectName);
+    const allFiles = await getPublishedFiles(projectName);
     // Map Convex files to ProjectFile interface
     const projectFiles = allFiles.map((f: { path: string; content: string; language: string; fileType: string }) => ({
       path: f.path,
@@ -64,8 +67,6 @@ export async function GET(
   }
 
   return new NextResponse(content, {
-    headers: {
-      'Content-Type': contentType,
-    },
+    headers: userContentHeaders(contentType),
   });
 }

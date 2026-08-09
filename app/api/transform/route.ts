@@ -51,7 +51,7 @@ export async function POST(request: Request) {
 
     const { getGlobalAdminModelConfig } = await import('@/lib/ai-settings-store');
     const globalAdminConfig = await getGlobalAdminModelConfig();
-    const persistedSettings = await getPersistedAISettings(user.id);
+    const persistedSettings = await getPersistedAISettings();
     const runtimeConfig = {
       adminConfig: globalAdminConfig,
       byokConfig: persistedSettings.byokConfig,
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     }
     if (project && isOrphanProject(project)) {
       try {
-        await claimProjectOrphan(projectName!, user.id);
+        await claimProjectOrphan(projectName!);
       } catch (err) {
         const message = err instanceof Error ? err.message : '';
         if (message === 'Project not found') {

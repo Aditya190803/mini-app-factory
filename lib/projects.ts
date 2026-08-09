@@ -1,21 +1,18 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { normalizeProjectMetadata, projectFileRecordSchema } from "./project-metadata";
+import { getAuthedConvexClient, getPublicConvexClient } from "./convex-server";
 
 import { ProjectFile } from "./page-builder";
 
-// Lazy-initialize the convex client to avoid errors when running tests
-let _convex: ConvexHttpClient | null = null;
-function getConvex(): ConvexHttpClient {
-  if (!_convex) {
-    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
-    if (!url) {
-      throw new Error("NEXT_PUBLIC_CONVEX_URL environment variable is not set");
-    }
-    _convex = new ConvexHttpClient(url);
-  }
-  return _convex;
-}
+/**
+ * Server-side project access.
+ *
+ * Convex now derives ownership from the request's identity, so these helpers carry the caller's
+ * token (`getConvex`). The `*Published*` variants below are the deliberate exception: they use an
+ * anonymous client and may only call Convex functions that enforce `isPublished` themselves. They
+ * exist for `/results/*`, which serves published sites to logged-out visitors.
+ */
+const getConvex = getAuthedConvexClient;
 
 export interface ProjectMetadata {
   name: string;
@@ -48,23 +45,51 @@ export interface ProjectMetadata {
   files?: ProjectFile[];
 }
 
+export interface PublishedProjectMetadata {
+  name: string;
+  isPublished: true;
+  html?: string;
+  favicon?: string;
+  globalSeo?: ProjectMetadata['globalSeo'];
+  seoData?: ProjectMetadata['seoData'];
+}
+
 export function toProjectMetadata(record: unknown): ProjectMetadata {
   return normalizeProjectMetadata(record) as ProjectMetadata;
 }
 
 export async function projectExists(name: string): Promise<boolean> {
-  const project = await getConvex().query(api.projects.getProject, { projectName: name });
-  return !!project;
+  const convex = await getConvex();
+  return await convex.query(api.projects.projectNameTaken, { projectName: name });
+}
+
+/**
+ * Reserve a name and create the project row in one mutation.
+ *
+ * Returns false when the name is already taken. Replaces the previous check-then-insert pair,
+ * where two concurrent requests could both pass the check and both insert.
+ */
+export async function reserveProjectName(params: {
+  projectName: string;
+  prompt: string;
+  description?: string;
+  referenceUrl?: string;
+  selectedModel?: string;
+  providerId?: string;
+}): Promise<boolean> {
+  const convex = await getConvex();
+  const id = await convex.mutation(api.projects.reserveProjectName, params);
+  return id !== null;
 }
 
 export async function saveProject(metadata: ProjectMetadata) {
-  await getConvex().mutation(api.projects.saveProject, {
+  const convex = await getConvex();
+  await convex.mutation(api.projects.saveProject, {
     projectName: metadata.name,
     prompt: metadata.prompt,
     html: metadata.html,
     status: metadata.status,
     isPublished: metadata.isPublished ?? false,
-    userId: metadata.userId,
     isMultiPage: metadata.isMultiPage,
     pageCount: metadata.pageCount,
     description: metadata.description,
@@ -80,14 +105,15 @@ export async function saveProject(metadata: ProjectMetadata) {
 }
 
 export async function getProject(name: string): Promise<ProjectMetadata | null> {
-  const project = await getConvex().query(api.projects.getProject, { projectName: name });
+  const convex = await getConvex();
+  const project = await convex.query(api.projects.getProject, { projectName: name });
   if (!project) return null;
 
   return toProjectMetadata(project);
 }
 
 export async function getFiles(projectName: string) {
-  const convex = getConvex();
+  const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return [];
   const files = await convex.query(api.files.getFilesByProject, { projectId: project._id });
@@ -95,22 +121,49 @@ export async function getFiles(projectName: string) {
 }
 
 export async function getFile(projectName: string, path: string) {
-  const convex = getConvex();
+  const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) return null;
   return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
 }
 
-export async function claimProjectOrphan(projectName: string, userId: string) {
-  await getConvex().mutation(api.projects.claimProjectOrphan, { projectName, userId });
+export async function claimProjectOrphan(projectName: string) {
+  const convex = await getConvex();
+  await convex.mutation(api.projects.claimProjectOrphan, { projectName });
 }
 
 export async function saveFiles(projectName: string, files: ProjectFile[]) {
-  const convex = getConvex();
+  const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) throw new Error("Project not found");
   await convex.mutation(api.files.saveFiles, {
     projectId: project._id,
     files
   });
+}
+
+// --- Public (unauthenticated) reads, for serving published sites at /results/* ---
+
+export async function getPublishedProject(name: string): Promise<PublishedProjectMetadata | null> {
+  const project = await getPublicConvexClient().query(api.projects.getPublishedProject, {
+    projectName: name,
+  });
+  if (!project) return null;
+  return {
+    name: project.projectName,
+    isPublished: true,
+    html: project.html,
+    favicon: project.favicon,
+    globalSeo: project.globalSeo,
+    seoData: project.seoData,
+  };
+}
+
+export async function getPublishedFiles(projectName: string) {
+  const files = await getPublicConvexClient().query(api.files.getPublishedFiles, { projectName });
+  return files.map((file) => projectFileRecordSchema.parse(file));
+}
+
+export async function getPublishedFile(projectName: string, path: string) {
+  return await getPublicConvexClient().query(api.files.getPublishedFile, { projectName, path });
 }

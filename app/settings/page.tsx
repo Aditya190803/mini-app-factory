@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { logout } from '@/lib/logout';
-import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Copy, FlaskConical } from 'lucide-react';
-import { AI_PROVIDER_IDS, type AIProviderId, type ProviderBYOKConfig, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
-import { setStoredBYOKConfig } from '@/lib/ai-admin-client';
+import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical, Save } from 'lucide-react';
+import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
+import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 
 type IntegrationStatus = {
   githubConnected: boolean;
@@ -39,7 +39,10 @@ export default function SettingsPage() {
     githubConnected: false,
     netlifyConnected: false,
   });
-  const [byokConfig, setByokConfig] = useState<ProviderBYOKConfig>({});
+  // Saved keys never come back from the server — we only learn which providers have one.
+  // `byokDraft` holds what the user is currently typing, and is cleared once saved.
+  const [byokStatus, setByokStatus] = useState<Record<string, boolean>>({});
+  const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
   const [customModelsConfig, setCustomModelsConfig] = useState<ProviderCustomModelsConfig>({});
   const [customModelInput, setCustomModelInput] = useState<Record<AIProviderId, string>>({
     google: '',
@@ -100,10 +103,11 @@ export default function SettingsPage() {
 
         if (aiSettingsResp.ok) {
           const data = await aiSettingsResp.json();
-          if (data.byokConfig && typeof data.byokConfig === 'object') {
-            setByokConfig(data.byokConfig);
-            setStoredBYOKConfig(data.byokConfig);
+          if (data.byokStatus && typeof data.byokStatus === 'object') {
+            setByokStatus(data.byokStatus);
           }
+          // Drop any keys left in localStorage by an older build.
+          purgeLegacyStoredBYOK();
           if (data.customModels && typeof data.customModels === 'object') {
             setCustomModelsConfig(data.customModels);
           }
@@ -121,15 +125,24 @@ export default function SettingsPage() {
     void loadInitial();
   }, [user]);
 
-  const persistBYOK = async (providerId: AIProviderId, nextByokConfig: ProviderBYOKConfig) => {
+  /** Send only the provider that changed. An empty string clears it server-side. */
+  const persistBYOK = async (providerId: AIProviderId, key: string) => {
     setSaveState((prev) => ({ ...prev, [providerId]: 'saving' }));
-    setStoredBYOKConfig(nextByokConfig);
     try {
-      await fetch('/api/ai/settings', {
+      const resp = await fetch('/api/ai/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ byokConfig: nextByokConfig }),
+        body: JSON.stringify({ byokConfig: { [providerId]: key } }),
       });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save API key');
+      }
+      if (data.byokStatus && typeof data.byokStatus === 'object') {
+        setByokStatus(data.byokStatus);
+      }
+      // The key is saved; stop holding it in component state.
+      setByokDraft((prev) => ({ ...prev, [providerId]: '' }));
       setSaveState((prev) => ({ ...prev, [providerId]: 'saved' }));
       setTimeout(() => {
         setSaveState((prev) => (prev[providerId] === 'saved' ? { ...prev, [providerId]: 'idle' } : prev));
@@ -139,18 +152,19 @@ export default function SettingsPage() {
     }
   };
 
-  const updateByok = (providerId: AIProviderId, value: string) => {
-    setByokConfig((prev) => {
-      const trimmed = value.trim();
-      const next: ProviderBYOKConfig = { ...prev };
-      if (trimmed.length > 0) {
-        next[providerId] = trimmed;
-      } else {
-        delete next[providerId];
-      }
-      void persistBYOK(providerId, next);
-      return next;
-    });
+  const updateByokDraft = (providerId: AIProviderId, value: string) => {
+    setByokDraft((prev) => ({ ...prev, [providerId]: value }));
+  };
+
+  const saveByok = (providerId: AIProviderId) => {
+    const trimmed = (byokDraft[providerId] || '').trim();
+    if (!trimmed) return;
+    void persistBYOK(providerId, trimmed);
+  };
+
+  const clearByok = (providerId: AIProviderId) => {
+    setByokDraft((prev) => ({ ...prev, [providerId]: '' }));
+    void persistBYOK(providerId, '');
   };
 
   const persistCustomModels = async (nextConfig: ProviderCustomModelsConfig) => {
@@ -200,31 +214,24 @@ export default function SettingsPage() {
     });
   };
 
-  const copyByok = async (providerId: AIProviderId) => {
-    const key = byokConfig[providerId] || '';
-    if (!key) return;
-    try {
-      await navigator.clipboard.writeText(key);
-      setTestState((prev) => ({ ...prev, [providerId]: 'ok' }));
-      setTestMessage((prev) => ({ ...prev, [providerId]: 'Key copied to clipboard.' }));
-    } catch {
-      setTestState((prev) => ({ ...prev, [providerId]: 'error' }));
-      setTestMessage((prev) => ({ ...prev, [providerId]: 'Copy failed.' }));
-    }
-  };
+  // "Copy key to clipboard" was removed along with the server echoing saved keys back. The key
+  // exists only on the server now, which is the point.
 
   const testByok = async (providerId: AIProviderId) => {
-    const key = byokConfig[providerId] || '';
-    if (!key) return;
+    const draft = (byokDraft[providerId] || '').trim();
+    const hasSaved = byokStatus[providerId];
+    if (!draft && !hasSaved) return;
 
     setTestState((prev) => ({ ...prev, [providerId]: 'testing' }));
     setTestMessage((prev) => ({ ...prev, [providerId]: '' }));
 
     try {
+      // Test what the user typed if they typed something; otherwise ask the server to test the
+      // key it already holds, since we cannot see it.
       const resp = await fetch('/api/ai/validate-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId, apiKey: key }),
+        body: JSON.stringify(draft ? { providerId, apiKey: draft } : { providerId, useStored: true }),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -438,15 +445,37 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <Input
                       type={showKey[providerId] ? 'text' : 'password'}
-                      value={byokConfig[providerId] || ''}
-                      onChange={(event) => updateByok(providerId, event.target.value)}
+                      value={byokDraft[providerId] || ''}
+                      onChange={(event) => updateByokDraft(providerId, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          saveByok(providerId);
+                        }
+                      }}
                       className="text-[11px] font-mono"
-                      placeholder={`Paste ${providerLabel[providerId]} key`}
+                      aria-label={`${providerLabel[providerId]} API key`}
+                      placeholder={
+                        byokStatus[providerId]
+                          ? 'Key saved — paste a new one to replace it'
+                          : `Paste ${providerLabel[providerId]} key`
+                      }
                     />
                     <Button
                       variant="outline"
                       type="button"
                       className="text-[10px] font-mono uppercase border-[var(--border)]"
+                      aria-label="Save key"
+                      onClick={() => saveByok(providerId)}
+                      disabled={!byokDraft[providerId] || saveState[providerId] === 'saving'}
+                    >
+                      <Save className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="text-[10px] font-mono uppercase border-[var(--border)]"
+                      aria-label={showKey[providerId] ? 'Hide key' : 'Show key'}
                       onClick={() => setShowKey((prev) => ({ ...prev, [providerId]: !prev[providerId] }))}
                     >
                       {showKey[providerId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -455,21 +484,31 @@ export default function SettingsPage() {
                       variant="outline"
                       type="button"
                       className="text-[10px] font-mono uppercase border-[var(--border)]"
-                      onClick={() => copyByok(providerId)}
-                      disabled={!byokConfig[providerId]}
+                      aria-label="Remove saved key"
+                      onClick={() => clearByok(providerId)}
+                      disabled={!byokStatus[providerId] && !byokDraft[providerId]}
                     >
-                      <Copy className="w-3 h-3" />
+                      <Trash2 className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="outline"
                       type="button"
                       className="text-[10px] font-mono uppercase border-[var(--border)]"
+                      aria-label="Test key"
                       onClick={() => testByok(providerId)}
-                      disabled={!byokConfig[providerId] || testState[providerId] === 'testing'}
+                      disabled={
+                        (!byokStatus[providerId] && !byokDraft[providerId]) ||
+                        testState[providerId] === 'testing'
+                      }
                     >
                       <FlaskConical className="w-3 h-3" />
                     </Button>
                   </div>
+                  {byokStatus[providerId] && !byokDraft[providerId] && (
+                    <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">
+                      Key saved. It is stored on the server and never sent back to this page.
+                    </div>
+                  )}
                   <div
                     className="text-[10px] font-mono uppercase"
                     style={{
@@ -483,7 +522,7 @@ export default function SettingsPage() {
                   >
                     {saveState[providerId] === 'saving' && 'Saving...'}
                     {saveState[providerId] === 'saved' && 'Saved'}
-                    {saveState[providerId] === 'error' && 'Save failed (local cache kept)'}
+                    {saveState[providerId] === 'error' && 'Save failed — key not stored'}
                   </div>
                   {testState[providerId] !== 'idle' && testMessage[providerId] && (
                     <div

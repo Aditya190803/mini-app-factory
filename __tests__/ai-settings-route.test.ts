@@ -105,14 +105,81 @@ describe('POST /api/ai/settings', () => {
     expect(addAIAdminAudit).not.toHaveBeenCalled();
   });
 
+  test('clears a saved BYOK key when the raw payload contains an empty string', async () => {
+    const { POST } = await import('@/app/api/ai/settings/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const {
+      getPersistedAISettings,
+      savePersistedAISettings,
+      getGlobalAdminModelConfig,
+      getUserCustomModels,
+    } = await import('@/lib/ai-settings-store');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'user_1',
+      primaryEmail: 'user@example.com',
+    });
+    (getPersistedAISettings as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        adminConfig: DEFAULT_AI_ADMIN_CONFIG,
+        byokConfig: { groq: 'saved-key' },
+        byokUnreadable: false,
+        customModels: {},
+      })
+      .mockResolvedValueOnce({
+        adminConfig: DEFAULT_AI_ADMIN_CONFIG,
+        byokConfig: {},
+        byokUnreadable: false,
+        customModels: {},
+      });
+    (getGlobalAdminModelConfig as ReturnType<typeof vi.fn>).mockResolvedValue(DEFAULT_AI_ADMIN_CONFIG);
+    (getUserCustomModels as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    const res = await POST(new Request('http://localhost/api/ai/settings', {
+      method: 'POST',
+      body: JSON.stringify({ byokConfig: { groq: '' } }),
+    }));
+
+    expect(res.status).toBe(200);
+    expect(savePersistedAISettings).toHaveBeenCalledWith(expect.objectContaining({ byokConfig: {} }));
+  });
+
+  test('does not overwrite BYOK settings when encrypted data is unreadable', async () => {
+    const { POST } = await import('@/app/api/ai/settings/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getPersistedAISettings, savePersistedAISettings } = await import('@/lib/ai-settings-store');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'user_1',
+      primaryEmail: 'user@example.com',
+    });
+    (getPersistedAISettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      adminConfig: DEFAULT_AI_ADMIN_CONFIG,
+      byokConfig: {},
+      byokUnreadable: true,
+      customModels: {},
+    });
+
+    const res = await POST(new Request('http://localhost/api/ai/settings', {
+      method: 'POST',
+      body: JSON.stringify({ byokConfig: { groq: 'new-key' } }),
+    }));
+
+    expect(res.status).toBe(409);
+    expect(savePersistedAISettings).not.toHaveBeenCalled();
+  });
+
   test('admin change creates audit log', async () => {
     const { POST } = await import('@/app/api/ai/settings/route');
     const { stackServerApp } = await import('@/stack/server');
     const { getPersistedAISettings, addAIAdminAudit, getGlobalAdminModelConfig, saveGlobalAdminModelConfig, getUserCustomModels } = await import('@/lib/ai-settings-store');
 
+    process.env.MAF_ADMIN_EMAILS = 'admin@example.com';
+
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       id: 'admin_1',
-      primaryEmail: 'aditya.mer@somaiya.edu',
+      primaryEmail: 'admin@example.com',
+      primaryEmailVerified: true,
     });
 
     // getGlobalAdminModelConfig called twice: once for diff, once for response

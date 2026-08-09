@@ -1,9 +1,9 @@
 import { stackServerApp } from "@/stack/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { z } from "zod";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { getIntegrationTokens } from "@/lib/integrations";
+import { getAuthedConvexClient } from "@/lib/convex-server";
+import { revokeGithubToken, revokeNetlifyToken, revokeVercelToken } from "@/lib/oauth-revoke";
 const disconnectSchema = z
   .object({
     provider: z.enum(["github", "vercel", "netlify", "all"]).optional(),
@@ -29,9 +29,46 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
+  // Revoke at the provider before forgetting the token locally. Once the row is cleared we no
+  // longer have the value, so the grant would stay live forever — which is exactly the window an
+  // already-leaked token needs. Best-effort: a provider being down must not block disconnect.
+  const wants = (p: string) => provider === 'all' || provider === p;
+  let tokenVersions: NonNullable<Awaited<ReturnType<typeof getIntegrationTokens>>>['tokenVersions'] | undefined;
+  try {
+    const tokens = await getIntegrationTokens();
+    if (tokens) {
+      tokenVersions = tokens.tokenVersions;
+      const revocations = [
+        wants('github') && tokens.githubAccessToken
+          ? revokeGithubToken(tokens.githubAccessToken)
+          : null,
+        wants('netlify') && tokens.netlifyAccessToken
+          ? revokeNetlifyToken(tokens.netlifyAccessToken)
+          : null,
+        wants('vercel') && tokens.vercelAccessToken
+          ? revokeVercelToken(tokens.vercelAccessToken)
+          : null,
+      ].filter(Boolean) as Promise<{ provider: string; revoked: boolean; reason?: string }>[];
+
+      const results = await Promise.all(revocations);
+      for (const result of results) {
+        if (!result.revoked) {
+          console.warn(
+            `[disconnect] could not revoke ${result.provider} token: ${result.reason ?? 'unknown'}`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[disconnect] revocation step failed', err instanceof Error ? err.message : err);
+  }
+
+  const convex = await getAuthedConvexClient();
   await convex.mutation(api.integrations.clearIntegration, {
-    userId: user.id,
     provider,
+    expectedGithubAccessToken: tokenVersions?.github,
+    expectedVercelAccessToken: tokenVersions?.vercel,
+    expectedNetlifyAccessToken: tokenVersions?.netlify,
   });
 
   return Response.json({ success: true });
