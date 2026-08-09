@@ -124,6 +124,10 @@ export const clearIntegration = mutation({
       v.literal("cloudflare"),
       v.literal("all")
     ),
+    expectedGithubAccessToken: v.optional(v.string()),
+    expectedVercelAccessToken: v.optional(v.string()),
+    expectedNetlifyAccessToken: v.optional(v.string()),
+    expectedCloudflareApiToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -136,19 +140,22 @@ export const clearIntegration = mutation({
     if (!existing) return null;
 
     const updates: Record<string, undefined> = {};
-    if (args.provider === "github" || args.provider === "all") {
+    const targets = (provider: "github" | "vercel" | "netlify" | "cloudflare") =>
+      args.provider === provider || args.provider === "all";
+
+    if (targets("github") && existing.githubAccessToken === args.expectedGithubAccessToken) {
       updates.githubAccessToken = undefined;
       updates.githubConnectedAt = undefined;
     }
-    if (args.provider === "vercel" || args.provider === "all") {
+    if (targets("vercel") && existing.vercelAccessToken === args.expectedVercelAccessToken) {
       updates.vercelAccessToken = undefined;
       updates.vercelConnectedAt = undefined;
     }
-    if (args.provider === "netlify" || args.provider === "all") {
+    if (targets("netlify") && existing.netlifyAccessToken === args.expectedNetlifyAccessToken) {
       updates.netlifyAccessToken = undefined;
       updates.netlifyConnectedAt = undefined;
     }
-    if (args.provider === "cloudflare" || args.provider === "all") {
+    if (targets("cloudflare") && existing.cloudflareApiToken === args.expectedCloudflareApiToken) {
       updates.cloudflareApiToken = undefined;
       updates.cloudflareTokenId = undefined;
       updates.cloudflareAccountId = undefined;
@@ -156,10 +163,12 @@ export const clearIntegration = mutation({
       updates.cloudflareConnectedAt = undefined;
     }
 
-    await ctx.db.patch(existing._id, {
-      ...updates,
-      updatedAt: Date.now(),
-    });
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(existing._id, {
+        ...updates,
+        updatedAt: Date.now(),
+      });
+    }
 
     return existing._id;
   },

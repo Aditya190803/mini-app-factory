@@ -51,6 +51,15 @@ export interface ProjectMetadata {
   files?: ProjectFile[];
 }
 
+export interface PublishedProjectMetadata {
+  name: string;
+  isPublished: true;
+  html?: string;
+  favicon?: string;
+  globalSeo?: ProjectMetadata['globalSeo'];
+  seoData?: ProjectMetadata['seoData'];
+}
+
 export function toProjectMetadata(record: unknown): ProjectMetadata {
   return normalizeProjectMetadata(record) as ProjectMetadata;
 }
@@ -155,25 +164,26 @@ export async function saveFiles(projectName: string, files: ProjectFile[]) {
 
 // --- Public (unauthenticated) reads, for serving published sites at /results/* ---
 
-export async function getPublishedProject(name: string): Promise<ProjectMetadata | null> {
+export async function getPublishedProject(name: string): Promise<PublishedProjectMetadata | null> {
   const project = await getPublicConvexClient().query(api.projects.getPublishedProject, {
     projectName: name,
   });
   if (!project) return null;
-  return toProjectMetadata(project);
+  return {
+    name: project.projectName,
+    isPublished: true,
+    html: project.html,
+    favicon: project.favicon,
+    globalSeo: project.globalSeo,
+    seoData: project.seoData,
+  };
 }
 
 export async function getPublishedFiles(projectName: string) {
-  const convex = getPublicConvexClient();
-  const project = await convex.query(api.projects.getPublishedProject, { projectName });
-  if (!project) return [];
-  const files = await convex.query(api.files.getFilesByProject, { projectId: project._id });
+  const files = await getPublicConvexClient().query(api.files.getPublishedFiles, { projectName });
   return files.map((file) => projectFileRecordSchema.parse(file));
 }
 
 export async function getPublishedFile(projectName: string, path: string) {
-  const convex = getPublicConvexClient();
-  const project = await convex.query(api.projects.getPublishedProject, { projectName });
-  if (!project) return null;
-  return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
+  return await getPublicConvexClient().query(api.files.getPublishedFile, { projectName, path });
 }
