@@ -65,7 +65,6 @@ function getFriendlyModelName(modelId: string): string {
   const mapping: Record<string, string> = {
     'big-pickle': 'Big Pickle',
     'mimo-v2.5-free': 'MiMo V2.5 Free',
-    'north-mini-code-free': 'North Mini Code Free',
     'deepseek-v4-flash-free': 'DeepSeek V4 Flash Free',
     'longcat-2.0-free': 'LongCat 2.0 Free',
   };

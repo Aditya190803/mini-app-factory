@@ -6,7 +6,6 @@ export const OPENCODE_FREE_MODELS = [
   'laguna-s-2.1-free',
   'ling-3.0-tiny-free',
   'longcat-2.0-free',
-  'north-mini-code-free',
   'nemotron-3-ultra-free',
   'deepseek-v4-flash-free',
 ] as const;

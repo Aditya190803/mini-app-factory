@@ -12,7 +12,7 @@ describe('OpenCode model restrictions', () => {
         opencode: {
           enabled: true,
           defaultModel: 'gpt-5.6-sol',
-          customModels: ['gpt-5.6-sol', 'north-mini-code-free'],
+          customModels: ['gpt-5.6-sol', 'mimo-v2.5-free'],
           visibleModels: ['gpt-5.6-sol', 'big-pickle'],
         },
         google: { enabled: true, defaultModel: 'gemini-3-flash-preview' },
@@ -22,7 +22,7 @@ describe('OpenCode model restrictions', () => {
 
     expect(config.providerOrder).toEqual(['opencode', 'openrouter']);
     expect(config.providers.opencode.defaultModel).toBe(DEFAULT_PROVIDER_MODELS.opencode);
-    expect(config.providers.opencode.customModels).toEqual(['north-mini-code-free']);
+    expect(config.providers.opencode.customModels).toEqual(['mimo-v2.5-free']);
     expect(config.providers.opencode.visibleModels).toEqual(['big-pickle']);
     expect('google' in config.providers).toBe(false);
 
