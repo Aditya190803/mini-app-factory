@@ -54,7 +54,6 @@ export async function GET(req: Request) {
   }
 
   await upsertIntegrationTokens({
-    userId: user.id,
     vercelAccessToken: tokenData.access_token,
   });
 

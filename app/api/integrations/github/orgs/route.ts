@@ -12,7 +12,7 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const integrations = await getIntegrationTokens(user.id);
+  const integrations = await getIntegrationTokens();
   if (!integrations?.githubAccessToken) {
     return Response.json({ error: "GitHub not connected" }, { status: 400 });
   }

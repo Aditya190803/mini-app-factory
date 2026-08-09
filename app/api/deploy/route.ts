@@ -145,7 +145,7 @@ export async function POST(req: Request) {
           ? "github-vercel"
           : "github-netlify";
 
-  const integrations = await getIntegrationTokens(user.id);
+  const integrations = await getIntegrationTokens();
   if (!integrations?.githubAccessToken) {
     return Response.json({ error: "GitHub connection required" }, { status: 400 });
   }

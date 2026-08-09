@@ -26,7 +26,7 @@ import AccountMenu from "@/components/account-menu";
 export default function DashboardPage() {
   const user = useUser();
   const router = useRouter();
-  const projects = useQuery(api.projects.getUserProjects, { userId: user?.id ?? "" });
+  const projects = useQuery(api.projects.getUserProjects, {});
   const deleteProject = useMutation(api.projects.deleteProject);
   const saveProject = useMutation(api.projects.saveProject);
   const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
@@ -56,7 +56,7 @@ export default function DashboardPage() {
     if (confirm(`Are you sure you want to delete "${projectName}"?`)) {
       setIsDeleting(projectName);
       try {
-        await deleteProject({ projectName, userId: user.id });
+        await deleteProject({ projectName });
       } catch (error) {
         console.error("Failed to delete project:", error);
         alert("Failed to delete project. Please try again.");
@@ -167,7 +167,6 @@ export default function DashboardPage() {
         prompt: redeployProject.prompt,
         html: redeployProject.html,
         status: redeployProject.status,
-        userId: user.id,
         isPublished: redeployProject.isPublished,
         isMultiPage: redeployProject.isMultiPage,
         pageCount: redeployProject.pageCount,

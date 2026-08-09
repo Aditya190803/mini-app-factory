@@ -1,27 +1,41 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { requireUserId } from "./auth";
+
+/**
+ * OAuth access tokens for GitHub, Vercel, and Netlify.
+ *
+ * Every handler here scopes to the caller's own identity via `requireUserId` — there is
+ * deliberately no `userId` argument. These functions previously accepted one, which meant reading
+ * any user's `repo`-scoped GitHub token was a single unauthenticated query away.
+ *
+ * Token values are additionally encrypted at rest by the Next.js layer (see lib/secret-box.ts);
+ * this layer never sees plaintext.
+ */
 
 export const getIntegration = query({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
     return await ctx.db
       .query("userIntegrations")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
   },
 });
 
 export const upsertIntegration = mutation({
   args: {
-    userId: v.string(),
     githubAccessToken: v.optional(v.string()),
     vercelAccessToken: v.optional(v.string()),
     netlifyAccessToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
     const existing = await ctx.db
       .query("userIntegrations")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
 
     const now = Date.now();
@@ -62,7 +76,7 @@ export const upsertIntegration = mutation({
     }
 
     return await ctx.db.insert("userIntegrations", {
-      userId: args.userId,
+      userId,
       githubAccessToken: args.githubAccessToken,
       vercelAccessToken: args.vercelAccessToken,
       netlifyAccessToken: args.netlifyAccessToken,
@@ -77,13 +91,14 @@ export const upsertIntegration = mutation({
 
 export const clearIntegration = mutation({
   args: {
-    userId: v.string(),
     provider: v.union(v.literal("github"), v.literal("vercel"), v.literal("netlify"), v.literal("all")),
   },
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+
     const existing = await ctx.db
       .query("userIntegrations")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
 
     if (!existing) return null;

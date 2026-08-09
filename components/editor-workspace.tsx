@@ -140,7 +140,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
             isPublished: projectData.isPublished,
             isMultiPage: false,
             pageCount: 1,
-            userId: user?.id
           });
         }
       }

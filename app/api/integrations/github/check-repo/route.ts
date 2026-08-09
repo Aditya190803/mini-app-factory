@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     return Response.json({ error: "Missing repo name" }, { status: 400 });
   }
 
-  const integrations = await getIntegrationTokens(user.id);
+  const integrations = await getIntegrationTokens();
   if (!integrations?.githubAccessToken) {
     return Response.json({ error: "GitHub connection required" }, { status: 400 });
   }

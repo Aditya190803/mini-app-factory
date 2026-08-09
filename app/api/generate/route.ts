@@ -320,7 +320,7 @@ export async function POST(request: Request) {
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();
     const globalAdminConfig = await getGlobalAdminModelConfig();
-    const persistedSettings = await getPersistedAISettings(user.id);
+    const persistedSettings = await getPersistedAISettings();
     const runtimeConfig: AIRuntimeConfig = {
       adminConfig: globalAdminConfig,
       byokConfig: persistedSettings.byokConfig,

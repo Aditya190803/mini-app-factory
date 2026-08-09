@@ -97,7 +97,7 @@ export async function GET(_request: Request) {
 
   // Merge user custom models from Convex
   if (user) {
-    const persisted = await getPersistedAISettings(user.id);
+    const persisted = await getPersistedAISettings();
     const customModels = persisted.customModels;
     if (customModels && typeof customModels === 'object') {
       for (const [providerIdStr, providerModels] of Object.entries(customModels)) {

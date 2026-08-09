@@ -62,7 +62,6 @@ export async function GET(req: Request) {
   }
 
   await upsertIntegrationTokens({
-    userId: user.id,
     githubAccessToken: tokenData.access_token,
   });
 

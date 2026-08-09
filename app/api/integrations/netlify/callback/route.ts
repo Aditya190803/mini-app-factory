@@ -55,7 +55,6 @@ export async function GET(req: Request) {
   }
 
   await upsertIntegrationTokens({
-    userId: user.id,
     netlifyAccessToken: tokenData.access_token,
   });
 

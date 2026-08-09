@@ -132,7 +132,8 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     await consumeTransformStream(res);
-    expect(claimProjectOrphan).toHaveBeenCalledWith('legacy', 'user_123');
+    // The owner is derived from the verified identity inside Convex, so no userId is passed.
+    expect(claimProjectOrphan).toHaveBeenCalledWith('legacy');
   });
 
   test('returns 400 for invalid payload', async () => {
