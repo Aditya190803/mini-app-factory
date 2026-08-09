@@ -10,6 +10,7 @@ import {
 } from '@/lib/cloudflare';
 import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
 import { buildCloudflarePagesConfig, provisionCloudflareResources } from '@/lib/cloudflare-resources';
+import { deployCloudflareWorkers } from '@/lib/cloudflare-workers';
 import { decryptSecret } from '@/lib/secret-box';
 import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
 
@@ -62,6 +63,24 @@ export async function deployProjectToCloudflare(params: {
     });
   }
 
+  const envVars = readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
+  if (manifest?.workers.length) {
+    state = await deployCloudflareWorkers({
+      token: params.token,
+      accountId: params.accountId,
+      manifest,
+      state,
+      files: params.files,
+      secrets: envVars,
+      allowCreate: params.allowResourceCreation === true,
+      onProgress: params.onProgress,
+      onStateChange: async (nextState) => updateCloudflareProjectConfig({
+        projectName: params.project.name,
+        cloudflareResourcesJson: JSON.stringify(nextState),
+      }),
+    });
+  }
+
   const legacyD1 = state.d1?.DB;
   await updateCloudflareProjectConfig({
     projectName: params.project.name,
@@ -71,7 +90,6 @@ export async function deployProjectToCloudflare(params: {
     cloudflareD1DatabaseName: legacyD1?.name,
   });
 
-  const envVars = readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
   const bindings = manifest ? buildCloudflarePagesConfig(manifest, state) : undefined;
   if (bindings || Object.keys(envVars).length > 0) {
     await configureCloudflarePagesProject({

@@ -3,8 +3,11 @@ import { stackServerApp } from '@/stack/server';
 import { configureCloudflarePagesProject } from '@/lib/cloudflare';
 import { readCloudflareEnvVars } from '@/lib/cloudflare-deploy';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getProject, updateCloudflareProjectConfig } from '@/lib/projects';
+import { getFiles, getProject, updateCloudflareProjectConfig } from '@/lib/projects';
 import { encryptSecret } from '@/lib/secret-box';
+import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
+import { buildCloudflarePagesConfig } from '@/lib/cloudflare-resources';
+import { configureCloudflareWorkerSecrets } from '@/lib/cloudflare-workers';
 
 const projectNameSchema = z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/);
 const secretSchema = z.object({
@@ -54,16 +57,29 @@ export async function POST(req: Request) {
     if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) {
       return Response.json({ error: 'Secret saved, but Cloudflare must be reconnected to sync it' }, { status: 409 });
     }
+    const files = await getFiles(parsed.data.projectName);
+    const manifest = parseCloudflareManifest(files, project.cloudflareProjectName);
+    const secrets = {
+      ...envVars,
+      ...(parsed.data.value === null ? { [parsed.data.name]: null } : {}),
+    };
     await configureCloudflarePagesProject({
       token: integration.cloudflareApiToken,
       accountId: integration.cloudflareAccountId,
       projectName: project.cloudflareProjectName,
-      d1DatabaseId: project.cloudflareD1DatabaseId,
-      envVars: {
-        ...envVars,
-        ...(parsed.data.value === null ? { [parsed.data.name]: null } : {}),
-      },
+      bindings: manifest
+        ? buildCloudflarePagesConfig(manifest, parseCloudflareResourceState(project.cloudflareResourcesJson))
+        : undefined,
+      envVars: secrets,
     });
+    if (manifest?.workers.length) {
+      await configureCloudflareWorkerSecrets({
+        token: integration.cloudflareApiToken,
+        accountId: integration.cloudflareAccountId,
+        workerNames: manifest.workers.map((worker) => worker.name),
+        secrets,
+      });
+    }
   }
 
   return Response.json({ saved: true, names: Object.keys(envVars).sort() });

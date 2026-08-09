@@ -154,6 +154,8 @@ For Cloudflare backends, keep all request routing in a single import-free \`_wor
 - NEVER leave both the old inline header AND the include directive in the same file
 - The include directive REPLACES the inline content, it does not supplement it
 
+For Cloudflare cron, Queue consumers, or Durable Objects, keep companion modules under workers/ and update cloudflare.json together with the Worker source.
+
 You MUST use structured tool calls to modify files. 
 Available tools:
 1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes. newContent is the INNER html.
