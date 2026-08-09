@@ -3,12 +3,13 @@ import 'server-only';
 import {
   applyCloudflareD1Migrations,
   configureCloudflarePagesProject,
-  createCloudflareD1Database,
   deployCloudflarePages,
   ensureCloudflarePagesProject,
   normalizeCloudflareProjectName,
   type CloudflareDeployFile,
 } from '@/lib/cloudflare';
+import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
+import { buildCloudflarePagesConfig, provisionCloudflareResources } from '@/lib/cloudflare-resources';
 import { decryptSecret } from '@/lib/secret-box';
 import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
 
@@ -32,6 +33,7 @@ export async function deployProjectToCloudflare(params: {
   requestedProjectName?: string;
   project: ProjectMetadata;
   files: CloudflareDeployFile[];
+  allowResourceCreation?: boolean;
   onProgress?: (message: string) => void;
 }) {
   const projectName = normalizeCloudflareProjectName(
@@ -40,62 +42,63 @@ export async function deployProjectToCloudflare(params: {
   if (!projectName) throw new Error('Cloudflare project name is invalid');
 
   params.onProgress?.('Cloudflare: Preparing Pages project');
-  await ensureCloudflarePagesProject({
-    token: params.token,
-    accountId: params.accountId,
-    projectName,
-  });
+  await ensureCloudflarePagesProject({ token: params.token, accountId: params.accountId, projectName });
 
-  const migrations = params.files.filter(
-    (file) => file.path.startsWith('migrations/') && file.path.endsWith('.sql')
-  );
-  let d1DatabaseId = params.project.cloudflareD1DatabaseId;
-  let d1DatabaseName = params.project.cloudflareD1DatabaseName;
+  const manifest = parseCloudflareManifest(params.files, projectName);
+  let state = parseCloudflareResourceState(params.project.cloudflareResourcesJson);
 
-  if (migrations.length > 0 && !d1DatabaseId) {
-    params.onProgress?.('Cloudflare: Creating D1 database');
-    const database = await createCloudflareD1Database({
+  if (manifest) {
+    state = await provisionCloudflareResources({
       token: params.token,
       accountId: params.accountId,
-      name: `${projectName}-db`,
+      manifest,
+      state,
+      allowCreate: params.allowResourceCreation === true,
+      onProgress: params.onProgress,
+      onStateChange: async (nextState) => updateCloudflareProjectConfig({
+        projectName: params.project.name,
+        cloudflareResourcesJson: JSON.stringify(nextState),
+      }),
     });
-    d1DatabaseId = database.uuid;
-    d1DatabaseName = database.name;
   }
 
+  const legacyD1 = state.d1?.DB;
   await updateCloudflareProjectConfig({
     projectName: params.project.name,
     cloudflareProjectName: projectName,
-    cloudflareD1DatabaseId: d1DatabaseId,
-    cloudflareD1DatabaseName: d1DatabaseName,
+    cloudflareResourcesJson: JSON.stringify(state),
+    cloudflareD1DatabaseId: legacyD1?.id,
+    cloudflareD1DatabaseName: legacyD1?.name,
   });
 
-  if (d1DatabaseId) {
+  const envVars = readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
+  const bindings = manifest ? buildCloudflarePagesConfig(manifest, state) : undefined;
+  if (bindings || Object.keys(envVars).length > 0) {
     await configureCloudflarePagesProject({
       token: params.token,
       accountId: params.accountId,
       projectName,
-      d1DatabaseId,
-      envVars: readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted),
+      bindings,
+      envVars,
     });
-    if (migrations.length > 0) {
-      await applyCloudflareD1Migrations({
-        token: params.token,
-        accountId: params.accountId,
-        databaseId: d1DatabaseId,
-        migrations,
-        onProgress: params.onProgress,
-      });
-    }
-  } else {
-    const envVars = readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
-    if (Object.keys(envVars).length > 0) {
-      await configureCloudflarePagesProject({
-        token: params.token,
-        accountId: params.accountId,
-        projectName,
-        envVars,
-      });
+  }
+
+  if (manifest) {
+    for (const database of manifest.bindings.d1) {
+      const resource = state.d1?.[database.binding];
+      if (!resource) throw new Error(`D1 binding ${database.binding} was not provisioned`);
+      const prefix = `${database.migrations.replace(/\/+$/, '')}/`;
+      const migrations = params.files.filter((file) => file.path.startsWith(prefix) && file.path.endsWith('.sql'));
+      if (migrations.length > 0) {
+        await applyCloudflareD1Migrations({
+          token: params.token,
+          accountId: params.accountId,
+          databaseId: resource.id,
+          migrations,
+          migrationDir: database.migrations,
+          onProgress: params.onProgress,
+        });
+      }
     }
   }
 
@@ -120,7 +123,7 @@ export async function deployProjectToCloudflare(params: {
     deploymentUrl,
     previewUrl: deployment.url,
     cloudflareProjectName: projectName,
-    d1DatabaseId,
-    d1DatabaseName,
+    d1DatabaseId: legacyD1?.id,
+    d1DatabaseName: legacyD1?.name,
   };
 }

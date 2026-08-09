@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Database, Globe2, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Boxes, Database, Globe2, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -17,6 +17,7 @@ type Props = {
   projectName: string;
   cloudflareProjectName?: string;
   d1DatabaseName?: string;
+  resourcesJson?: string;
   customDomain?: string;
   deployments: Deployment[];
 };
@@ -25,6 +26,7 @@ export default function CloudflareProjectSettings({
   projectName,
   cloudflareProjectName,
   d1DatabaseName,
+  resourcesJson,
   customDomain,
   deployments,
 }: Props) {
@@ -34,6 +36,18 @@ export default function CloudflareProjectSettings({
   const [domain, setDomain] = useState(customDomain ?? '');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const resources = useMemo(() => {
+    try {
+      const state = JSON.parse(resourcesJson || '{}') as Record<string, Record<string, { name?: string }>>;
+      return Object.entries(state).flatMap(([kind, entries]) =>
+        kind === 'version' || !entries || typeof entries !== 'object'
+          ? []
+          : Object.entries(entries).map(([binding, resource]) => ({ kind, binding, name: resource.name || 'bound' }))
+      );
+    } catch {
+      return [];
+    }
+  }, [resourcesJson]);
 
   useEffect(() => {
     setDomain(customDomain ?? '');
@@ -132,6 +146,21 @@ export default function CloudflareProjectSettings({
             <div><span className="text-[var(--secondary-text)] uppercase">Pages project</span><br />{cloudflareProjectName}</div>
             <div><span className="text-[var(--secondary-text)] uppercase">D1 database</span><br />{d1DatabaseName || 'Not provisioned'}</div>
           </div>
+
+          {resources.length > 0 && (
+            <div className="grid gap-2 border-t border-[var(--border)] pt-4">
+              <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
+                <Boxes className="w-3 h-3" /> Resource bindings
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {resources.map((resource) => (
+                  <div key={`${resource.kind}:${resource.binding}`} className="border border-[var(--border)] px-2 py-1 text-[10px] font-mono text-[var(--muted-text)]">
+                    <span className="text-[var(--secondary-text)]">{resource.binding}</span> · {resource.kind.toUpperCase()} · {resource.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-2 border-t border-[var(--border)] pt-4">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">

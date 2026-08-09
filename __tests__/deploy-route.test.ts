@@ -157,7 +157,7 @@ describe('POST /api/deploy', () => {
     const req = new Request('http://localhost/api/deploy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectName: 'demo-project', deployMode: 'cloudflare' }),
+      body: JSON.stringify({ projectName: 'demo-project', deployMode: 'cloudflare', confirmCloudflareResources: true }),
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -165,6 +165,7 @@ describe('POST /api/deploy', () => {
     expect(deployProjectToCloudflare).toHaveBeenCalledWith(expect.objectContaining({
       token: 'cf-token',
       accountId: 'account-1',
+      allowResourceCreation: true,
     }));
   });
 

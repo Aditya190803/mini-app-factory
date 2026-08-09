@@ -81,6 +81,13 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     cloudflareProjectName?: string;
   } | null>(null);
   const [deployError, setDeployError] = useState<string | null>(null);
+  const [resourcePlan, setResourcePlan] = useState<Array<{
+    kind: string;
+    binding: string;
+    name: string;
+    action: 'reuse' | 'create' | 'reference';
+  }> | null>(null);
+  const [isPlanningResources, setIsPlanningResources] = useState(false);
   const [deployNotice, setDeployNotice] = useState<string | null>(null);
   const lastProjectNameRef = useRef(projectName);
   const repoCheckRequestRef = useRef(0);
@@ -193,6 +200,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       prev?.repoUrl || prev?.deploymentUrl || prev?.netlifySiteName || prev?.cloudflareProjectName ? prev : null
     );
     setDeployError(null);
+    setResourcePlan(null);
   }, [deployOption]);
 
   useEffect(() => {
@@ -347,7 +355,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     addDeploymentHistory,
   ]);
 
-  const handleDeploy = useCallback(async () => {
+  const runDeploy = useCallback(async (confirmCloudflareResources = false) => {
     if (!userId) {
       window.location.href = '/handler/sign-in';
       return;
@@ -374,6 +382,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
           repoFullName: linkedRepoFullName,
           netlifySiteName: deployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
           cloudflareProjectName: deployOption === 'cloudflare' ? normalizedCloudflareProjectName : undefined,
+          confirmCloudflareResources: deployOption === 'cloudflare' ? confirmCloudflareResources : undefined,
         },
         (status) => setDeployStatus(status)
       );
@@ -428,6 +437,45 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     fetchIntegrationStatus,
   ]);
 
+  const handleDeploy = useCallback(async () => {
+    if (!userId) {
+      window.location.href = '/handler/sign-in';
+      return;
+    }
+    if (deployOption !== 'cloudflare') {
+      await runDeploy();
+      return;
+    }
+
+    setIsPlanningResources(true);
+    setDeployError(null);
+    try {
+      const response = await fetch('/api/cloudflare/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectName, cloudflareProjectName: normalizedCloudflareProjectName }),
+      });
+      const plan = await response.json();
+      if (!response.ok) throw new Error(plan.error || 'Unable to plan Cloudflare resources');
+      if (plan.needsConfirmation) {
+        setResourcePlan(plan.actions);
+        return;
+      }
+      await runDeploy();
+    } catch (error) {
+      const message = normalizeDeployError(error instanceof Error ? error.message : 'Unable to plan Cloudflare resources');
+      setDeployError(message);
+      toast.error('Resource plan failed', { description: message });
+    } finally {
+      setIsPlanningResources(false);
+    }
+  }, [deployOption, normalizedCloudflareProjectName, projectName, runDeploy, userId]);
+
+  const confirmResourcePlan = useCallback(async () => {
+    setResourcePlan(null);
+    await runDeploy(true);
+  }, [runDeploy]);
+
   const markCloudflareConnected = useCallback((account: { name: string }) => {
     setIntegrationStatus((current) => ({
       ...current,
@@ -438,6 +486,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
 
   const deployDisabled =
     isDeploying ||
+    isPlanningResources ||
     (deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected)) ||
     (deployOption === 'github-only' && !integrationStatus.githubConnected) ||
     (deployOption === 'cloudflare' && (!integrationStatus.cloudflareConnected || !normalizedCloudflareProjectName)) ||
@@ -467,6 +516,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     deployResult,
     deployError,
     deployNotice,
+    resourcePlan,
+    isPlanningResources,
     linkedRepoFullName,
     linkedRepoName,
     repoMismatch,
@@ -478,6 +529,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     startNetlifyConnect,
     markCloudflareConnected,
     handleDeploy,
+    confirmResourcePlan,
+    dismissResourcePlan: () => setResourcePlan(null),
     copyToClipboard,
     deployDisabled,
   };

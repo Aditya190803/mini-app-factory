@@ -219,6 +219,7 @@ export const updateCloudflareConfig = mutation({
     cloudflareD1DatabaseName: v.optional(v.union(v.string(), v.null())),
     cloudflareCustomDomain: v.optional(v.union(v.string(), v.null())),
     cloudflareEnvVarsEncrypted: v.optional(v.union(v.string(), v.null())),
+    cloudflareResourcesJson: v.optional(v.union(v.string(), v.null())),
     deploymentUrl: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
@@ -231,6 +232,7 @@ export const updateCloudflareConfig = mutation({
       "cloudflareD1DatabaseName",
       "cloudflareCustomDomain",
       "cloudflareEnvVarsEncrypted",
+      "cloudflareResourcesJson",
       "deploymentUrl",
     ] as const) {
       if (args[key] !== undefined) patch[key] = args[key] ?? undefined;

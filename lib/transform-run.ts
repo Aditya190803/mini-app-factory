@@ -160,7 +160,7 @@ Available tools:
 2. replaceElement(file, selector, newContent) - Replace the matching element ENTIRELY with newContent.
 3. insertContent(file, position, selector, content) - position: before, after, prepend, append.
 4. deleteContent(file, selector) - Remove an element.
-5. createFile(path, content, fileType) - Create a page, partial, style, script, Cloudflare worker, or D1 migration.
+5. createFile(path, content, fileType) - Create a page, partial, style, script, Cloudflare worker, D1 migration, or Cloudflare config.
 6. deleteFile(path) - Remove a file.
 7. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
 8. updateFile(file, content) - Replace an entire file when changes are too complex for other tools.

@@ -165,7 +165,7 @@ export function prepareCloudflareAssets(files: CloudflareDeployFile[]) {
 
   for (const file of files) {
     const path = normalizeAssetPath(file.path);
-    if (path.startsWith('migrations/') && path.endsWith('.sql')) continue;
+    if (path.endsWith('.sql') || path === 'cloudflare.json') continue;
     if (path.endsWith('/.keep') || path === '.keep') continue;
     const size = Buffer.byteLength(file.content, 'utf8');
     if (SPECIAL_FILES.has(path)) {
@@ -306,9 +306,10 @@ export async function configureCloudflarePagesProject(params: {
   accountId: string;
   projectName: string;
   d1DatabaseId?: string;
+  bindings?: Record<string, unknown>;
   envVars?: Record<string, string | null>;
 }) {
-  const config: Record<string, unknown> = {};
+  const config: Record<string, unknown> = { ...params.bindings };
   if (params.d1DatabaseId) config.d1_databases = { DB: { id: params.d1DatabaseId } };
   if (params.envVars) {
     config.env_vars = Object.fromEntries(
@@ -362,6 +363,7 @@ export async function applyCloudflareD1Migrations(params: {
   accountId: string;
   databaseId: string;
   migrations: CloudflareDeployFile[];
+  migrationDir?: string;
   onProgress?: (message: string) => void;
 }) {
   await queryD1({
@@ -372,9 +374,10 @@ export async function applyCloudflareD1Migrations(params: {
   const applied = new Set(
     existing.flatMap((result) => result.results ?? []).map((row) => String(row.name))
   );
+  const migrationPrefix = `${(params.migrationDir ?? 'migrations').replace(/\/+$/, '')}/`;
   const migrations = [...params.migrations]
     .map((migration) => ({ ...migration, path: normalizeAssetPath(migration.path) }))
-    .filter((migration) => migration.path.startsWith('migrations/') && migration.path.endsWith('.sql'))
+    .filter((migration) => migration.path.startsWith(migrationPrefix) && migration.path.endsWith('.sql'))
     .sort((a, b) => a.path.localeCompare(b.path));
 
   for (const migration of migrations) {

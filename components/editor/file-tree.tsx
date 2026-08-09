@@ -16,6 +16,7 @@ import {
   Copy,
   CloudCog,
   Database,
+  Braces,
 } from 'lucide-react';
 import { ProjectFile } from '@/lib/page-builder';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,7 @@ export default function FileTree({
     if (file.fileType === 'script') return <Code className="w-4 h-4 text-yellow-400" />;
     if (file.fileType === 'worker') return <CloudCog className="w-4 h-4 text-orange-400" />;
     if (file.fileType === 'migration') return <Database className="w-4 h-4 text-emerald-400" />;
+    if (file.fileType === 'config') return <Braces className="w-4 h-4 text-cyan-400" />;
     return <FileCode className="w-4 h-4 text-gray-400" />;
   };
 
@@ -217,6 +219,15 @@ export default function FileTree({
             title="New D1 Migration"
           >
             <Database className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-[#2d2d2d]"
+            onClick={() => onNewFile('config')}
+            title="New Cloudflare Config"
+          >
+            <Braces className="w-4 h-4" />
           </Button>
           <Button 
             variant="ghost" 

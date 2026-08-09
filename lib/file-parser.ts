@@ -10,7 +10,7 @@ import { ProjectFile } from './page-builder';
 export function parseMultiFileOutput(output: string): ProjectFile[] {
   const files: ProjectFile[] = [];
   // More flexible regex that handles missing filenames or different casing
-  const regex = /```(html|css|javascript|js|sql)(?::([^\n]+))?\n([\s\S]*?)```/gi;
+  const regex = /```(html|css|javascript|js|sql|json)(?::([^\n]+))?\n([\s\S]*?)```/gi;
   let match;
 
   while ((match = regex.exec(output)) !== null) {
@@ -24,6 +24,7 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
       else if (lang === 'css') path = 'styles.css';
       else if (lang === 'javascript' || lang === 'js') path = 'script.js';
       else if (lang === 'sql') path = `migrations/${String(files.length + 1).padStart(4, '0')}_migration.sql`;
+      else if (lang === 'json') path = 'cloudflare.json';
       else path = `file-${files.length + 1}.${lang}`;
     }
 
@@ -31,9 +32,11 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
     if (lang === 'css') language = 'css';
     if (lang === 'javascript' || lang === 'js') language = 'javascript';
     if (lang === 'sql') language = 'sql';
+    if (lang === 'json') language = 'json';
 
     let fileType: ProjectFile['fileType'] = 'page';
-    if (path === '_worker.js') fileType = 'worker';
+    if (path === 'cloudflare.json') fileType = 'config';
+    else if (path === '_worker.js') fileType = 'worker';
     else if (path.startsWith('migrations/') && path.endsWith('.sql')) fileType = 'migration';
     else if (path.endsWith('.css')) fileType = 'style';
     else if (path.endsWith('.js')) fileType = 'script';

@@ -137,7 +137,7 @@ Return files using code blocks with the format:
 \`\`\`html:filename.html
 Code here...
 \`\`\`
-Use \`javascript:_worker.js\` for a Cloudflare backend and \`sql:migrations/0001_init.sql\` for D1 migrations.
+Use \`javascript:_worker.js\` for a Cloudflare backend, \`json:cloudflare.json\` for resource bindings, and \`sql:migrations/0001_init.sql\` for D1 migrations.
 
 Mandatory requirements:
 1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
@@ -166,6 +166,7 @@ Mandatory requirements:
    - Route API requests inside that fetch handler and fall through to static assets with \`return env.ASSETS.fetch(request)\`.
    - Do not generate a \`functions/\` directory; this deployment path uses Pages advanced mode.
    - Only when relational persistence is needed, access D1 as \`env.DB\` and generate ordered, idempotent SQL files under \`migrations/\`.
+   - When using Cloudflare resources, generate \`cloudflare.json\` version 1 with binding arrays for only the products needed: \`d1\`, \`kv\`, \`r2\`, \`queues\`, \`vectorize\`, \`analyticsEngine\`, \`services\`, \`durableObjects\`, \`ai\`, or \`browser\`.
    - Never put credentials in generated files; read configured secrets from \`env\`.
 
 You can also create sub-pages (e.g. about.html, gallery.html).

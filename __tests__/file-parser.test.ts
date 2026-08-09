@@ -42,10 +42,13 @@ alert('hello');
     });
   });
 
-  test('parses Cloudflare worker and D1 migration files', () => {
+  test('parses Cloudflare worker, manifest, and D1 migration files', () => {
     const files = parseMultiFileOutput(`
 \`\`\`javascript:_worker.js
 export default { fetch(request, env) { return env.ASSETS.fetch(request); } };
+\`\`\`
+\`\`\`json:cloudflare.json
+{"version":1,"bindings":{}}
 \`\`\`
 \`\`\`sql:migrations/0001_init.sql
 CREATE TABLE messages(id INTEGER PRIMARY KEY);
@@ -53,6 +56,7 @@ CREATE TABLE messages(id INTEGER PRIMARY KEY);
 `);
     expect(files).toEqual([
       expect.objectContaining({ path: '_worker.js', language: 'javascript', fileType: 'worker' }),
+      expect.objectContaining({ path: 'cloudflare.json', language: 'json', fileType: 'config' }),
       expect.objectContaining({ path: 'migrations/0001_init.sql', language: 'sql', fileType: 'migration' }),
     ]);
   });

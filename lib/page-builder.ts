@@ -3,8 +3,8 @@ import * as cheerio from 'cheerio';
 export interface ProjectFile {
   path: string;
   content: string;
-  language: 'html' | 'css' | 'javascript' | 'sql';
-  fileType: 'page' | 'partial' | 'style' | 'script' | 'worker' | 'migration';
+  language: 'html' | 'css' | 'javascript' | 'sql' | 'json';
+  fileType: 'page' | 'partial' | 'style' | 'script' | 'worker' | 'migration' | 'config';
 }
 
 /**

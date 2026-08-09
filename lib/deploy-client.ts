@@ -21,7 +21,7 @@ export function normalizeDeployError(message: string) {
     return "Please connect Cloudflare before deploying.";
   }
   if (/Cloudflare API error: 403/i.test(message)) {
-    return "Cloudflare permission denied. Check the token's Pages and D1 account permissions.";
+    return "Cloudflare permission denied. Check the token permissions required by this project's resources.";
   }
   if (/Netlify API error: 422/i.test(message)) {
     return "Netlify rejected the site creation. Try a different site name.";
@@ -41,6 +41,7 @@ export type DeployApiPayload = {
   deployMode?: "github-netlify" | "github-only" | "cloudflare";
   repoName?: string;
   cloudflareProjectName?: string;
+  confirmCloudflareResources?: boolean;
   repoFullName?: string;
   netlifySiteName?: string;
 };
@@ -71,12 +72,11 @@ export async function performDeploy(payload: DeployApiPayload, onStatus?: (statu
   });
   if (!resp.ok) {
     const errText = await resp.text();
+    let message = errText || "Deploy failed";
     try {
-      const errJson = JSON.parse(errText);
-      throw new Error(errJson.error || "Deploy failed");
-    } catch {
-      throw new Error(errText || "Deploy failed");
-    }
+      message = JSON.parse(errText).error || message;
+    } catch {}
+    throw new Error(message);
   }
 
   let result: DeployApiResult | null = null;

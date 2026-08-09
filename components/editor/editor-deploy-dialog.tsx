@@ -45,6 +45,8 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     deployResult,
     deployError,
     deployNotice,
+    resourcePlan,
+    isPlanningResources,
     linkedRepoFullName,
     linkedRepoName,
     repoMismatch,
@@ -55,6 +57,8 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     startNetlifyConnect,
     markCloudflareConnected,
     handleDeploy,
+    confirmResourcePlan,
+    dismissResourcePlan,
     copyToClipboard,
     deployDisabled,
   } = deploy;
@@ -263,6 +267,20 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
               </div>
             </div>
           )}
+          {resourcePlan && (
+            <div className="border border-amber-500/40 rounded-md p-3 space-y-2">
+              <div className="text-[11px] font-mono font-bold text-amber-500">Confirm Cloudflare resources</div>
+              <div className="space-y-1">
+                {resourcePlan.map((item) => (
+                  <div key={`${item.kind}:${item.binding}`} className="flex justify-between gap-3 text-[10px] font-mono text-[var(--muted-text)]">
+                    <span>{item.binding} → {item.name}</span>
+                    <span className={item.action === 'create' ? 'text-amber-500' : 'text-[var(--secondary-text)]'}>{item.action}</span>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={dismissResourcePlan} className="text-[10px] font-mono underline text-[var(--muted-text)]">Cancel</button>
+            </div>
+          )}
           {deployNotice && <div className="text-[11px] text-[var(--muted-text)] font-mono">{deployNotice}</div>}
           {deployError && <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">{deployError}</div>}
           {isDeploying && deployStatus && (
@@ -275,8 +293,8 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
           <Button variant="outline" onClick={() => setIsDeployDialogOpen(false)} className="flex-1 font-mono uppercase text-[10px]">
             Close
           </Button>
-          <Button onClick={handleDeploy} disabled={deployDisabled} className="flex-1 bg-[var(--primary)] font-mono uppercase text-[10px] font-black">
-            {isDeploying ? 'Deploying...' : deployOption === 'github-only' ? 'Create Repo' : 'Deploy Now'}
+          <Button onClick={resourcePlan ? confirmResourcePlan : handleDeploy} disabled={deployDisabled} className="flex-1 bg-[var(--primary)] font-mono uppercase text-[10px] font-black">
+            {isDeploying ? 'Deploying...' : isPlanningResources ? 'Planning...' : resourcePlan ? 'Create & Deploy' : deployOption === 'github-only' ? 'Create Repo' : 'Deploy Now'}
           </Button>
         </DialogFooter>
       </DialogContent>
