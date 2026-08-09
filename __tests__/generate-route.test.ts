@@ -1,6 +1,11 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 
+const aiMocks = vi.hoisted(() => ({ createSession: vi.fn() }));
+
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/ai-client', () => ({
+  getAIClient: vi.fn(async () => ({ createSession: aiMocks.createSession })),
+}));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
@@ -140,6 +145,55 @@ describe('POST /api/generate', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  test('replaces a stale OpenRouter project selection with the configured OpenCode primary', async () => {
+    const { runGeneration } = await import('@/app/api/generate/route');
+    const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
+    const session = (content: string) => ({
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content } }),
+      on: vi.fn(() => () => {}),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+
+    (saveProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      name: 'monkey-type',
+      prompt: 'Build a typing test',
+      status: 'error',
+      selectedModel: 'z-ai/glm-4.5-air:free',
+      providerId: 'openrouter',
+    });
+    aiMocks.createSession
+      .mockResolvedValueOnce(session('Concise design spec'))
+      .mockResolvedValueOnce(session([
+        '```html:index.html',
+        '<link rel="stylesheet" href="styles.css"><main>Typing test</main><script src="script.js" defer></script>',
+        '```',
+        '```css:styles.css',
+        'body { color: white; }',
+        '```',
+        '```javascript:script.js',
+        'console.log("ready");',
+        '```',
+      ].join('\n')));
+
+    await runGeneration('monkey-type', 'Build a typing test', new AbortController().signal);
+
+    expect(aiMocks.createSession).toHaveBeenCalledTimes(2);
+    expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      model: 'deepseek-v4-flash-free',
+      providerId: 'opencode',
+    }));
+    expect(aiMocks.createSession).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      model: 'deepseek-v4-flash-free',
+      providerId: 'opencode',
+    }));
+    expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({
+      selectedModel: 'deepseek-v4-flash-free',
+      providerId: 'opencode',
+    }));
   });
 
   test('returns SSE response for a valid generation request', async () => {

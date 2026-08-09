@@ -10,7 +10,6 @@ import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
-import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -87,12 +86,14 @@ export async function runGeneration(
   try {
     // Update status
     project.status = 'generating';
+    project.selectedModel = MODEL;
+    project.providerId = 'opencode';
     await saveProject(project).catch(() => { });
 
     if (signal.aborted) return { error: 'Aborted' };
 
     const client = await getAIClient(runtimeConfig);
-    const projectProviderId = isAIProviderId(project.providerId) ? project.providerId : undefined;
+    const selectedOpenCodeModel = MODEL;
 
     if (signal.aborted) return { error: 'Aborted' };
 
@@ -100,8 +101,8 @@ export async function runGeneration(
     const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
 
     const designSession = await client.createSession({
-      model: project.selectedModel || MODEL,
-      providerId: projectProviderId,
+      model: selectedOpenCodeModel,
+      providerId: 'opencode',
       systemMessage: { content: architectSystemMsg },
     });
 
@@ -119,7 +120,7 @@ export async function runGeneration(
       });
 
       try {
-        const cacheKey = `${project.selectedModel || MODEL}:${project.providerId || ''}:${finalPrompt}`;
+        const cacheKey = `${selectedOpenCodeModel}:opencode:${finalPrompt}`;
         const cached = getCachedDesignSpec(cacheKey);
         if (cached) {
           designSpec = cached;
@@ -184,8 +185,8 @@ You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
 
     const htmlSession = await client.createSession({
-      model: project.selectedModel || MODEL,
-      providerId: projectProviderId,
+      model: selectedOpenCodeModel,
+      providerId: 'opencode',
       systemMessage: { content: developerSystemMsg },
     });
 
