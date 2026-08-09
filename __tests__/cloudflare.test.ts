@@ -38,6 +38,8 @@ describe('Cloudflare Pages helpers', () => {
       { path: 'index.html', content: '<h1>Hello</h1>' },
       { path: '_worker.js', content: 'export default { fetch() {} }' },
       { path: 'migrations/0001_init.sql', content: 'CREATE TABLE demo(id INTEGER);' },
+      { path: 'cloudflare.json', content: '{"version":1,"bindings":{}}' },
+      { path: 'workers/jobs.js', content: 'export default { queue() {} };' },
     ]);
 
     expect(prepared.assets.map((asset) => asset.path)).toEqual(['index.html']);

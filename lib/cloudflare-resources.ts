@@ -87,6 +87,23 @@ export async function planCloudflareResources(params: ResourceParams & {
     actions.push({ kind: 'vectorize', binding: resource.binding, name: resource.name, action: existing ? 'reuse' : 'create' });
   }
 
+  for (const worker of params.manifest.workers) {
+    actions.push({
+      kind: 'worker',
+      binding: worker.serviceBinding ?? worker.name,
+      name: worker.name,
+      action: params.state.worker?.[worker.name] ? 'reuse' : 'create',
+    });
+    for (const durableObject of worker.durableObjects) {
+      actions.push({
+        kind: 'durableObject',
+        binding: durableObject.binding,
+        name: `${worker.name}.${durableObject.className}`,
+        action: params.state.durableObject?.[durableObject.binding] ? 'reuse' : 'create',
+      });
+    }
+  }
+
   const references = [
     ...params.manifest.bindings.analyticsEngine.map((item) => [item.binding, item.dataset]),
     ...params.manifest.bindings.services.map((item) => [item.binding, item.service]),
@@ -215,8 +232,20 @@ export function buildCloudflarePagesConfig(manifest: CloudflareManifest, state: 
   if (manifest.bindings.queues.length) config.queue_producers = map(manifest.bindings.queues, (item) => ({ name: item.name }));
   if (manifest.bindings.vectorize.length) config.vectorize_bindings = map(manifest.bindings.vectorize, (item) => ({ index_name: item.name }));
   if (manifest.bindings.analyticsEngine.length) config.analytics_engine_datasets = map(manifest.bindings.analyticsEngine, (item) => ({ dataset: item.dataset }));
-  if (manifest.bindings.services.length) config.services = Object.fromEntries(manifest.bindings.services.map((item) => [item.binding, { service: item.service, environment: item.environment, ...(item.entrypoint ? { entrypoint: item.entrypoint } : {}) }]));
-  if (manifest.bindings.durableObjects.length) config.durable_object_namespaces = Object.fromEntries(manifest.bindings.durableObjects.map((item) => [item.binding, { namespace_id: item.namespaceId }]));
+  const services = [
+    ...manifest.bindings.services.map((item) => [item.binding, { service: item.service, environment: item.environment, ...(item.entrypoint ? { entrypoint: item.entrypoint } : {}) }] as const),
+    ...manifest.workers.filter((worker) => worker.serviceBinding).map((worker) => [worker.serviceBinding!, { service: worker.name, environment: 'production' }] as const),
+  ];
+  if (services.length) config.services = Object.fromEntries(services);
+  const durableObjects = [
+    ...manifest.bindings.durableObjects.map((item) => [item.binding, { namespace_id: item.namespaceId }] as const),
+    ...manifest.workers.flatMap((worker) => worker.durableObjects.map((item) => {
+      const id = state.durableObject?.[item.binding]?.id;
+      if (!id) throw new Error(`Durable Object binding ${item.binding} is unresolved`);
+      return [item.binding, { namespace_id: id }] as const;
+    })),
+  ];
+  if (durableObjects.length) config.durable_object_namespaces = Object.fromEntries(durableObjects);
   if (manifest.bindings.ai.length) config.ai_bindings = Object.fromEntries(manifest.bindings.ai.map((item) => [item.binding, { project_id: item.projectId }]));
   if (manifest.bindings.browser.length) config.browsers = Object.fromEntries(manifest.bindings.browser.map((item) => [item.binding, {}]));
   return config;

@@ -167,6 +167,7 @@ Mandatory requirements:
    - Do not generate a \`functions/\` directory; this deployment path uses Pages advanced mode.
    - Only when relational persistence is needed, access D1 as \`env.DB\` and generate ordered, idempotent SQL files under \`migrations/\`.
    - When using Cloudflare resources, generate \`cloudflare.json\` version 1 with binding arrays for only the products needed: \`d1\`, \`kv\`, \`r2\`, \`queues\`, \`vectorize\`, \`analyticsEngine\`, \`services\`, \`durableObjects\`, \`ai\`, or \`browser\`.
+   - For cron jobs, Queue consumers, or Durable Objects/WebSockets, generate an import-free module under \`workers/*.js\` and declare it in top-level \`workers\` with \`name\`, \`source\`, resource \`bindings\`, optional \`serviceBinding\`, \`crons\`, \`queueConsumers\`, and \`durableObjects\`. Export \`scheduled\`/\`queue\` handlers from its default object and Durable Object classes as named exports.
    - Never put credentials in generated files; read configured secrets from \`env\`.
 
 You can also create sub-pages (e.g. about.html, gallery.html).
