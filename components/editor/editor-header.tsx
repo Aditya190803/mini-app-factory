@@ -1,6 +1,19 @@
 'use client';
 
-import React from 'react';
+import {
+    ArrowLeft,
+    Code2,
+    Download,
+    FileText,
+    HelpCircle,
+    MessageSquare,
+    Monitor,
+    Redo2,
+    Rocket,
+    Settings,
+    Undo2,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface EditorHeaderProps {
     projectName: string;
@@ -17,7 +30,17 @@ interface EditorHeaderProps {
     onRedo: () => void;
     onHelp: () => void;
     onSettings: () => void;
+    isExplorerVisible: boolean;
+    onToggleExplorer: () => void;
+    isChatVisible: boolean;
+    onToggleChat: () => void;
 }
+
+const viewTabs = [
+    { value: 'preview' as const, label: 'Preview', icon: Monitor },
+    { value: 'code' as const, label: 'Code', icon: Code2 },
+    { value: 'split' as const, label: 'Split', icon: FileText },
+];
 
 export default function EditorHeader({
     projectName,
@@ -33,127 +56,48 @@ export default function EditorHeader({
     onUndo,
     onRedo,
     onHelp,
-    onSettings
+    onSettings,
+    isExplorerVisible,
+    onToggleExplorer,
+    isChatVisible,
+    onToggleChat,
 }: EditorHeaderProps) {
+    const saveLabel = saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Ready';
+
     return (
-        <header
-            className="shrink-0 border-b flex flex-col"
-            style={{
-                backgroundColor: 'var(--background)',
-                borderColor: 'var(--border)',
-            }}
-        >
-            {/* Top bar: Navigation & Tabs */}
-            <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex items-center gap-6">
-                    <button
-                        onClick={onBack}
-                        className="text-xs font-mono uppercase font-bold tracking-widest hover:text-[var(--primary)] transition-colors"
-                        style={{ color: 'var(--secondary-text)' }}
-                    >
-                        ← Back
-                    </button>
-                    <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
-                        <button
-                            onClick={() => setActiveTab('preview')}
-                            className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'preview' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                                }`}
-                        >
-                            Preview
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('code')}
-                            className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'code' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                                }`}
-                        >
-                            Code
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('split')}
-                            className={`px-4 py-1.5 text-[10px] font-mono uppercase font-black transition-all ${activeTab === 'split' ? 'bg-[var(--primary)] text-black' : 'text-[var(--secondary-text)] hover:text-white'
-                                }`}
-                        >
-                            Split
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
-                        <button
-                            onClick={onUndo}
-                            disabled={!canUndo}
-                            className="p-1.5 text-[var(--secondary-text)] hover:text-[var(--primary)] disabled:opacity-30 disabled:hover:text-[var(--secondary-text)]"
-                            title="Undo"
-                        >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
-                        </button>
-                        <button
-                            onClick={onRedo}
-                            disabled={!canRedo}
-                            className="p-1.5 text-[var(--secondary-text)] hover:text-[var(--primary)] disabled:opacity-30 disabled:hover:text-[var(--secondary-text)]"
-                            title="Redo"
-                        >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6" /><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" /></svg>
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
-                        <button
-                            onClick={onHelp}
-                            className="text-[10px] font-mono uppercase font-bold text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors flex items-center gap-1.5"
-                        >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
-                            Help
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-1 border-l pl-6" style={{ borderColor: 'var(--border)' }}>
-                        <button
-                            onClick={onSettings}
-                            className="text-[10px] font-mono uppercase font-bold text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors flex items-center gap-1.5"
-                        >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1l2.5 4.5L19 7l-4.5 2.5L12 14l-2.5-4.5L5 7l4.5-1.5L12 1z"/><path d="M4 14l2 3.5L9.5 19l-3.5 2L4 24"/><path d="M20 14l-2 3.5L14.5 19l3.5 2L20 24"/></svg>
-                            Settings
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-[var(--muted-text)] uppercase tracking-widest hidden sm:block">
-                        Fabricating:
-                    </span>
-                    <span className="text-[10px] font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>
-                        {projectName}
-                    </span>
+        <header className="relative z-40 flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2">
+                <button type="button" onClick={onBack} className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--muted-text)] transition-colors hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]" aria-label="Back to projects">
+                    <ArrowLeft className="size-4" />
+                </button>
+                <div className="hidden min-w-0 sm:block">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">{projectName}</p>
+                    <p className="flex items-center gap-1.5 text-[11px] text-[var(--muted-text)]">
+                        <span className={cn('size-1.5 rounded-full', saveStatus === 'saving' ? 'animate-pulse bg-amber-400' : 'bg-emerald-400')} />
+                        {saveLabel}
+                    </p>
                 </div>
             </div>
 
-            {/* Action bar: Status & Controls */}
-            <div className="flex items-center justify-end px-4 py-2 bg-[var(--background-surface)] gap-4">
-                <div className="flex-1 flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' : 'bg-[var(--primary)]'}`} />
-                        <span className="text-[9px] font-mono uppercase text-[var(--muted-text)]">
-                            {saveStatus === 'saving' ? 'Syncing to cloud...' : saveStatus === 'saved' ? 'All changes saved' : 'System Online'}
-                        </span>
-                    </div>
-                </div>
+            <div className="mx-auto flex items-center rounded-lg bg-[var(--background-surface)] p-1" role="tablist" aria-label="Workspace view">
+                {viewTabs.map(({ value, label, icon: Icon }) => (
+                    <button key={value} type="button" role="tab" aria-selected={activeTab === value} onClick={() => setActiveTab(value)} className={cn('flex h-8 items-center gap-2 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]', activeTab === value ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]')}>
+                        <Icon className="size-3.5" />
+                        <span className="hidden md:inline">{label}</span>
+                    </button>
+                ))}
+            </div>
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={onExport}
-                        className="px-4 py-1.5 text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] border border-[var(--border)] hover:border-[var(--primary)] hover:text-[var(--primary)] transition-all"
-                    >
-                        Export ZIP
-                    </button>
-                    <button
-                        onClick={onDeploy}
-                        disabled={isDeploying}
-                        className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono uppercase font-bold border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-black transition-all disabled:opacity-50"
-                    >
-                        {isDeploying && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>}
-                        {isDeploying ? 'Deploying' : 'Deploy'}
-                    </button>
-                </div>
+            <div className="flex items-center gap-1">
+                <button type="button" onClick={onToggleChat} className={cn('grid size-9 place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]', isChatVisible ? 'bg-[var(--background-surface)] text-[var(--foreground)]' : 'text-[var(--muted-text)] hover:bg-[var(--background-overlay)]')} aria-label={isChatVisible ? 'Hide chat' : 'Show chat'} aria-pressed={isChatVisible}><MessageSquare className="size-4" /></button>
+                <button type="button" onClick={onToggleExplorer} className={cn('grid size-9 place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]', isExplorerVisible ? 'bg-[var(--background-surface)] text-[var(--foreground)]' : 'text-[var(--muted-text)] hover:bg-[var(--background-overlay)]')} aria-label={isExplorerVisible ? 'Hide files' : 'Show files'} aria-pressed={isExplorerVisible}><FileText className="size-4" /></button>
+                <div className="mx-1 hidden h-5 w-px bg-[var(--border)] lg:block" />
+                <button type="button" onClick={onUndo} disabled={!canUndo} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] disabled:opacity-30 lg:grid" aria-label="Undo"><Undo2 className="size-4" /></button>
+                <button type="button" onClick={onRedo} disabled={!canRedo} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] disabled:opacity-30 lg:grid" aria-label="Redo"><Redo2 className="size-4" /></button>
+                <button type="button" onClick={onHelp} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] xl:grid" aria-label="Help"><HelpCircle className="size-4" /></button>
+                <button type="button" onClick={onSettings} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] xl:grid" aria-label="Project settings"><Settings className="size-4" /></button>
+                <button type="button" onClick={onExport} className="hidden h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium text-[var(--secondary-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] lg:flex"><Download className="size-3.5" /> Export</button>
+                <button type="button" onClick={onDeploy} disabled={isDeploying} className="ml-1 flex h-9 items-center gap-2 rounded-lg bg-[var(--primary)] px-3.5 text-xs font-semibold text-[var(--primary-foreground)] transition-transform hover:brightness-105 active:scale-[0.98] disabled:opacity-50"><Rocket className={cn('size-3.5', isDeploying && 'animate-pulse')} />{isDeploying ? 'Deploying' : 'Deploy'}</button>
             </div>
         </header>
     );

@@ -18,10 +18,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 import { useProjectTransform } from '@/hooks/use-project-transform';
@@ -823,12 +822,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   return (
-    <motion.div
+    <div
       className="flex flex-col h-screen"
       style={{ backgroundColor: 'var(--background)' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
     >
       <EditorHeader
         projectName={projectName}
@@ -845,33 +841,72 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
         onSettings={() => window.location.href = `/edit/${projectName}/settings`}
+        isExplorerVisible={isExplorerVisible}
+        onToggleExplorer={() => setIsExplorerVisible((visible) => !visible)}
+        isChatVisible={isRightSidebarVisible}
+        onToggleChat={() => setIsRightSidebarVisible((visible) => !visible)}
       />
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Toggle Explorer Button (Always visible) */}
-        <button
-          onClick={() => setIsExplorerVisible(!isExplorerVisible)}
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-l-0 rounded-r flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
-            isExplorerVisible ? "left-[280px]" : "left-0"
+      <div className="relative flex flex-1 overflow-hidden">
+        <AnimatePresence initial={false}>
+          {isRightSidebarVisible && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 360, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="flex shrink-0 flex-col overflow-hidden max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:shadow-2xl"
+            >
+              <EditorSidebar
+                transformPrompt={transformPrompt}
+                setTransformPrompt={setTransformPrompt}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                selectedElement={selectedElement}
+                setSelectedElement={setSelectedElement}
+                runTransform={chatMode === 'build' ? runTransform : runDiscussion}
+                runPolish={() => setIsPolishDialogOpen(true)}
+                isTransforming={isTransforming || isDiscussing}
+                transformProgress={transformProgress}
+                onCancelTransform={cancelTransform}
+                mode={chatMode}
+                onModeChange={setChatMode}
+                filePaths={files.map((file) => file.path)}
+                messages={[
+                  ...((projectMessages?.length || 0) === 0 ? [{ id: 'initial-prompt', role: 'user' as const, content: initialPrompt, status: 'completed' }] : []),
+                  ...(projectMessages || []).map((message) => ({
+                    id: message._id,
+                    role: message.role,
+                    content: message.content,
+                    status: message.status,
+                    files: (() => {
+                      try { return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || []; }
+                      catch { return []; }
+                    })(),
+                  })),
+                ]}
+                versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary }))}
+                onRestoreVersion={async (versionId) => {
+                  if (!projectData?._id) return;
+                  const restored = await restoreVersion({ projectId: projectData._id, versionId: versionId as Id<'projectVersions'> });
+                  const restoredFiles = restored as ProjectFile[];
+                  setFiles(restoredFiles);
+                  addToHistory(restoredFiles);
+                  toast.success('Project version restored');
+                }}
+              />
+            </motion.div>
           )}
-          title={isExplorerVisible ? "Hide Explorer (Ctrl+B)" : "Show Explorer (Ctrl+B)"}
-        >
-          {isExplorerVisible ? (
-            <ChevronLeft className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
-          )}
-        </button>
+        </AnimatePresence>
 
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
           {isExplorerVisible && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
+              animate={{ width: 260, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--border)] max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-20 max-lg:shadow-2xl"
             >
               <FileTree 
                 files={files} 
@@ -891,7 +926,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </AnimatePresence>
         
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex min-w-0 flex-1 overflow-hidden bg-[var(--background-surface)]">
           {activeTab === 'preview' && (
             <PreviewPanel 
               previewHtml={previewHtml} 
@@ -954,72 +989,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </main>
 
-        <AnimatePresence>
-          {isRightSidebarVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 320, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
-            >
-              <EditorSidebar
-                transformPrompt={transformPrompt}
-                setTransformPrompt={setTransformPrompt}
-                selectedModel={selectedModel}
-                setSelectedModel={setSelectedModel}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-                runTransform={chatMode === 'build' ? runTransform : runDiscussion}
-                runPolish={() => setIsPolishDialogOpen(true)}
-                isTransforming={isTransforming || isDiscussing}
-                transformProgress={transformProgress}
-                onCancelTransform={cancelTransform}
-                mode={chatMode}
-                onModeChange={setChatMode}
-                filePaths={files.map((file) => file.path)}
-                messages={[
-                  ...((projectMessages?.length || 0) === 0 ? [{ id: 'initial-prompt', role: 'user' as const, content: initialPrompt, status: 'completed' }] : []),
-                  ...(projectMessages || []).map((message) => ({
-                  id: message._id,
-                  role: message.role,
-                  content: message.content,
-                  status: message.status,
-                  files: (() => {
-                    try { return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || []; }
-                    catch { return []; }
-                  })(),
-                  })),
-                ]}
-                versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary }))}
-                onRestoreVersion={async (versionId) => {
-                  if (!projectData?._id) return;
-                  const restored = await restoreVersion({ projectId: projectData._id, versionId: versionId as Id<'projectVersions'> });
-                  const restoredFiles = restored as ProjectFile[];
-                  setFiles(restoredFiles);
-                  addToHistory(restoredFiles);
-                  toast.success('Project version restored');
-                }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle Right Sidebar Button (Always visible) */}
-        <button
-          onClick={() => setIsRightSidebarVisible(!isRightSidebarVisible)}
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-r-0 rounded-l flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
-            isRightSidebarVisible ? "right-[320px]" : "right-0"
-          )}
-          title={isRightSidebarVisible ? "Hide AI Sidebar (Ctrl+I)" : "Show AI Sidebar (Ctrl+I)"}
-        >
-          {isRightSidebarVisible ? (
-            <ChevronRight className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-          ) : (
-            <ChevronLeft className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
-          )}
-        </button>
       </div>
 
       <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
@@ -1392,6 +1361,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </div>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   );
 }
