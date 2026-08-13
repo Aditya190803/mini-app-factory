@@ -32,6 +32,7 @@ import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
 import FileTree from './editor/file-tree';
+import ComponentLibraryDialog from './editor/component-library-dialog';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -65,6 +66,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -272,7 +274,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   const persistFiles = useCallback(async (nextFiles: ProjectFile[]) => {
-    if (!user || !projectData?._id) return;
+    if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
     setSaveStatus('saving');
     try {
       await saveFilesAction({
@@ -285,7 +287,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       console.error('Save failed', err);
       setSaveStatus('idle');
     }
-  }, [user, projectData?._id, saveFilesAction]);
+  }, [user, projectData?._id, projectData?.accessRole, saveFilesAction]);
 
   // Auto-save to Convex
   useEffect(() => {
@@ -833,18 +835,35 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onBack={onBack}
         saveStatus={saveStatus}
         onExport={downloadZip}
-        onDeploy={() => deploy.setIsDeployDialogOpen(true)}
+        onDeploy={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : deploy.setIsDeployDialogOpen(true)}
         isDeploying={deploy.isDeploying}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={undo}
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
+        onLibrary={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : setIsLibraryOpen(true)}
         onSettings={() => window.location.href = `/edit/${projectName}/settings`}
         isExplorerVisible={isExplorerVisible}
         onToggleExplorer={() => setIsExplorerVisible((visible) => !visible)}
         isChatVisible={isRightSidebarVisible}
         onToggleChat={() => setIsRightSidebarVisible((visible) => !visible)}
+      />
+
+      {projectData?.accessRole === 'viewer' ? <div className="border-b border-amber-400/20 bg-amber-400/5 px-4 py-2 text-center text-xs text-amber-200">Read-only access · Ask the project owner for editor access to make changes or deploy.</div> : null}
+
+      <ComponentLibraryDialog
+        open={isLibraryOpen}
+        onOpenChange={setIsLibraryOpen}
+        activeFile={activeFile}
+        files={files}
+        onInsert={(file) => {
+          const nextFiles = [...files, file];
+          setFiles(nextFiles);
+          setActiveFilePath(file.path);
+          addToHistory(nextFiles);
+          void persistFiles(nextFiles);
+        }}
       />
 
       <div className="relative flex flex-1 overflow-hidden">

@@ -9,6 +9,7 @@ import { Globe, GitBranch, Activity, Settings2, Brain } from "lucide-react";
 import { extractNetlifySiteNameFromUrl } from "@/lib/deploy-shared";
 import CloudflareProjectSettings from "@/components/cloudflare-project-settings";
 import { inspectProject } from '@/lib/project-inspector';
+import ProjectCollaboration from '@/components/project-collaboration';
 
 interface ProjectSettingsProps {
   projectName: string;
@@ -142,6 +143,8 @@ export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
           customDomain={project.cloudflareCustomDomain}
           deployments={deploymentHistory || []}
         />
+
+        <ProjectCollaboration projectId={project._id} />
 
         <section className="space-y-4 border border-[var(--border)] bg-[var(--background-surface)] p-6">
           <div className="flex items-center gap-2 text-[var(--secondary-text)]">

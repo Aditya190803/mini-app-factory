@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { canAccessProject, getUserId, requireProjectAccessById, requireUserId } from "./auth";
+import { canReadProject, getUserId, requireProjectAccessById, requireUserId } from "./auth";
 
 /**
  * Project file contents.
@@ -19,7 +19,7 @@ export const getFilesByProject = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     const userId = await getUserId(ctx);
-    if (!canAccessProject(project, userId)) return [];
+    if (!(await canReadProject(ctx, project, userId))) return [];
 
     return await ctx.db
       .query("projectFiles")
@@ -33,7 +33,7 @@ export const getFileByPath = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     const userId = await getUserId(ctx);
-    if (!canAccessProject(project, userId)) return null;
+    if (!(await canReadProject(ctx, project, userId))) return null;
 
     return await ctx.db
       .query("projectFiles")

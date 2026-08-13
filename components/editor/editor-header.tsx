@@ -6,6 +6,7 @@ import {
     Download,
     FileText,
     HelpCircle,
+    Library,
     MessageSquare,
     Monitor,
     Redo2,
@@ -29,6 +30,7 @@ interface EditorHeaderProps {
     onUndo: () => void;
     onRedo: () => void;
     onHelp: () => void;
+    onLibrary: () => void;
     onSettings: () => void;
     isExplorerVisible: boolean;
     onToggleExplorer: () => void;
@@ -56,6 +58,7 @@ export default function EditorHeader({
     onUndo,
     onRedo,
     onHelp,
+    onLibrary,
     onSettings,
     isExplorerVisible,
     onToggleExplorer,
@@ -95,6 +98,7 @@ export default function EditorHeader({
                 <button type="button" onClick={onUndo} disabled={!canUndo} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] disabled:opacity-30 lg:grid" aria-label="Undo"><Undo2 className="size-4" /></button>
                 <button type="button" onClick={onRedo} disabled={!canRedo} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] disabled:opacity-30 lg:grid" aria-label="Redo"><Redo2 className="size-4" /></button>
                 <button type="button" onClick={onHelp} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] xl:grid" aria-label="Help"><HelpCircle className="size-4" /></button>
+                <button type="button" onClick={onLibrary} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] xl:grid" aria-label="Component library"><Library className="size-4" /></button>
                 <button type="button" onClick={onSettings} className="hidden size-9 place-items-center rounded-lg text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] xl:grid" aria-label="Project settings"><Settings className="size-4" /></button>
                 <button type="button" onClick={onExport} className="hidden h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium text-[var(--secondary-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] lg:flex"><Download className="size-3.5" /> Export</button>
                 <button type="button" onClick={onDeploy} disabled={isDeploying} className="ml-1 flex h-9 items-center gap-2 rounded-lg bg-[var(--primary)] px-3.5 text-xs font-semibold text-[var(--primary-foreground)] transition-transform hover:brightness-105 active:scale-[0.98] disabled:opacity-50"><Rocket className={cn('size-3.5', isDeploying && 'animate-pulse')} />{isDeploying ? 'Deploying' : 'Deploy'}</button>

@@ -1,11 +1,11 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
-import { requireProjectAccessById } from './auth';
+import { requireProjectAccessById, requireProjectReadAccessById } from './auth';
 
 export const listMessages = query({
   args: { projectId: v.id('projects') },
   handler: async (ctx, { projectId }) => {
-    await requireProjectAccessById(ctx, projectId);
+    await requireProjectReadAccessById(ctx, projectId);
     return ctx.db.query('projectMessages').withIndex('by_project_time', (q) => q.eq('projectId', projectId)).collect();
   },
 });
@@ -47,7 +47,7 @@ export const createVersion = mutation({
 export const listVersions = query({
   args: { projectId: v.id('projects') },
   handler: async (ctx, { projectId }) => {
-    await requireProjectAccessById(ctx, projectId);
+    await requireProjectReadAccessById(ctx, projectId);
     return ctx.db.query('projectVersions').withIndex('by_project_time', (q) => q.eq('projectId', projectId)).order('desc').take(30);
   },
 });
@@ -136,7 +136,7 @@ export const cancelRun = mutation({
 export const getActiveRun = query({
   args: { projectId: v.id('projects') },
   handler: async (ctx, { projectId }) => {
-    await requireProjectAccessById(ctx, projectId);
+    await requireProjectReadAccessById(ctx, projectId);
     const runs = await ctx.db.query('generationRuns').withIndex('by_project_time', (q) => q.eq('projectId', projectId)).order('desc').take(10);
     return runs.find((run) => run.status === 'queued' || run.status === 'running') ?? null;
   },
@@ -145,7 +145,7 @@ export const getActiveRun = query({
 export const listRunEvents = query({
   args: { projectId: v.id('projects'), runId: v.id('generationRuns'), afterSequence: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    await requireProjectReadAccessById(ctx, args.projectId);
     const run = await ctx.db.get(args.runId);
     if (!run || run.projectId !== args.projectId) return [];
     const events = await ctx.db.query('runEvents').withIndex('by_run_sequence', (q) => q.eq('runId', args.runId)).collect();
@@ -156,7 +156,7 @@ export const listRunEvents = query({
 export const getRunStatus = query({
   args: { projectId: v.id('projects'), runId: v.id('generationRuns') },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    await requireProjectReadAccessById(ctx, args.projectId);
     const run = await ctx.db.get(args.runId);
     return run?.projectId === args.projectId ? run.status : null;
   },

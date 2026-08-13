@@ -97,6 +97,55 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_path", ["projectId", "path"]),
 
+  savedComponents: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    path: v.string(),
+    content: v.string(),
+    language: v.union(
+      v.literal("html"),
+      v.literal("css"),
+      v.literal("javascript"),
+      v.literal("sql"),
+      v.literal("json")
+    ),
+    fileType: v.union(
+      v.literal("page"),
+      v.literal("partial"),
+      v.literal("style"),
+      v.literal("script"),
+      v.literal("worker"),
+      v.literal("migration"),
+      v.literal("config")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_name", ["userId", "name"]),
+
+  projectMembers: defineTable({
+    projectId: v.id("projects"),
+    userId: v.string(),
+    role: v.union(v.literal("editor"), v.literal("viewer")),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_user", ["projectId", "userId"])
+    .index("by_user", ["userId"]),
+
+  projectInvites: defineTable({
+    projectId: v.id("projects"),
+    role: v.union(v.literal("editor"), v.literal("viewer")),
+    createdBy: v.string(),
+    expiresAt: v.number(),
+    maxUses: v.number(),
+    useCount: v.number(),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
   // NEW: Edit history for undo/redo
   editHistory: defineTable({
     projectId: v.id("projects"),
