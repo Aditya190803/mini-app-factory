@@ -221,6 +221,11 @@ export const updateCloudflareConfig = mutation({
     cloudflareEnvVarsEncrypted: v.optional(v.union(v.string(), v.null())),
     cloudflareResourcesJson: v.optional(v.union(v.string(), v.null())),
     deploymentUrl: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewProjectName: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewDeploymentId: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewUrl: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewResourcesJson: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewExpiresAt: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const project = await requireProjectAccess(ctx, args.projectName);
@@ -234,6 +239,11 @@ export const updateCloudflareConfig = mutation({
       "cloudflareEnvVarsEncrypted",
       "cloudflareResourcesJson",
       "deploymentUrl",
+      "cloudflarePreviewProjectName",
+      "cloudflarePreviewDeploymentId",
+      "cloudflarePreviewUrl",
+      "cloudflarePreviewResourcesJson",
+      "cloudflarePreviewExpiresAt",
     ] as const) {
       if (args[key] !== undefined) patch[key] = args[key] ?? undefined;
     }
@@ -318,15 +328,25 @@ export const deleteProjectData = internalMutation({
       .query("deploymentHistory")
       .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
       .take(DELETE_BATCH_SIZE);
+    const messages = await ctx.db.query("projectMessages").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const versions = await ctx.db.query("projectVersions").withIndex("by_project_time", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const runs = await ctx.db.query("generationRuns").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const runEventBatches = await Promise.all(runs.map((run) => ctx.db.query("runEvents").withIndex("by_run", (q) => q.eq("runId", run._id)).take(DELETE_BATCH_SIZE + 1)));
+    const runEvents = runEventBatches.flatMap((events) => events.slice(0, DELETE_BATCH_SIZE));
+    const completedRuns = runs.filter((_, index) => runEventBatches[index].length <= DELETE_BATCH_SIZE);
 
-    for (const row of [...files, ...history, ...deployments]) {
+    for (const row of [...files, ...history, ...deployments, ...messages, ...versions, ...runEvents, ...completedRuns]) {
       await ctx.db.delete(row._id);
     }
 
     if (
       files.length === DELETE_BATCH_SIZE ||
       history.length === DELETE_BATCH_SIZE ||
-      deployments.length === DELETE_BATCH_SIZE
+      deployments.length === DELETE_BATCH_SIZE ||
+      messages.length === DELETE_BATCH_SIZE ||
+      versions.length === DELETE_BATCH_SIZE ||
+      runs.length === DELETE_BATCH_SIZE ||
+      runEvents.length >= DELETE_BATCH_SIZE
     ) {
       await ctx.scheduler.runAfter(0, internal.projects.deleteProjectData, args);
     }

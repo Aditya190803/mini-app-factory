@@ -43,6 +43,11 @@ export interface ProjectMetadata {
   cloudflareCustomDomain?: string;
   cloudflareEnvVarsEncrypted?: string;
   cloudflareResourcesJson?: string;
+  cloudflarePreviewProjectName?: string;
+  cloudflarePreviewDeploymentId?: string;
+  cloudflarePreviewUrl?: string;
+  cloudflarePreviewResourcesJson?: string;
+  cloudflarePreviewExpiresAt?: number;
   globalSeo?: {
     siteName?: string;
     description?: string;
@@ -121,6 +126,11 @@ export async function updateCloudflareProjectConfig(params: {
   cloudflareEnvVarsEncrypted?: string | null;
   cloudflareResourcesJson?: string | null;
   deploymentUrl?: string | null;
+  cloudflarePreviewProjectName?: string | null;
+  cloudflarePreviewDeploymentId?: string | null;
+  cloudflarePreviewUrl?: string | null;
+  cloudflarePreviewResourcesJson?: string | null;
+  cloudflarePreviewExpiresAt?: number | null;
 }) {
   const convex = await getConvex();
   await convex.mutation(api.projects.updateCloudflareConfig, params);
@@ -132,6 +142,12 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
   if (!project) return null;
 
   return toProjectMetadata(project);
+}
+
+export async function getUserProjects(): Promise<ProjectMetadata[]> {
+  const convex = await getConvex();
+  const projects = await convex.query(api.projects.getUserProjects, {});
+  return projects.map((project) => toProjectMetadata(project));
 }
 
 export async function getFiles(projectName: string) {

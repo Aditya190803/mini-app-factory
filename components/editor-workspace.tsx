@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from '@/convex/_generated/dataModel';
 import {
   Dialog,
   DialogContent,
@@ -45,9 +46,9 @@ const newFileCopy: Record<ProjectFile['fileType'], { label: string; description:
   partial: { label: 'Partial', description: 'Create reusable HTML included with <!-- include:filename.html -->.', placeholder: 'navbar.html' },
   style: { label: 'Stylesheet', description: 'Create a CSS file.', placeholder: 'components.css' },
   script: { label: 'Script', description: 'Create a browser JavaScript file.', placeholder: 'analytics.js' },
-  worker: { label: 'Cloudflare Worker', description: 'Create the import-free Pages backend entrypoint.', placeholder: '_worker.js' },
+  worker: { label: 'Cloudflare Worker', description: 'Create the generated application backend entrypoint.', placeholder: '_worker.js' },
   migration: { label: 'D1 Migration', description: 'Create an ordered SQL migration under migrations/.', placeholder: 'migrations/0001_init.sql' },
-  config: { label: 'Cloudflare Config', description: 'Declare resource bindings for this project.', placeholder: 'cloudflare.json' },
+  config: { label: 'Wrangler Config', description: 'Declare the generated app runtime and resource bindings.', placeholder: 'wrangler.jsonc' },
 };
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
@@ -57,6 +58,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [selectedElement, setSelectedElement] = useState<{ path: string, html: string, selector?: string } | null>(null);
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
+  const [chatMode, setChatMode] = useState<'build' | 'discuss'>('build');
+  const [isDiscussing, setIsDiscussing] = useState(false);
+  const [isDeployingPreview, setIsDeployingPreview] = useState(false);
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isExporting, setIsExporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -94,6 +98,32 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const projectFiles = useQuery(api.files.getFilesByProject, 
     projectData?._id ? { projectId: projectData._id } : "skip"
   );
+  const projectMessages = useQuery(api.conversations.listMessages,
+    projectData?._id ? { projectId: projectData._id } : 'skip'
+  );
+  const appendMessage = useMutation(api.conversations.appendMessage);
+  const createVersion = useMutation(api.conversations.createVersion);
+  const createRun = useMutation(api.conversations.createRun);
+  const appendRunEvent = useMutation(api.conversations.appendRunEvent);
+  const finishRun = useMutation(api.conversations.finishRun);
+  const restoreVersion = useMutation(api.conversations.restoreVersion);
+  const projectVersions = useQuery(api.conversations.listVersions,
+    projectData?._id ? { projectId: projectData._id } : 'skip'
+  );
+  const activeTransformRun = useRef<Id<'generationRuns'> | null>(null);
+  const previewCleanupStarted = useRef(false);
+
+  useEffect(() => {
+    if (previewCleanupStarted.current || !projectData?.cloudflarePreviewProjectName || (projectData.cloudflarePreviewExpiresAt || 0) > Date.now()) return;
+    previewCleanupStarted.current = true;
+    void fetch('/api/cloudflare/preview', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName }),
+    }).then((response) => {
+      if (!response.ok) previewCleanupStarted.current = false;
+    }).catch(() => { previewCleanupStarted.current = false; });
+  }, [projectData?.cloudflarePreviewExpiresAt, projectData?.cloudflarePreviewProjectName, projectName]);
 
   const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
@@ -281,11 +311,100 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     setTransformPrompt,
     selectedElement,
     setSelectedElement,
+    onRunStarted: async (prompt) => {
+      if (!projectData?._id) return;
+      activeTransformRun.current = await createRun({ projectId: projectData._id, kind: 'build', prompt });
+      await appendMessage({ projectId: projectData._id, role: 'user', content: prompt, status: 'completed' });
+    },
+    onRunEvent: async (event) => {
+      if (!projectData?._id || !activeTransformRun.current || event.status === 'complete' || event.status === 'error') return;
+      const message = 'message' in event && event.message ? event.message : event.status === 'applying' ? `${event.tool}${event.path ? ` → ${event.path}` : ''}` : event.status;
+      await appendRunEvent({ projectId: projectData._id, runId: activeTransformRun.current, type: event.status, message, path: 'path' in event ? event.path : undefined });
+    },
+    onRunCompleted: async (prompt, nextFiles) => {
+      if (!projectData?._id) return;
+      const messageId = await appendMessage({
+        projectId: projectData._id,
+        role: 'assistant',
+        content: `Implemented: ${prompt}`,
+        status: 'completed',
+        detailsJson: JSON.stringify({ files: nextFiles.map((file) => file.path) }),
+      });
+      await createVersion({ projectId: projectData._id, messageId, summary: prompt, filesJson: JSON.stringify(nextFiles) });
+      if (activeTransformRun.current) await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'completed' });
+      activeTransformRun.current = null;
+    },
+    onRunFailed: async (prompt, message) => {
+      if (!projectData?._id) return;
+      await appendMessage({ projectId: projectData._id, role: 'system', content: `Build failed: ${message}`, status: 'failed', detailsJson: JSON.stringify({ prompt }) });
+      if (activeTransformRun.current) await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'failed', errorCode: 'TRANSFORM_ERROR', errorMessage: message });
+      activeTransformRun.current = null;
+    },
+    onRunCancelled: async () => {
+      if (!projectData?._id || !activeTransformRun.current) return;
+      await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'cancelled' });
+      activeTransformRun.current = null;
+    },
   });
+
+  const runDiscussion = useCallback(async (promptOverride?: string) => {
+    const prompt = promptOverride?.trim() || transformPrompt.trim();
+    if (!prompt || isDiscussing) return;
+    setIsDiscussing(true);
+    try {
+      const response = await fetch('/api/discuss', {
+        method: 'POST',
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          projectName,
+          prompt,
+          modelId: selectedModel.id || undefined,
+          providerId: selectedModel.providerId || undefined,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Discussion failed');
+      setTransformPrompt('');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Discussion failed');
+    } finally {
+      setIsDiscussing(false);
+    }
+  }, [isDiscussing, projectName, selectedModel, transformPrompt]);
+
+  const deployLivePreview = useCallback(async () => {
+    setIsDeployingPreview(true);
+    try {
+      let response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
+      let data = await response.json();
+      if (!response.ok && data.needsConfirmation) {
+        if (!window.confirm('This preview needs isolated Cloudflare resources. Create them for 24 hours?')) return;
+        response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, confirmResources: true }) });
+        data = await response.json();
+      }
+      if (!response.ok) throw new Error(data.error || 'Preview deployment failed');
+      toast.success('Live backend preview deployed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Preview deployment failed');
+    } finally {
+      setIsDeployingPreview(false);
+    }
+  }, [projectName]);
+
+  const deleteLivePreview = useCallback(async () => {
+    if (!window.confirm('Delete this preview and its isolated Cloudflare resources?')) return;
+    const response = await fetch('/api/cloudflare/preview', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error(data.error || 'Preview cleanup failed');
+      return;
+    }
+    toast.success('Live preview resources deleted');
+  }, [projectName]);
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
-    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : type === 'config' ? 'cloudflare.json' : '');
+    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : type === 'config' ? 'wrangler.jsonc' : '');
     setNewFileInFolderPath(null);
     setIsNewFileDialogOpen(true);
   };
@@ -344,8 +463,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (newFileType === 'migration' && !finalPath.startsWith('migrations/')) {
       finalPath = `migrations/${finalPath.replace(/^\/+/, '')}`;
     }
-    if (newFileType === 'config' && finalPath !== 'cloudflare.json') {
-      alert('The Cloudflare resource manifest must be named cloudflare.json at the project root');
+    if (newFileType === 'config' && !['wrangler.jsonc', 'wrangler.json'].includes(finalPath)) {
+      alert('The Cloudflare configuration must be named wrangler.jsonc at the project root');
       return;
     }
 
@@ -358,7 +477,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       ? 'css'
       : finalPath.endsWith('.sql')
         ? 'sql'
-        : finalPath.endsWith('.json')
+        : finalPath.endsWith('.json') || finalPath.endsWith('.jsonc')
           ? 'json'
           : finalPath.endsWith('.js')
           ? 'javascript'
@@ -368,7 +487,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       content: newFileType === 'worker'
         ? "export default {\n  async fetch(request, env) {\n    return env.ASSETS.fetch(request);\n  },\n};"
         : newFileType === 'config'
-          ? '{\n  "version": 1,\n  "bindings": {}\n}'
+          ? `{\n  "$schema": "node_modules/wrangler/config-schema.json",\n  "name": "${projectName}",\n  "main": "_worker.js",\n  "compatibility_date": "2026-08-09",\n  "assets": { "directory": ".", "binding": "ASSETS" },\n  "observability": { "enabled": true }\n}`
           : '',
       language: lang,
       fileType: newFileType as ProjectFile['fileType']
@@ -778,6 +897,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               previewHtml={previewHtml} 
               files={files}
               onOpenInNewTab={handleOpenPreviewInNewTab}
+              livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+              isDeployingPreview={isDeployingPreview}
+              onDeployLivePreview={deployLivePreview}
+              onDeleteLivePreview={deleteLivePreview}
               onOpenInEditor={(path, html) => {
                 setActiveFilePath(path);
                 setActiveTab('code');
@@ -814,6 +937,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   previewHtml={previewHtml} 
                   files={files}
                   onOpenInNewTab={handleOpenPreviewInNewTab}
+                  livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+                  isDeployingPreview={isDeployingPreview}
+                  onDeployLivePreview={deployLivePreview}
+                  onDeleteLivePreview={deleteLivePreview}
                   onOpenInEditor={(path, html) => {
                     setActiveFilePath(path);
                     if (html) setEditorSearchText(html);
@@ -843,11 +970,36 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 setSelectedModel={setSelectedModel}
                 selectedElement={selectedElement}
                 setSelectedElement={setSelectedElement}
-                runTransform={runTransform}
+                runTransform={chatMode === 'build' ? runTransform : runDiscussion}
                 runPolish={() => setIsPolishDialogOpen(true)}
-                isTransforming={isTransforming}
+                isTransforming={isTransforming || isDiscussing}
                 transformProgress={transformProgress}
                 onCancelTransform={cancelTransform}
+                mode={chatMode}
+                onModeChange={setChatMode}
+                filePaths={files.map((file) => file.path)}
+                messages={[
+                  ...((projectMessages?.length || 0) === 0 ? [{ id: 'initial-prompt', role: 'user' as const, content: initialPrompt, status: 'completed' }] : []),
+                  ...(projectMessages || []).map((message) => ({
+                  id: message._id,
+                  role: message.role,
+                  content: message.content,
+                  status: message.status,
+                  files: (() => {
+                    try { return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || []; }
+                    catch { return []; }
+                  })(),
+                  })),
+                ]}
+                versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary }))}
+                onRestoreVersion={async (versionId) => {
+                  if (!projectData?._id) return;
+                  const restored = await restoreVersion({ projectId: projectData._id, versionId: versionId as Id<'projectVersions'> });
+                  const restoredFiles = restored as ProjectFile[];
+                  setFiles(restoredFiles);
+                  addToHistory(restoredFiles);
+                  toast.success('Project version restored');
+                }}
               />
             </motion.div>
           )}

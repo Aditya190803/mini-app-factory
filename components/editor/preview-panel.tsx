@@ -9,11 +9,15 @@ interface PreviewPanelProps {
     onOpenInEditor?: (path: string, elementHtml?: string, selector?: string) => void;
     onAttachToChat?: (path: string, html: string, selector?: string) => void;
     onOpenInNewTab?: () => void;
+    livePreviewUrl?: string;
+    isDeployingPreview?: boolean;
+    onDeployLivePreview?: () => void | Promise<void>;
+    onDeleteLivePreview?: () => void | Promise<void>;
 }
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
-export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat, onOpenInNewTab }: PreviewPanelProps) {
+export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat, onOpenInNewTab, livePreviewUrl, isDeployingPreview, onDeployLivePreview, onDeleteLivePreview }: PreviewPanelProps) {
     const [mode, setMode] = useState<ViewportMode>('desktop');
     const [refreshKey, setRefreshKey] = useState(0);
     const [isSelectorActive, setIsSelectorActive] = useState(false);
@@ -165,6 +169,18 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {files.some((file) => file.fileType === 'worker') ? (
+                        livePreviewUrl ? (
+                            <>
+                                <span className="text-[9px] font-mono text-emerald-400">Live backend</span>
+                                <button type="button" onClick={() => void onDeleteLivePreview?.()} className="px-2 py-1 text-[9px] text-[var(--muted-text)] hover:text-red-300">Delete</button>
+                            </>
+                        ) : (
+                            <button type="button" disabled={isDeployingPreview} onClick={() => void onDeployLivePreview?.()} className="px-2 py-1 text-[9px] font-mono text-[var(--primary)] hover:bg-[var(--primary)]/10 disabled:opacity-50">
+                                {isDeployingPreview ? 'Deploying…' : 'Test backend live'}
+                            </button>
+                        )
+                    ) : null}
                     <button
                         onClick={onOpenInNewTab}
                         className="p-1 text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors"
@@ -205,7 +221,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     <iframe
                         key={refreshKey}
                         ref={iframeRef}
-                        srcDoc={previewHtml}
+                        {...(livePreviewUrl ? { src: livePreviewUrl } : { srcDoc: previewHtml })}
                         className="w-full h-full border-0"
                         sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
                         title="Website Preview"

@@ -33,6 +33,11 @@ export const projectRecordSchema = z.object({
   cloudflareCustomDomain: z.string().optional(),
   cloudflareEnvVarsEncrypted: z.string().optional(),
   cloudflareResourcesJson: z.string().optional(),
+  cloudflarePreviewProjectName: z.string().optional(),
+  cloudflarePreviewDeploymentId: z.string().optional(),
+  cloudflarePreviewUrl: z.string().optional(),
+  cloudflarePreviewResourcesJson: z.string().optional(),
+  cloudflarePreviewExpiresAt: z.coerce.number().optional(),
   seoData: z.array(z.object({
     path: z.string(),
     title: z.string().optional(),
@@ -88,6 +93,11 @@ export function normalizeProjectMetadata(record: unknown) {
     cloudflareCustomDomain: parsed.cloudflareCustomDomain,
     cloudflareEnvVarsEncrypted: parsed.cloudflareEnvVarsEncrypted,
     cloudflareResourcesJson: parsed.cloudflareResourcesJson,
+    cloudflarePreviewProjectName: parsed.cloudflarePreviewProjectName,
+    cloudflarePreviewDeploymentId: parsed.cloudflarePreviewDeploymentId,
+    cloudflarePreviewUrl: parsed.cloudflarePreviewUrl,
+    cloudflarePreviewResourcesJson: parsed.cloudflarePreviewResourcesJson,
+    cloudflarePreviewExpiresAt: parsed.cloudflarePreviewExpiresAt,
     seoData: parsed.seoData,
   };
 }

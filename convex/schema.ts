@@ -57,6 +57,11 @@ export default defineSchema({
     cloudflareCustomDomain: v.optional(v.string()),
     cloudflareEnvVarsEncrypted: v.optional(v.string()),
     cloudflareResourcesJson: v.optional(v.string()),
+    cloudflarePreviewProjectName: v.optional(v.string()),
+    cloudflarePreviewDeploymentId: v.optional(v.string()),
+    cloudflarePreviewUrl: v.optional(v.string()),
+    cloudflarePreviewResourcesJson: v.optional(v.string()),
+    cloudflarePreviewExpiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -102,6 +107,59 @@ export default defineSchema({
   })
     .index("by_file", ["fileId"])
     .index("by_project_time", ["projectId", "createdAt"]),
+
+  projectMessages: defineTable({
+    projectId: v.id("projects"),
+    role: v.union(v.literal("user"), v.literal("assistant"), v.literal("system")),
+    content: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("streaming"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    runId: v.optional(v.string()),
+    detailsJson: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_time", ["projectId", "createdAt"]),
+
+  projectVersions: defineTable({
+    projectId: v.id("projects"),
+    messageId: v.optional(v.id("projectMessages")),
+    summary: v.string(),
+    filesJson: v.string(),
+    createdAt: v.number(),
+  }).index("by_project_time", ["projectId", "createdAt"]),
+
+  generationRuns: defineTable({
+    projectId: v.id("projects"),
+    kind: v.union(v.literal("initial"), v.literal("build"), v.literal("discuss"), v.literal("repair")),
+    status: v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed"), v.literal("cancelled")),
+    prompt: v.string(),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_time", ["projectId", "createdAt"]),
+
+  runEvents: defineTable({
+    projectId: v.id("projects"),
+    runId: v.id("generationRuns"),
+    sequence: v.number(),
+    type: v.string(),
+    message: v.string(),
+    path: v.optional(v.string()),
+    detailsJson: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_run_sequence", ["runId", "sequence"]),
 
   userIntegrations: defineTable({
     userId: v.string(),

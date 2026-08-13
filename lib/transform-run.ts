@@ -2,7 +2,7 @@ import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
 import { getAIClient } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import { executeTool } from '@/lib/tool-executor';
-import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
+import { ProjectFile } from '@/lib/page-builder';
 import { extractToolCalls } from '@/lib/transform-tool-calls';
 import { saveFiles } from '@/lib/projects';
 import {
@@ -14,6 +14,7 @@ import { withRetry } from '@/lib/ai-retry';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import type { TransformStreamEvent } from '@/lib/transform-stream';
+import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-project-validation';
 
 export const MAX_TRANSFORM_CONTEXT_CHARS = 120_000;
 
@@ -133,7 +134,7 @@ export async function runTransformWork(input: TransformWorkInput) {
 You will be given the complete project context comprising all files.
 
 Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
-For Cloudflare backends, keep all request routing in a single import-free \`_worker.js\`, use \`env.ASSETS.fetch(request)\` for static fallthrough, access D1 through \`env.DB\`, and put versioned SQL in \`migrations/\`.
+For Cloudflare backends, keep request routing in a single import-free \`_worker.js\`, use \`env.ASSETS.fetch(request)\` for static fallthrough, access D1 through \`env.DB\`, put additive versioned SQL in \`migrations/\`, and keep \`wrangler.jsonc\` synchronized as the deployment source of truth.
 
 **Target Element Context**:
 - If the user prompt mentions a "Target element", prioritize modifications to that specific piece of code.
@@ -154,7 +155,7 @@ For Cloudflare backends, keep all request routing in a single import-free \`_wor
 - NEVER leave both the old inline header AND the include directive in the same file
 - The include directive REPLACES the inline content, it does not supplement it
 
-For Cloudflare cron, Queue consumers, or Durable Objects, keep companion modules under workers/ and update cloudflare.json together with the Worker source.
+When backend capabilities change, update \`wrangler.jsonc\` together with Worker source and migrations. Queue consumers, cron handlers, and Durable Objects use standard companion projects at \`workers/<service>/index.js\` plus \`workers/<service>/wrangler.jsonc\`. Never invent resource IDs or embed secrets.
 
 You MUST use structured tool calls to modify files. 
 Available tools:
@@ -269,9 +270,42 @@ Only return changes. No explanations.`;
     await session.destroy().catch(() => {});
   }
 
-  const structure = validateFileStructure(finalFiles);
-  if (!structure.valid) {
-    throw Object.assign(new Error(`Invalid file structure: ${structure.errors.join(', ')}`), {
+  const migrationDrift = findMigrationDrift(originalFiles, finalFiles);
+  if (migrationDrift.length) {
+    throw Object.assign(new Error(migrationDrift.join('; ')), { code: 'MIGRATION_DRIFT' });
+  }
+  let validation = validateGeneratedProject(finalFiles, projectName || 'preview-project');
+  if (!validation.valid) {
+    onEvent({ status: 'generating', message: `Repairing ${validation.errors.length} validation issue${validation.errors.length === 1 ? '' : 's'}…` });
+    const repairSession = await client.createSession({
+      model: effectiveModelId,
+      providerId: effectiveProviderId,
+      systemMessage: { content: systemMessage },
+    });
+    try {
+      const repairResponse = await repairSession.sendAndWait({
+        prompt: `${intentBlock}\n\nThe proposed project failed validation:\n- ${validation.errors.join('\n- ')}\n\nUse the available file tools to fix every issue. Return only the JSON array of tool calls.\n\nProject Context:\n${buildProjectContextWithIntent(finalFiles, selectFilesForHtmlEdit(validation.errors.join(' '), finalFiles), MAX_TRANSFORM_CONTEXT_CHARS)}`,
+      }, 90_000);
+      const repairs = await extractToolCallsWithRepair(repairResponse?.data?.content || '', repairSession, signal);
+      for (let index = 0; index < repairs.length; index++) {
+        const repair = repairs[index];
+        onEvent({ status: 'applying', index: index + 1, total: repairs.length, tool: repair.tool, path: toolTargetPath(repair.args) });
+        const result = await executeTool(repair.tool, repair.args, finalFiles);
+        if (!result.success) throw new Error(result.message);
+        for (const updated of result.updatedFiles || []) {
+          const fileIndex = finalFiles.findIndex((file) => file.path === updated.path);
+          if (fileIndex >= 0) finalFiles[fileIndex] = updated;
+          else finalFiles.push(updated);
+        }
+        if (result.deletedPaths?.length) finalFiles = finalFiles.filter((file) => !result.deletedPaths?.includes(file.path));
+      }
+    } finally {
+      await repairSession.destroy().catch(() => {});
+    }
+    validation = validateGeneratedProject(finalFiles, projectName || 'preview-project');
+  }
+  if (!validation.valid) {
+    throw Object.assign(new Error(`Invalid generated project: ${validation.errors.join(', ')}`), {
       code: 'INVALID_FILE_STRUCTURE',
     });
   }

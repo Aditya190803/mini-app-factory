@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
-import { consumeTransformStream } from '@/lib/transform-stream';
+import { consumeTransformStream, type TransformStreamEvent } from '@/lib/transform-stream';
 import { transformEventToProgress, type TransformProgressState } from '@/components/editor/transform-progress';
 import {
   applyTransformComplete,
@@ -32,6 +32,11 @@ type UseProjectTransformArgs = {
   setTransformPrompt: (v: string) => void;
   selectedElement: { path: string; html: string; selector?: string } | null;
   setSelectedElement: (v: null) => void;
+  onRunStarted?: (prompt: string) => void | Promise<void>;
+  onRunCompleted?: (prompt: string, files: ProjectFile[]) => void | Promise<void>;
+  onRunFailed?: (prompt: string, message: string) => void | Promise<void>;
+  onRunEvent?: (event: TransformStreamEvent) => void | Promise<void>;
+  onRunCancelled?: () => void | Promise<void>;
 };
 
 export function useProjectTransform(args: UseProjectTransformArgs) {
@@ -47,6 +52,11 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     setTransformPrompt,
     selectedElement,
     setSelectedElement,
+    onRunStarted,
+    onRunCompleted,
+    onRunFailed,
+    onRunEvent,
+    onRunCancelled,
   } = args;
 
   const [isTransforming, setIsTransforming] = useState(false);
@@ -78,6 +88,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         });
 
         const result = await consumeTransformStream(response, (event) => {
+          void onRunEvent?.(event);
           const next = transformEventToProgress(event);
           if (next) setTransformProgress(next);
         });
@@ -86,6 +97,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         return result;
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
+          await onRunCancelled?.();
           return null;
         }
         const code =
@@ -106,20 +118,22 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         }
       }
     },
-    [setFiles, addToHistory, persistFiles]
+    [setFiles, addToHistory, persistFiles, onRunEvent, onRunCancelled]
   );
 
-  const runTransform = useCallback(async () => {
-    if (!transformPrompt.trim()) return;
-    let finalPrompt = transformPrompt;
+  const runTransform = useCallback(async (promptOverride?: string) => {
+    const requestedPrompt = promptOverride?.trim() || transformPrompt.trim();
+    if (!requestedPrompt) return;
+    let finalPrompt = requestedPrompt;
     if (selectedElement) {
       const cleanHtml = selectedElement.html
         .replace(/ data-source-file="[^"]*"/g, '')
         .replace(/ style="display: contents;"/g, '');
       const selectorLine = selectedElement.selector ? `CSS selector: ${selectedElement.selector}\n` : '';
-      finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${transformPrompt}`;
+      finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${requestedPrompt}`;
     }
     try {
+      await onRunStarted?.(requestedPrompt);
       const result = await postTransform({
         projectName,
         activeFile: activeFilePath,
@@ -128,9 +142,17 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         providerId: selectedModel.providerId || undefined,
       });
       if (!result) return;
+      const nextFiles = result.full && result.files
+        ? result.files
+        : filesRef.current
+            .filter((file) => !result.deletedPaths?.includes(file.path))
+            .map((file) => result.files?.find((updated) => updated.path === file.path) || file)
+            .concat((result.files || []).filter((updated) => !filesRef.current.some((file) => file.path === updated.path)));
+      await onRunCompleted?.(requestedPrompt, nextFiles);
       setTransformPrompt('');
       setSelectedElement(null);
-    } catch {
+    } catch (error) {
+      await onRunFailed?.(requestedPrompt, error instanceof Error ? error.message : 'Build failed');
       /* toast handled in postTransform */
     }
   }, [
@@ -142,6 +164,9 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     selectedModel,
     setTransformPrompt,
     setSelectedElement,
+    onRunStarted,
+    onRunCompleted,
+    onRunFailed,
   ]);
 
   const runPolish = useCallback(

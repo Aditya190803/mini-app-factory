@@ -165,7 +165,7 @@ export function prepareCloudflareAssets(files: CloudflareDeployFile[]) {
 
   for (const file of files) {
     const path = normalizeAssetPath(file.path);
-    if (path.endsWith('.sql') || path === 'cloudflare.json' || path.startsWith('workers/')) continue;
+    if (path.endsWith('.sql') || ['cloudflare.json', 'wrangler.jsonc', 'wrangler.json', 'package.json', 'tsconfig.json', 'README.md', '.dev.vars.example', '.gitignore'].includes(path) || path.startsWith('workers/') || path.startsWith('src/')) continue;
     if (path.endsWith('/.keep') || path === '.keep') continue;
     const size = Buffer.byteLength(file.content, 'utf8');
     if (SPECIAL_FILES.has(path)) {

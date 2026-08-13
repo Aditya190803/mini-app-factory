@@ -20,13 +20,13 @@ export async function GET() {
 
 const transformSchema = z
   .object({
-    projectName: z.string().optional(),
-    html: z.string().optional(),
-    prompt: z.string().optional(),
-    activeFile: z.string().optional(),
-    polishDescription: z.string().optional(),
-    modelId: z.string().optional(),
-    providerId: z.string().optional(),
+    projectName: z.string().trim().max(120).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+    html: z.string().max(2_000_000).optional(),
+    prompt: z.string().trim().max(80_000).optional(),
+    activeFile: z.string().trim().max(500).optional(),
+    polishDescription: z.string().trim().max(8_000).optional(),
+    modelId: z.string().trim().max(200).optional(),
+    providerId: z.string().trim().max(50).optional(),
   })
   .strict()
   .refine((data) => data.projectName || data.html, {
