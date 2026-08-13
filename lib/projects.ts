@@ -181,6 +181,17 @@ export async function saveFiles(projectName: string, files: ProjectFile[]) {
   });
 }
 
+export async function createProjectVersion(projectName: string, summary: string, files: ProjectFile[]) {
+  const convex = await getConvex();
+  const project = await convex.query(api.projects.getProject, { projectName });
+  if (!project) throw new Error('Project not found');
+  await convex.mutation(api.conversations.createVersion, {
+    projectId: project._id,
+    summary: summary.slice(0, 240),
+    filesJson: JSON.stringify(files),
+  });
+}
+
 // --- Public (unauthenticated) reads, for serving published sites at /results/* ---
 
 export async function getPublishedProject(name: string): Promise<PublishedProjectMetadata | null> {

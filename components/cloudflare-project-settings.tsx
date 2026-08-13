@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Boxes, Database, Globe2, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Boxes, Database, Globe2, RotateCcw, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -14,6 +14,7 @@ type Deployment = {
 };
 type Zone = { id: string; name: string };
 type D1Data = { tables: string[]; table?: string; columns?: Array<{ name?: string }>; rows?: Array<Record<string, unknown>> };
+type R2Object = { key?: string; size?: number; lastModified?: string; contentType?: string };
 
 type Props = {
   projectName: string;
@@ -44,6 +45,9 @@ export default function CloudflareProjectSettings({
   const [message, setMessage] = useState('');
   const [d1, setD1] = useState<D1Data | null>(null);
   const [d1Error, setD1Error] = useState('');
+  const [r2Bucket, setR2Bucket] = useState('');
+  const [r2Objects, setR2Objects] = useState<R2Object[]>([]);
+  const [r2Prefix, setR2Prefix] = useState('');
   const resources = useMemo(() => {
     try {
       const state = JSON.parse(resourcesJson || '{}') as Record<string, Record<string, { name?: string }>>;
@@ -56,6 +60,38 @@ export default function CloudflareProjectSettings({
       return [];
     }
   }, [resourcesJson]);
+  const r2Buckets = useMemo(() => resources.filter((resource) => resource.kind === 'r2').map((resource) => resource.name), [resources]);
+
+  useEffect(() => { if (!r2Bucket && r2Buckets[0]) setR2Bucket(r2Buckets[0]); }, [r2Bucket, r2Buckets]);
+
+  const loadR2 = async (bucket = r2Bucket) => {
+    if (!bucket) return;
+    setBusy('r2'); setMessage('');
+    try {
+      const response = await fetch(`/api/cloudflare/r2?projectName=${encodeURIComponent(projectName)}&bucket=${encodeURIComponent(bucket)}&prefix=${encodeURIComponent(r2Prefix)}`);
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Unable to list objects');
+      setR2Objects(data.objects || []);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to list objects'); }
+    finally { setBusy(null); }
+  };
+
+  const uploadR2 = async (file: File | undefined) => {
+    if (!file || !r2Bucket) return;
+    const key = `${r2Prefix.replace(/^\/+|\/+$/g, '')}${r2Prefix ? '/' : ''}${file.name}`;
+    const form = new FormData(); form.set('projectName', projectName); form.set('bucket', r2Bucket); form.set('key', key); form.set('file', file);
+    setBusy('r2'); setMessage('');
+    try { const response = await fetch('/api/cloudflare/r2', { method: 'POST', body: form }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Upload failed'); setMessage(`Uploaded ${key}.`); await loadR2(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Upload failed'); }
+    finally { setBusy(null); }
+  };
+
+  const deleteR2 = async (key: string) => {
+    if (!window.confirm(`Permanently delete ${key}?`)) return;
+    setBusy('r2');
+    try { const response = await fetch('/api/cloudflare/r2', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, bucket: r2Bucket, key }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Delete failed'); setR2Objects((items) => items.filter((item) => item.key !== key)); setMessage(`Deleted ${key}.`); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Delete failed'); }
+    finally { setBusy(null); }
+  };
 
   useEffect(() => {
     setDomain(customDomain ?? '');
@@ -278,6 +314,12 @@ export default function CloudflareProjectSettings({
             {d1?.tables.length ? <div className="flex flex-wrap gap-2">{d1.tables.map((table) => <button key={table} type="button" onClick={() => void inspectTable(table)} className={`rounded-md border px-2.5 py-1.5 text-xs ${d1.table === table ? 'border-[var(--primary)] text-[var(--primary)]' : 'border-[var(--border)] text-[var(--secondary-text)]'}`}>{table}</button>)}</div> : <p className="text-xs text-[var(--muted-text)]">No application tables found.</p>}
             {d1?.table && d1.rows ? <div className="overflow-x-auto rounded-md border border-[var(--border)]"><table className="w-full min-w-max text-left text-xs"><thead className="bg-[var(--background)] text-[var(--muted-text)]"><tr>{(d1.columns || []).map((column) => <th key={column.name} className="px-3 py-2 font-medium">{column.name}</th>)}</tr></thead><tbody>{d1.rows.map((row, index) => <tr key={index} className="border-t border-[var(--border)]">{(d1.columns || []).map((column) => <td key={column.name} className="max-w-64 truncate px-3 py-2 font-mono text-[var(--secondary-text)]">{JSON.stringify(row[String(column.name)])}</td>)}</tr>)}</tbody></table>{d1.rows.length === 100 ? <p className="border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted-text)]">Showing the first 100 rows.</p> : null}</div> : null}
             {d1Error ? <p role="alert" className="text-xs text-red-400">{d1Error}</p> : null}
+          </div> : null}
+
+          {r2Buckets.length ? <div className="grid gap-3 border-t border-[var(--border)] pt-4">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]"><Boxes className="size-3" /> R2 object manager</div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1.5fr_auto_auto]"><select value={r2Bucket} onChange={(event) => { setR2Bucket(event.target.value); setR2Objects([]); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs">{r2Buckets.map((bucket) => <option key={bucket}>{bucket}</option>)}</select><Input value={r2Prefix} onChange={(event) => setR2Prefix(event.target.value.replace(/\.\./g, ''))} placeholder="Optional prefix, e.g. uploads" className="font-mono text-xs" /><Button variant="outline" disabled={busy === 'r2'} onClick={() => void loadR2()}>Browse</Button><label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-[var(--border)] px-3 text-xs"><Upload className="mr-2 size-3.5" /> Upload<input type="file" className="sr-only" onChange={(event) => { void uploadR2(event.target.files?.[0]); event.target.value = ''; }} /></label></div>
+            {r2Objects.length ? <div className="max-h-72 overflow-y-auto rounded-md border border-[var(--border)]">{r2Objects.map((object) => <div key={object.key} className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2 text-xs last:border-0"><code className="min-w-0 flex-1 truncate">{object.key}</code><span className="text-[10px] text-[var(--muted-text)]">{typeof object.size === 'number' ? `${(object.size / 1024).toFixed(1)} KB` : '—'}</span>{object.key ? <button type="button" onClick={() => void deleteR2(object.key!)} aria-label={`Delete ${object.key}`}><Trash2 className="size-3.5 text-red-400" /></button> : null}</div>)}</div> : <p className="text-xs text-[var(--muted-text)]">Browse a project-bound bucket to inspect up to 200 objects.</p>}
           </div> : null}
 
           {cloudflareDeployments.length > 1 && (

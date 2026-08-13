@@ -10,6 +10,7 @@ import { extractNetlifySiteNameFromUrl } from "@/lib/deploy-shared";
 import CloudflareProjectSettings from "@/components/cloudflare-project-settings";
 import { inspectProject } from '@/lib/project-inspector';
 import ProjectCollaboration from '@/components/project-collaboration';
+import GitHubProjectSync from '@/components/github-project-sync';
 
 interface ProjectSettingsProps {
   projectName: string;
@@ -145,6 +146,8 @@ export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
         />
 
         <ProjectCollaboration projectId={project._id} />
+
+        <GitHubProjectSync projectName={project.projectName} repoUrl={project.repoUrl} />
 
         <section className="space-y-4 border border-[var(--border)] bg-[var(--background-surface)] p-6">
           <div className="flex items-center gap-2 text-[var(--secondary-text)]">
