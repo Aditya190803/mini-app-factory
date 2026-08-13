@@ -12,6 +12,7 @@ type Deployment = {
   deploymentUrl?: string;
   cloudflareDeploymentId?: string;
 };
+type Zone = { id: string; name: string };
 
 type Props = {
   projectName: string;
@@ -34,6 +35,10 @@ export default function CloudflareProjectSettings({
   const [secretName, setSecretName] = useState('');
   const [secretValue, setSecretValue] = useState('');
   const [domain, setDomain] = useState(customDomain ?? '');
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [selectedZone, setSelectedZone] = useState('');
+  const [subdomain, setSubdomain] = useState('www');
+  const [domainStatus, setDomainStatus] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const resources = useMemo(() => {
@@ -61,6 +66,24 @@ export default function CloudflareProjectSettings({
       })
       .catch(() => undefined);
   }, [projectName]);
+
+  useEffect(() => {
+    if (!cloudflareProjectName) return;
+    fetch(`/api/cloudflare/domain?projectName=${encodeURIComponent(projectName)}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const nextZones = Array.isArray(data.zones) ? data.zones : [];
+        setZones(nextZones);
+        setSelectedZone(nextZones[0]?.name || '');
+        setDomainStatus(data.domain?.status || data.domain?.verification_data?.status || '');
+      })
+      .catch(() => undefined);
+  }, [cloudflareProjectName, projectName]);
+
+  useEffect(() => {
+    if (!customDomain && selectedZone) setDomain(subdomain.trim() ? `${subdomain.trim().toLowerCase()}.${selectedZone}` : selectedZone);
+  }, [customDomain, selectedZone, subdomain]);
 
   const saveSecret = async (name: string, value: string | null) => {
     setBusy(`secret:${name}`);
@@ -97,9 +120,28 @@ export default function CloudflareProjectSettings({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to add domain');
-      setMessage('Custom domain added. DNS and certificate activation can take a few minutes.');
+      setDomainStatus(data.domain?.status || 'pending');
+      setMessage('Domain attached. Cloudflare is configuring DNS and TLS.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to add domain');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeDomain = async () => {
+    if (!window.confirm(`Remove ${domain} from this Pages project?`)) return;
+    setBusy('domain');
+    setMessage('');
+    try {
+      const response = await fetch('/api/cloudflare/domain', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Unable to remove domain');
+      setDomain('');
+      setDomainStatus('');
+      setMessage('Custom domain removed.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to remove domain');
     } finally {
       setBusy(null);
     }
@@ -166,12 +208,19 @@ export default function CloudflareProjectSettings({
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
               <Globe2 className="w-3 h-3" /> Custom domain
             </div>
-            <div className="flex gap-2">
-              <Input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="www.example.com" className="text-xs font-mono" />
-              <Button type="button" variant="outline" className="font-mono uppercase text-[10px]" disabled={!domain || busy === 'domain'} onClick={addDomain}>
-                {busy === 'domain' ? 'Adding…' : customDomain ? 'Update' : 'Add'}
-              </Button>
-            </div>
+            {customDomain || domainStatus ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2">
+                <div className="min-w-0"><div className="truncate text-xs text-[var(--foreground)]">{domain}</div><div className="mt-0.5 text-[10px] capitalize text-[var(--muted-text)]">{domainStatus || 'Checking activation'}</div></div>
+                <Button type="button" variant="ghost" className="text-[10px] text-red-400" disabled={busy === 'domain'} onClick={() => void removeDomain()}>Remove</Button>
+              </div>
+            ) : zones.length ? (
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <Input value={subdomain} onChange={(event) => setSubdomain(event.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} placeholder="www (blank for apex)" className="text-xs font-mono" />
+                <select value={selectedZone} onChange={(event) => setSelectedZone(event.target.value)} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)]">{zones.map((zone) => <option key={zone.id} value={zone.name}>{zone.name}</option>)}</select>
+                <Button type="button" variant="outline" className="font-mono uppercase text-[10px]" disabled={!domain || busy === 'domain'} onClick={addDomain}>{busy === 'domain' ? 'Adding…' : 'Add'}</Button>
+                <p className="text-[10px] leading-4 text-[var(--muted-text)] sm:col-span-3">Leave the subdomain blank to use the zone apex. Cloudflare will configure DNS and issue TLS automatically.</p>
+              </div>
+            ) : <p className="text-[10px] leading-4 text-[var(--muted-text)]">No active Cloudflare-managed zones were found. Reauthorize Cloudflare with Pages Write and Zone Read access.</p>}
           </div>
 
           <div className="grid gap-2 border-t border-[var(--border)] pt-4">

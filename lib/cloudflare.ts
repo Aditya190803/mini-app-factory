@@ -407,6 +407,31 @@ export async function addCloudflarePagesDomain(params: {
   );
 }
 
+export type CloudflareZone = { id: string; name: string; status: string; type: string };
+export type CloudflarePagesDomain = { name: string; status?: string; verification_data?: { status?: string; error_message?: string } };
+
+export async function listCloudflareZones(params: { token: string; accountId: string }) {
+  return cloudflareRequest<CloudflareZone[]>(
+    `/zones?account.id=${encode(params.accountId)}&status=active&per_page=50`,
+    params.token
+  );
+}
+
+export async function getCloudflarePagesDomain(params: { token: string; accountId: string; projectName: string; domain: string }) {
+  return cloudflareRequest<CloudflarePagesDomain>(
+    `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/domains/${encode(params.domain)}`,
+    params.token
+  );
+}
+
+export async function removeCloudflarePagesDomain(params: { token: string; accountId: string; projectName: string; domain: string }) {
+  await cloudflareRequest(
+    `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/domains/${encode(params.domain)}`,
+    params.token,
+    { method: 'DELETE' }
+  );
+}
+
 export async function rollbackCloudflarePagesDeployment(params: {
   token: string;
   accountId: string;

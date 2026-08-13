@@ -22,6 +22,9 @@ const serverEnvSchema = z
       .optional(),
     EXA_API_KEY: z.string().optional(),
     MAF_ADMIN_EMAILS: z.string().optional(),
+    CLOUDFLARE_CLIENT_ID: z.string().optional(),
+    CLOUDFLARE_CLIENT_SECRET: z.string().optional(),
+    CLOUDFLARE_OAUTH_SCOPES: z.string().optional(),
   });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

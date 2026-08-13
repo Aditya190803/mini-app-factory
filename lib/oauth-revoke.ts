@@ -1,4 +1,5 @@
 import 'server-only';
+import { revokeCloudflareOAuthToken } from '@/lib/cloudflare-oauth';
 
 /**
  * Best-effort revocation of a third-party OAuth token at the provider.
@@ -86,7 +87,11 @@ export async function revokeVercelToken(_accessToken: string): Promise<RevokeRes
   return { provider: 'vercel', revoked: false, reason: 'no_revocation_endpoint' };
 }
 
-/** User-created API tokens must be revoked from Cloudflare's API Tokens dashboard. */
-export async function revokeCloudflareToken(_accessToken: string): Promise<RevokeResult> {
-  return { provider: 'cloudflare', revoked: false, reason: 'revoke_in_cloudflare_dashboard' };
+/** Cloudflare OAuth: revoke the access grant at the provider before clearing local storage. */
+export async function revokeCloudflareToken(accessToken: string): Promise<RevokeResult> {
+  try {
+    return { provider: 'cloudflare', revoked: await withTimeout(() => revokeCloudflareOAuthToken(accessToken)) };
+  } catch {
+    return { provider: 'cloudflare', revoked: false, reason: 'request_failed' };
+  }
 }

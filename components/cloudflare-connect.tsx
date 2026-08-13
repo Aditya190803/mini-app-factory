@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { Check, Cloud, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 
 type Account = { id: string; name: string };
 
@@ -14,111 +13,77 @@ type Props = {
 };
 
 export default function CloudflareConnect({ connected, accountName, onConnected }: Props) {
-  const [editing, setEditing] = useState(!connected);
-  const [token, setToken] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [accountId, setAccountId] = useState('');
-  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [state, setState] = useState<'idle' | 'loading' | 'saving' | 'error'>('idle');
   const [error, setError] = useState('');
 
-  const connect = async () => {
-    if (!token.trim()) return;
-    setState('saving');
+  const authorize = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/api/integrations/cloudflare/start?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+
+  const loadAccounts = async () => {
+    setState('loading');
     setError('');
     try {
-      const response = await fetch('/api/integrations/cloudflare/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim(), ...(accountId ? { accountId } : {}) }),
-      });
+      const response = await fetch('/api/integrations/cloudflare/accounts');
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Cloudflare connection failed');
-      if (data.requiresAccount && Array.isArray(data.accounts)) {
-        setAccounts(data.accounts);
-        setAccountId(data.accounts[0]?.id ?? '');
-        setState('idle');
-        return;
-      }
-      setToken('');
-      setAccounts([]);
-      setEditing(false);
+      if (!response.ok) throw new Error(data.error || 'Unable to load Cloudflare accounts');
+      setAccounts(data.accounts || []);
       setState('idle');
-      onConnected?.(data.account);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Cloudflare connection failed');
+      setError(cause instanceof Error ? cause.message : 'Unable to load Cloudflare accounts');
       setState('error');
     }
   };
 
-  if (connected && !editing) {
+  const selectAccount = async (accountId: string) => {
+    setState('saving');
+    setError('');
+    try {
+      const response = await fetch('/api/integrations/cloudflare/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Unable to change Cloudflare account');
+      setAccounts([]);
+      setState('idle');
+      onConnected?.(data.account);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to change Cloudflare account');
+      setState('error');
+    }
+  };
+
+  if (connected) {
     return (
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Cloudflare</div>
-          <div className="text-[11px] text-[var(--muted-text)]">Connected{accountName ? ` · ${accountName}` : ''}</div>
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-orange-400/10 text-orange-400"><Cloud className="size-4" /></span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-sm font-medium"><Check className="size-3.5 text-emerald-400" /> Cloudflare connected</div>
+              <div className="truncate text-xs text-[var(--muted-text)]">{accountName || 'Authorized account'}</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="text-xs" disabled={state === 'loading'} onClick={() => void loadAccounts()}>{state === 'loading' ? 'Loading…' : 'Change account'}</Button>
+            <Button type="button" variant="outline" className="text-xs" onClick={authorize}>Reauthorize</Button>
+          </div>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="font-mono uppercase text-[10px] border-[var(--border)]"
-          onClick={() => setEditing(true)}
-        >
-          Reconnect
-        </Button>
+        {accounts.length > 0 ? <div className="grid gap-1 rounded-lg border border-[var(--border)] p-1.5">{accounts.map((account) => <button key={account.id} type="button" disabled={state === 'saving'} onClick={() => void selectAccount(account.id)} className="rounded-md px-3 py-2 text-left text-xs text-[var(--secondary-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] disabled:opacity-50">{account.name}</button>)}</div> : null}
+        {error ? <div role="alert" className="text-xs text-red-400">{error}</div> : null}
       </div>
     );
   }
 
   return (
     <div className="grid gap-3">
-      <div className="text-[10px] font-mono text-[var(--muted-text)]">
-        Create a scoped token with <strong>Cloudflare Pages: Edit</strong>. Add Workers Scripts, D1, Workers KV,
-        R2, Queues, Vectorize, Browser Rendering, and Zone DNS edit permissions only when the project uses them.
-      </div>
-      <a
-        href="https://dash.cloudflare.com/profile/api-tokens"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-[var(--primary)] hover:underline"
-      >
-        Create API token <ExternalLink className="w-3 h-3" />
-      </a>
-      <Input
-        type="password"
-        value={token}
-        onChange={(event) => setToken(event.target.value)}
-        placeholder="Paste Cloudflare API token"
-        aria-label="Cloudflare API token"
-        autoComplete="off"
-        className="text-xs font-mono"
-      />
-      {accounts.length > 1 && (
-        <select
-          value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
-          aria-label="Cloudflare account"
-          className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-        >
-          {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-        </select>
-      )}
-      {error && <div role="alert" className="text-[10px] font-mono text-red-500">{error}</div>}
-      <div className="flex gap-2">
-        {connected && (
-          <Button type="button" variant="ghost" className="font-mono uppercase text-[10px]" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          className="font-mono uppercase text-[10px] border-[var(--border)]"
-          disabled={!token.trim() || state === 'saving'}
-          onClick={connect}
-        >
-          {state === 'saving' ? 'Connecting…' : accounts.length > 1 ? 'Use Account' : 'Verify & Connect'}
-        </Button>
-      </div>
+      <p className="text-xs leading-5 text-[var(--muted-text)]">Authorize Mini App Factory in Cloudflare. You will choose the account and review every requested permission before access is granted.</p>
+      <Button type="button" onClick={authorize} className="w-fit gap-2 bg-orange-500 text-white hover:bg-orange-500/90"><Cloud className="size-4" /> Connect Cloudflare <ExternalLink className="size-3.5" /></Button>
+      {error ? <div role="alert" className="text-xs text-red-400">{error}</div> : null}
     </div>
   );
 }

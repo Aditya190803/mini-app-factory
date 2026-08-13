@@ -3,11 +3,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import {
+  addCloudflarePagesDomain,
   applyCloudflareD1Migrations,
   deployCloudflarePages,
   hashCloudflareAsset,
+  listCloudflareZones,
   normalizeCloudflareProjectName,
   prepareCloudflareAssets,
+  removeCloudflarePagesDomain,
 } from '@/lib/cloudflare';
 
 function envelope(result: unknown) {
@@ -102,5 +105,21 @@ describe('Cloudflare Pages helpers', () => {
 
     expect(result.id).toBe('deployment-1');
     expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  test('lists managed zones and attaches then removes a Pages domain', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(envelope([{ id: 'zone-1', name: 'example.com', status: 'active', type: 'full' }]))
+      .mockResolvedValueOnce(envelope({ name: 'app.example.com', status: 'pending' }))
+      .mockResolvedValueOnce(envelope(null));
+
+    const zones = await listCloudflareZones({ token: 'oauth-token', accountId: 'account-1' });
+    const domain = await addCloudflarePagesDomain({ token: 'oauth-token', accountId: 'account-1', projectName: 'demo', domain: 'app.example.com' });
+    await removeCloudflarePagesDomain({ token: 'oauth-token', accountId: 'account-1', projectName: 'demo', domain: 'app.example.com' });
+
+    expect(zones[0].name).toBe('example.com');
+    expect(domain.status).toBe('pending');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/zones?account.id=account-1');
+    expect(fetchMock.mock.calls[2][1]?.method).toBe('DELETE');
   });
 });
