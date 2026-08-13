@@ -252,6 +252,16 @@ export const updateCloudflareConfig = mutation({
   },
 });
 
+export const updateProjectInstructions = mutation({
+  args: { projectName: v.string(), instructions: v.string() },
+  handler: async (ctx, args) => {
+    const project = await requireProjectAccess(ctx, args.projectName);
+    const instructions = args.instructions.trim().slice(0, 20_000);
+    await ctx.db.patch(project._id, { projectInstructions: instructions || undefined, updatedAt: Date.now() });
+    return project._id;
+  },
+});
+
 export const publishProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {

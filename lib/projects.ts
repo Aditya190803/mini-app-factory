@@ -28,6 +28,7 @@ export interface ProjectMetadata {
   pageCount?: number;
   description?: string;
   referenceUrl?: string;
+  projectInstructions?: string;
   selectedModel?: string;
   providerId?: string;
   favicon?: string;

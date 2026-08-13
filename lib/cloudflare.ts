@@ -343,9 +343,9 @@ export async function createCloudflareD1Database(params: {
   );
 }
 
-type D1QueryResult = { results?: Array<Record<string, unknown>>; success: boolean; error?: string };
+export type D1QueryResult = { results?: Array<Record<string, unknown>>; success: boolean; error?: string };
 
-async function queryD1(params: {
+export async function queryCloudflareD1(params: {
   token: string;
   accountId: string;
   databaseId: string;
@@ -366,11 +366,11 @@ export async function applyCloudflareD1Migrations(params: {
   migrationDir?: string;
   onProgress?: (message: string) => void;
 }) {
-  await queryD1({
+  await queryCloudflareD1({
     ...params,
     sql: 'CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);',
   });
-  const existing = await queryD1({ ...params, sql: 'SELECT name FROM d1_migrations ORDER BY id;' });
+  const existing = await queryCloudflareD1({ ...params, sql: 'SELECT name FROM d1_migrations ORDER BY id;' });
   const applied = new Set(
     existing.flatMap((result) => result.results ?? []).map((row) => String(row.name))
   );
@@ -384,7 +384,7 @@ export async function applyCloudflareD1Migrations(params: {
     if (applied.has(migration.path)) continue;
     params.onProgress?.(`Cloudflare: Applying ${migration.path}`);
     const escapedName = migration.path.replace(/'/g, "''");
-    const result = await queryD1({
+    const result = await queryCloudflareD1({
       ...params,
       sql: `${migration.content}\nINSERT INTO d1_migrations (name) VALUES ('${escapedName}');`,
     });

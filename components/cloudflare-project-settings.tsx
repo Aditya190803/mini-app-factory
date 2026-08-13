@@ -13,6 +13,7 @@ type Deployment = {
   cloudflareDeploymentId?: string;
 };
 type Zone = { id: string; name: string };
+type D1Data = { tables: string[]; table?: string; columns?: Array<{ name?: string }>; rows?: Array<Record<string, unknown>> };
 
 type Props = {
   projectName: string;
@@ -41,6 +42,8 @@ export default function CloudflareProjectSettings({
   const [domainStatus, setDomainStatus] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [d1, setD1] = useState<D1Data | null>(null);
+  const [d1Error, setD1Error] = useState('');
   const resources = useMemo(() => {
     try {
       const state = JSON.parse(resourcesJson || '{}') as Record<string, Record<string, { name?: string }>>;
@@ -80,6 +83,27 @@ export default function CloudflareProjectSettings({
       })
       .catch(() => undefined);
   }, [cloudflareProjectName, projectName]);
+
+  useEffect(() => {
+    if (!d1DatabaseName) return;
+    fetch(`/api/cloudflare/d1?projectName=${encodeURIComponent(projectName)}`)
+      .then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error); return data; })
+      .then(setD1)
+      .catch((error) => setD1Error(error instanceof Error ? error.message : 'Unable to inspect D1'));
+  }, [d1DatabaseName, projectName]);
+
+  const inspectTable = async (table: string) => {
+    setBusy('d1');
+    setD1Error('');
+    try {
+      const response = await fetch(`/api/cloudflare/d1?projectName=${encodeURIComponent(projectName)}&table=${encodeURIComponent(table)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to inspect table');
+      setD1(data);
+    } catch (error) {
+      setD1Error(error instanceof Error ? error.message : 'Unable to inspect table');
+    } finally { setBusy(null); }
+  };
 
   useEffect(() => {
     if (!customDomain && selectedZone) setDomain(subdomain.trim() ? `${subdomain.trim().toLowerCase()}.${selectedZone}` : selectedZone);
@@ -248,6 +272,13 @@ export default function CloudflareProjectSettings({
               </div>
             )}
           </div>
+
+          {d1DatabaseName ? <div className="grid gap-3 border-t border-[var(--border)] pt-4">
+            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]"><Database className="size-3" /> D1 data explorer</div>
+            {d1?.tables.length ? <div className="flex flex-wrap gap-2">{d1.tables.map((table) => <button key={table} type="button" onClick={() => void inspectTable(table)} className={`rounded-md border px-2.5 py-1.5 text-xs ${d1.table === table ? 'border-[var(--primary)] text-[var(--primary)]' : 'border-[var(--border)] text-[var(--secondary-text)]'}`}>{table}</button>)}</div> : <p className="text-xs text-[var(--muted-text)]">No application tables found.</p>}
+            {d1?.table && d1.rows ? <div className="overflow-x-auto rounded-md border border-[var(--border)]"><table className="w-full min-w-max text-left text-xs"><thead className="bg-[var(--background)] text-[var(--muted-text)]"><tr>{(d1.columns || []).map((column) => <th key={column.name} className="px-3 py-2 font-medium">{column.name}</th>)}</tr></thead><tbody>{d1.rows.map((row, index) => <tr key={index} className="border-t border-[var(--border)]">{(d1.columns || []).map((column) => <td key={column.name} className="max-w-64 truncate px-3 py-2 font-mono text-[var(--secondary-text)]">{JSON.stringify(row[String(column.name)])}</td>)}</tr>)}</tbody></table>{d1.rows.length === 100 ? <p className="border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted-text)]">Showing the first 100 rows.</p> : null}</div> : null}
+            {d1Error ? <p role="alert" className="text-xs text-red-400">{d1Error}</p> : null}
+          </div> : null}
 
           {cloudflareDeployments.length > 1 && (
             <div className="grid gap-2 border-t border-[var(--border)] pt-4">

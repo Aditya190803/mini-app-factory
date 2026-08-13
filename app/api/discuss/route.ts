@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     });
     let content = '';
     try {
-      const response = await session.sendAndWait({ prompt: `Project files:\n${manifest}${focused}\n\nUser question:\n${parsed.data.prompt}`, maxOutputTokens: 2000 }, 90_000);
+      const response = await session.sendAndWait({ prompt: `${project?.projectInstructions ? `Persistent project instructions:\n${project.projectInstructions}\n\n` : ''}Project files:\n${manifest}${focused}\n\nUser question:\n${parsed.data.prompt}`, maxOutputTokens: 2000 }, 90_000);
       content = response?.data?.content?.trim() || 'I could not produce an answer.';
     } finally {
       await session.destroy().catch(() => {});

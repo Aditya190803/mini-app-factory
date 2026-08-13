@@ -46,4 +46,34 @@ export const PROMPT_TEMPLATE_CATEGORIES = [
     template:
       'Generate a documentation site for [product/library]. Include [docs sections], provide [code example type] examples, and keep the tone [tone].',
   },
+  {
+    id: 'fullstack-saas',
+    category: 'Full-stack SaaS',
+    template:
+      'Build a production SaaS for [audience] that solves [problem]. Include a responsive dashboard, onboarding, billing-ready account settings, a Cloudflare Worker JSON API, D1 migrations, validation, error states, and secure authentication using [Clerk/Auth0/WorkOS/Supabase Auth]. Never implement password storage or session tokens manually.',
+  },
+  {
+    id: 'booking-platform',
+    category: 'Booking Platform',
+    template:
+      'Build a booking platform for [business type]. Include availability, timezone-aware scheduling, customer details, confirmation states, an admin view, a Worker API, D1 persistence, idempotent booking creation, and [authentication provider] authentication.',
+  },
+  {
+    id: 'crm-admin',
+    category: 'CRM and Admin',
+    template:
+      'Build a CRM for [team type]. Include contacts, organizations, pipeline stages, search, filters, activity history, CSV import/export, role-aware navigation, a Cloudflare Worker API, D1 schema and migrations, and [authentication provider] authentication.',
+  },
+  {
+    id: 'ai-product',
+    category: 'AI Application',
+    template:
+      'Build an AI application for [use case]. Include prompt history, streaming result states, usage limits, saved outputs, secure server-side provider calls, a Worker API, D1 persistence, queue-backed long-running work with idempotency, and [authentication provider] authentication.',
+  },
+  {
+    id: 'customer-portal',
+    category: 'Customer Portal',
+    template:
+      'Build a secure customer portal for [company type]. Include profile management, documents stored in R2, support requests, account activity, responsive empty/error states, signed download URLs, D1 persistence, and [authentication provider] authentication with protected routes.',
+  },
 ] as const;

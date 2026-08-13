@@ -121,6 +121,7 @@ export async function POST(request: Request) {
       projectName,
       html,
       prompt,
+      projectInstructions: project?.projectInstructions,
       activeFile,
       polishDescription,
       modelId,

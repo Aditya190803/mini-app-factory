@@ -23,6 +23,7 @@ export type TransformWorkInput = {
   projectName?: string;
   html?: string;
   prompt?: string;
+  projectInstructions?: string;
   activeFile?: string;
   polishDescription?: string;
   modelId?: string;
@@ -87,6 +88,7 @@ export async function runTransformWork(input: TransformWorkInput) {
     projectName,
     html,
     prompt,
+    projectInstructions,
     activeFile,
     polishDescription,
     modelId,
@@ -190,9 +192,9 @@ Only return changes. No explanations.`;
   let userMessage: string;
   if (polishDescription && !prompt) {
     const polishPrompt = buildPolishPrompt(polishDescription);
-    userMessage = `${intentBlock}\n\n${polishPrompt}\n\nProject Context:\n\n${projectContext}`;
+    userMessage = `${intentBlock}${projectInstructions ? `\n\nPersistent project instructions:\n${projectInstructions}` : ''}\n\n${polishPrompt}\n\nProject Context:\n\n${projectContext}`;
   } else {
-    userMessage = `${intentBlock}\n\nProject Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
+    userMessage = `${intentBlock}${projectInstructions ? `\n\nPersistent project instructions:\n${projectInstructions}` : ''}\n\nProject Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
   }
 
   const session = await client.createSession({
