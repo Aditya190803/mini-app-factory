@@ -12,6 +12,12 @@ export type TransformStreamEvent =
       files?: ProjectFile[];
       deletedPaths?: string[];
       html?: string;
+      /**
+       * Operations the model asked for that could not be applied, even after retries. The
+       * transform still succeeded and the result still passed validation — these are reported so
+       * a partially-applied edit is visible rather than silently dropped.
+       */
+      warnings?: string[];
     }
   | { status: 'error'; error: string; code: string; requestId: string };
 
