@@ -273,12 +273,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     projectName,
     initialPrompt,
     files,
-    previewHtml,
     userId: user?.id,
     projectData,
-    saveProject: saveProject as (args: object) => Promise<unknown>,
+    // Passed unwidened: the `as (args: object)` casts that used to be here defeated argument
+    // checking, which is how a stale `userId` kept being sent to mutations that had stopped
+    // accepting one.
+    saveProject,
     publishProject,
-    addDeploymentHistory: addDeploymentHistory as (args: object) => Promise<unknown>,
+    addDeploymentHistory,
   });
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -801,21 +803,29 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       let readmeContent = `# ${projectName}\n\n${initialPrompt}\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)`;
       
       try {
+        // No `files` key: the route's schema is .strict() and does not accept one, so sending it
+        // made every request 400 and silently fall back to the stub README below — the AI README
+        // has never actually shipped in an export. The route reads the project's files itself.
         const response = await fetch('/api/generate/readme', {
           method: 'POST',
           headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             projectName,
             prompt: initialPrompt,
-            files: files.map(f => f.path)
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.content) {
             readmeContent = data.content;
           }
+        } else {
+          // Keep the fallback, but do not swallow the reason — this failing quietly is what hid
+          // the bug in the first place.
+          console.warn(
+            `README generation failed (${response.status}), using fallback README`
+          );
         }
       } catch (err) {
         console.error('Failed to generate AI README, using fallback', err);
