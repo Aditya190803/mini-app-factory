@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 
@@ -15,6 +15,23 @@ interface CodePanelProps {
 export default function CodePanel({ html, language = 'html', onChange, onReset, searchText }: CodePanelProps) {
     const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
     const decorationRef = useRef<string[]>([]);
+    const [copied, setCopied] = useState(false);
+    const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(html);
+            setCopied(true);
+            if (copiedTimer.current) clearTimeout(copiedTimer.current);
+            copiedTimer.current = setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard access denied (e.g. insecure context) — nothing to show.
+        }
+    };
+
+    useEffect(() => () => {
+        if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    }, []);
 
     const handleEditorDidMount = (editor: MonacoEditor.IStandaloneCodeEditor) => {
         editorRef.current = editor;
@@ -72,13 +89,20 @@ export default function CodePanel({ html, language = 'html', onChange, onReset, 
         <div className="w-full h-full flex flex-col overflow-hidden relative" style={{ backgroundColor: '#1e1e1e' }}>
             <div className="absolute top-4 right-8 z-20 flex gap-2">
                 <button
-                    onClick={() => {
-                        navigator.clipboard.writeText(html);
-                    }}
+                    onClick={() => void handleCopy()}
                     className="px-3 py-1 text-[9px] font-mono uppercase font-black bg-[var(--background)] border border-[var(--border)] text-[var(--secondary-text)] hover:text-[var(--primary)] hover:border-[var(--primary)] transition-all flex items-center gap-1.5"
                 >
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
-                    Copy
+                    {copied ? (
+                        <>
+                            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                            Copied
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                            Copy
+                        </>
+                    )}
                 </button>
                 <button
                     onClick={() => {

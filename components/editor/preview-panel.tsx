@@ -146,6 +146,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                 <div className="flex items-center rounded-lg bg-[var(--background-surface)] p-1" role="group" aria-label="Preview viewport">
                     <button
                         onClick={() => setMode('desktop')}
+                        aria-pressed={mode === 'desktop'}
                         className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'desktop' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Desktop view"
                     >
@@ -153,6 +154,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     </button>
                     <button
                         onClick={() => setMode('tablet')}
+                        aria-pressed={mode === 'tablet'}
                         className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'tablet' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Tablet view"
                     >
@@ -160,6 +162,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     </button>
                     <button
                         onClick={() => setMode('mobile')}
+                        aria-pressed={mode === 'mobile'}
                         className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'mobile' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Mobile view"
                     >

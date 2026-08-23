@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
@@ -54,6 +56,7 @@ const newFileCopy: Record<ProjectFile['fileType'], { label: string; description:
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
   const { confirm, confirmDialog } = useConfirm();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState('index.html');
@@ -98,6 +101,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [quickOpenSearch, setQuickOpenSearch] = useState('');
+  const [quickOpenIndex, setQuickOpenIndex] = useState(0);
+  const quickOpenListRef = useRef<HTMLDivElement>(null);
 
   // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
@@ -657,6 +662,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
         e.preventDefault();
         setIsQuickOpenOpen(true);
+        setQuickOpenIndex(0);
       }
 
     };
@@ -668,8 +674,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   useEffect(() => {
     if (!isQuickOpenOpen) {
       setQuickOpenSearch('');
+      setQuickOpenIndex(0);
     }
   }, [isQuickOpenOpen]);
+
+  // Keep the highlighted Quick Open result in view as the user arrows through it.
+  useEffect(() => {
+    quickOpenListRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [quickOpenIndex, isQuickOpenOpen]);
 
   const handleRenameItem = (path: string) => {
     setItemToRename(path);
@@ -863,6 +875,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Zip failed', err);
+      toast.error('Export failed', {
+        description: err instanceof Error ? err.message : 'The ZIP could not be generated.',
+      });
     } finally {
       setIsExporting(false);
     }
@@ -899,7 +914,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
         onLibrary={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : setIsLibraryOpen(true)}
-        onSettings={() => window.location.href = `/edit/${projectName}/settings`}
+        onSettings={() => router.push(`/edit/${projectName}/settings`)}
         isExplorerVisible={isExplorerVisible}
         onToggleExplorer={() => setIsExplorerVisible((visible) => !visible)}
         isChatVisible={isRightSidebarVisible}
@@ -1128,6 +1143,15 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 <br />
                 <span className="text-[var(--secondary-text)]">4. POLISH:</span> Use the Polish tool for finishing touches like animations and responsiveness.
               </p>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Keyboard Shortcuts</h4>
+              <ul className="text-[11px] space-y-1 list-disc pl-4 text-[var(--muted-text)]">
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + P</span> — Quick Open: jump to any file (arrow keys to navigate)</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + S</span> — Save all files now</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + B</span> — Toggle the file explorer</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + I</span> — Toggle the chat sidebar</li>
+              </ul>
             </div>
             <div className="space-y-2">
               <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Prompting Tips</h4>
@@ -1394,19 +1418,31 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               value={quickOpenSearch}
               onChange={(e) => setQuickOpenSearch(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
-                  setActiveFilePath(filteredQuickOpenFiles[0].path);
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setQuickOpenIndex((i) => Math.min(i + 1, filteredQuickOpenFiles.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setQuickOpenIndex((i) => Math.max(i - 1, 0));
+                } else if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
+                  e.preventDefault();
+                  setActiveFilePath(filteredQuickOpenFiles[quickOpenIndex]?.path ?? filteredQuickOpenFiles[0].path);
                   setIsQuickOpenOpen(false);
                 }
               }}
             />
           </div>
-          <div className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
+          <div ref={quickOpenListRef} className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
             {filteredQuickOpenFiles.length > 0 ? (
-              filteredQuickOpenFiles.map((file) => (
+              filteredQuickOpenFiles.map((file, index) => (
                 <button
                   key={file.path}
-                  className="w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group"
+                  data-active={index === quickOpenIndex}
+                  className={cn(
+                    'w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group',
+                    index === quickOpenIndex && 'bg-[var(--background-overlay)]',
+                  )}
+                  onMouseMove={() => setQuickOpenIndex(index)}
                   onClick={() => {
                     setActiveFilePath(file.path);
                     setIsQuickOpenOpen(false);
