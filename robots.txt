@@ -1,7 +1,6 @@
 User-agent: *
 Allow: /
 Allow: /docs
-Allow: /documentation
 Allow: /support
 
 # Protected routes

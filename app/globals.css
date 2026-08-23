@@ -3,101 +3,177 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   Tokens
+   Neutral oklch ramp (shadcn scale). Amber is the single accent.
+   --primary-foreground stays dark in BOTH themes: amber is a
+   light surface, so its text must be dark to hold contrast.
+   ============================================================ */
+
 :root {
-  --background: #0A0A0A;
-  --background-surface: #121212;
-  --background-overlay: #1A1A1A;
-  --foreground: #EDEDED;
-  --secondary-text: #A1A1AA;
-  --muted-text: #52525B;
-  --primary: #F59E0B;
-  --primary-hover: #D97706;
-  --primary-foreground: #000000;
-  --secondary: #06B6D4;
-  --secondary-hover: #0891B2;
-  --secondary-foreground: #FFFFFF;
-  --border: #27272A;
-  --border-active: #F59E0B;
-  --success: #10B981;
-  --error: #EF4444;
-  --warning: #F59E0B;
-  --info: #3B82F6;
-  --card: #121212;
-  --card-foreground: #EDEDED;
-  --popover: #121212;
-  --popover-foreground: #EDEDED;
-  --accent: #F59E0B;
-  --accent-foreground: #000000;
-  --destructive: #EF4444;
-  --destructive-foreground: #EDEDED;
-  --input: #0A0A0A;
-  --ring: #F59E0B;
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+
+  /* Amber — the one accent. */
+  --primary: oklch(0.76 0.14 72);
+  --primary-foreground: oklch(0.21 0.01 72);
+  --primary-hover: oklch(0.71 0.135 70);
+
+  /* Neutral surface roles. Not a second accent. */
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.76 0.14 72);
+
+  /* Semantic status. Functional, not decorative. */
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.596 0.145 163);
+  --success-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.76 0.14 72);
+  --warning-foreground: oklch(0.21 0.01 72);
+  --info: oklch(0.588 0.132 248);
+  --info-foreground: oklch(0.985 0 0);
+
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-primary: oklch(0.76 0.14 72);
+  --sidebar-primary-foreground: oklch(0.21 0.01 72);
+  --sidebar-accent: oklch(0.967 0.001 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.92 0.004 286.32);
+  --sidebar-ring: oklch(0.76 0.14 72);
+
+  /* Composer — the primary input object, per assistant-ui. */
+  --composer-radius: 1.5rem;
+  --composer-padding: 0.5rem;
+  --composer-bg: oklch(1 0 0);
+  --composer-shadow: 0 4px 16px -8px oklch(0.141 0.005 285.823 / 0.08),
+    0 1px 2px oklch(0.141 0.005 285.823 / 0.04);
+  --composer-shadow-focus: 0 6px 24px -8px oklch(0.141 0.005 285.823 / 0.12),
+    0 1px 2px oklch(0.141 0.005 285.823 / 0.05);
+
+  /* Elevation. Tinted toward the foreground hue, never pure black. */
+  --shadow-xs: 0 1px 2px oklch(0.141 0.005 285.823 / 0.05);
+  --shadow-sm: 0 2px 8px -3px oklch(0.141 0.005 285.823 / 0.08),
+    0 1px 2px oklch(0.141 0.005 285.823 / 0.04);
+  --shadow-md: 0 8px 24px -8px oklch(0.141 0.005 285.823 / 0.1),
+    0 2px 4px oklch(0.141 0.005 285.823 / 0.04);
+  --shadow-lg: 0 16px 48px -12px oklch(0.141 0.005 285.823 / 0.14),
+    0 4px 8px oklch(0.141 0.005 285.823 / 0.04);
+
+  /* One z-scale. No more 9999. */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+
+  /* ---- Deprecation shim -------------------------------------
+     Legacy names still referenced by ~430 call sites across
+     surfaces not yet migrated. Each maps onto a real token above
+     so the old markup keeps rendering. Delete this block once
+     every surface is on the new scale. */
+  --background-surface: var(--card);
+  --background-overlay: var(--accent);
+  --secondary-text: var(--muted-foreground);
+  --muted-text: oklch(0.646 0.014 285.9);
+  --border-active: var(--ring);
+  --docs-bg: var(--background);
+  --docs-surface: var(--card);
+  --docs-surface-hover: var(--accent);
+  --docs-border: var(--border);
+  --docs-border-bright: oklch(0.85 0.005 286);
+  --error: var(--destructive);
+}
+
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+
+  /* Amber holds across themes; foreground stays dark. */
+  --primary: oklch(0.76 0.14 72);
+  --primary-foreground: oklch(0.21 0.01 72);
+  --primary-hover: oklch(0.8 0.142 74);
+
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.76 0.14 72);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.141 0.005 285.823);
+  --warning: oklch(0.76 0.14 72);
+  --warning-foreground: oklch(0.21 0.01 72);
+  --info: oklch(0.685 0.12 248);
+  --info-foreground: oklch(0.141 0.005 285.823);
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --radius: 0.375rem;
-  --sidebar: #0A0A0A;
-  --sidebar-foreground: #EDEDED;
-  --sidebar-primary: #F59E0B;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #06B6D4;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #F59E0B;
 
-  /* Docs Specific Theme (Modern Technical Dark) */
-  --docs-bg: oklch(12% 0.01 260);
-  --docs-surface: oklch(18% 0.02 260);
-  --docs-surface-hover: oklch(22% 0.02 260);
-  --docs-border: oklch(25% 0.02 260);
-  --docs-border-bright: oklch(35% 0.03 260);
-}
+  --sidebar: oklch(0.21 0.006 285.885);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.76 0.14 72);
+  --sidebar-primary-foreground: oklch(0.21 0.01 72);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.76 0.14 72);
 
-.dark {
-  --background: #0A0A0A;
-  --background-surface: #121212;
-  --background-overlay: #1A1A1A;
-  --foreground: #EDEDED;
-  --secondary-text: #A1A1AA;
-  --muted-text: #52525B;
-  --primary: #F59E0B;
-  --primary-hover: #D97706;
-  --primary-foreground: #000000;
-  --secondary: #06B6D4;
-  --secondary-hover: #0891B2;
-  --secondary-foreground: #FFFFFF;
-  --border: #27272A;
-  --border-active: #F59E0B;
-  --success: #10B981;
-  --error: #EF4444;
-  --warning: #F59E0B;
-  --info: #3B82F6;
-  --card: #121212;
-  --card-foreground: #EDEDED;
-  --popover: #121212;
-  --popover-foreground: #EDEDED;
-  --accent: #F59E0B;
-  --accent-foreground: #000000;
-  --destructive: #EF4444;
-  --destructive-foreground: #EDEDED;
-  --input: #0A0A0A;
-  --ring: #F59E0B;
-  --sidebar: #0A0A0A;
-  --sidebar-foreground: #EDEDED;
-  --sidebar-primary: #F59E0B;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #06B6D4;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #F59E0B;
+  /* Dark surfaces get depth from borders, not shadows. */
+  --composer-bg: oklch(0.21 0.006 285.885);
+  --composer-shadow: none;
+  --composer-shadow-focus: none;
+
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-sm: 0 2px 8px -3px oklch(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px -8px oklch(0 0 0 / 0.5);
+  --shadow-lg: 0 16px 48px -12px oklch(0 0 0 / 0.6);
 }
 
 @theme inline {
-  --font-sans: 'Inter', 'Geist', 'Geist Fallback';
-  --font-mono: 'JetBrains Mono', 'Geist Mono', 'Geist Mono Fallback';
-  --font-display: 'Chivo', 'Geist', 'Geist Fallback';
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  /* One family. Headline presence comes from size, weight and
+     tracking (see @layer base), not from a second typeface. */
+  --font-display: var(--font-geist-sans);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -114,6 +190,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -122,10 +204,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -134,101 +212,214 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 12px);
+
+  --shadow-elev-xs: var(--shadow-xs);
+  --shadow-elev-sm: var(--shadow-sm);
+  --shadow-elev-md: var(--shadow-md);
+  --shadow-elev-lg: var(--shadow-lg);
 }
 
 @layer base {
   * {
-    border-color: var(--border);
-    outline-color: var(--ring);
+    @apply border-border outline-ring/50;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    background-image: 
-      linear-gradient(to right, rgba(39, 39, 42, 0.3) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(39, 39, 42, 0.3) 1px, transparent 1px),
-      radial-gradient(circle at 20% 50%, rgba(245, 158, 11, 0.02) 0%, transparent 50%);
-    background-size: 40px 40px, 40px 40px, 100% 100%;
-    background-attachment: fixed;
+    @apply bg-background text-foreground;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Chivo', 'Geist', sans-serif;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: -0.025em;
+  /* Headings carry weight through size and tracking, not shouting.
+     No text-transform, no 900 weight. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    text-wrap: balance;
   }
 
-  h1 { font-size: 2.25rem; }
-  h2 { font-size: 1.875rem; }
-  h3 { font-size: 1.5rem; }
-  h4 { font-size: 1.25rem; }
-  h5 { font-size: 1.125rem; }
-  h6 { font-size: 1rem; }
+  h1 {
+    font-size: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
 
-  code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.875rem;
+  h2 {
+    font-size: clamp(1.625rem, 1.3rem + 1.4vw, 2.25rem);
+    line-height: 1.15;
+    letter-spacing: -0.022em;
+  }
+
+  h3 {
+    font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+  }
+
+  h4 {
+    font-size: 1.125rem;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  h5 {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  h6 {
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
   }
 
   :focus-visible {
-    outline: 2px solid var(--primary);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
   ::selection {
-    background-color: var(--primary);
-    color: var(--primary-foreground);
+    background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+    color: var(--foreground);
   }
 }
 
 @layer components {
-  .tech-label {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 700;
+  /* Data readouts: align numerals so columns don't jitter. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  /* Small structural label. Sparingly — this is the one place
+     uppercase tracking is still allowed. */
+  .label-meta {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--secondary-text);
+    color: var(--muted-foreground);
+  }
+
+  .composer-surface {
+    border-radius: var(--composer-radius);
+    background-color: var(--composer-bg);
+    padding: var(--composer-padding);
+    box-shadow: var(--composer-shadow);
+    transition:
+      border-color 200ms ease,
+      box-shadow 200ms ease;
+  }
+
+  .composer-surface:focus-within {
+    box-shadow: var(--composer-shadow-focus);
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: 0.5rem;
+    z-index: var(--z-toast);
+    transform: translateY(-200%);
+    border-radius: var(--radius);
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: transform 150ms ease;
+  }
+
+  .skip-link:focus-visible {
+    transform: translateY(0);
+  }
+
+  /* ---- Deprecation shim -------------------------------------
+     Still used by docs/editor surfaces pending migration. */
+  .tech-label {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
   }
 
   .technical-border {
-    border: 1px solid var(--docs-border);
+    border: 1px solid var(--border);
   }
 
   .technical-border-focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 20%, transparent);
   }
 
   .code-block-container {
-    background-color: oklch(8% 0.01 260);
-    border: 1px solid var(--docs-border);
-    border-radius: 8px;
     position: relative;
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
   }
 
   .sidebar-item {
-    transition: all 150ms ease-out;
     border-left: 2px solid transparent;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease;
   }
 
   .sidebar-item:hover {
-    background-color: var(--docs-surface-hover);
-    transform: translateX(4px);
-    color: var(--primary);
+    background-color: var(--accent);
+    color: var(--accent-foreground);
   }
 
   .sidebar-item.active {
-    background-color: rgba(245, 158, 11, 0.1);
-    color: var(--primary);
+    background-color: color-mix(in oklab, var(--primary) 12%, transparent);
+    color: var(--foreground);
     border-left-color: var(--primary);
   }
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -237,17 +428,30 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 2px;
+  border-radius: 9999px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-text);
+  background: var(--muted-foreground);
 }
 
 .monaco-highlight-glow {
-  background: rgba(59, 130, 246, 0.2) !important;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3) !important;
+  background: color-mix(in oklab, var(--primary) 22%, transparent) !important;
   border-radius: 2px;
-  border: 1px solid rgba(59, 130, 246, 0.4);
+  border: 1px solid color-mix(in oklab, var(--primary) 45%, transparent);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

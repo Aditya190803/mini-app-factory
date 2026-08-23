@@ -185,7 +185,7 @@ export default function AIModelManagement() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">

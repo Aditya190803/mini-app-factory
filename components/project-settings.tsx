@@ -39,14 +39,14 @@ export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
 
   if (!project) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
+      <div className="min-h-dvh flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
         <div className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Loading settings...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
         <div className="flex items-center justify-between">
           <div className="space-y-1">

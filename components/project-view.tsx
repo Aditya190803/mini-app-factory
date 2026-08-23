@@ -177,8 +177,8 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   }
 
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto grid min-h-screen max-w-6xl lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
+    <main className="min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
+      <div className="mx-auto grid min-h-dvh max-w-6xl lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
         <section className="flex flex-col justify-between border-b border-[var(--border)] p-8 lg:border-b-0 lg:border-r lg:p-12">
           <div>
             <div className="mb-10 flex items-center gap-3 text-xs font-mono text-[var(--muted-text)]">

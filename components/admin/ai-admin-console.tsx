@@ -171,7 +171,7 @@ export default function AIAdminConsole() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-8">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">

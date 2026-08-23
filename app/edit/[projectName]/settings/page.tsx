@@ -28,7 +28,7 @@ export default async function ProjectSettingsPage({ params }: PageProps) {
   }
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-dvh">
       <ProjectSettings projectName={projectName} />
     </main>
   );

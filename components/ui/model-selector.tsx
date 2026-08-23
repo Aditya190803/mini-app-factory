@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { ChevronDown, Cpu, Zap as ZapIcon, Check, Settings2, Eye } from 'lucide-react';
+import { CaretDownIcon, CheckIcon, CircuitryIcon, EyeIcon } from '@phosphor-icons/react';
 import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@/lib/utils';
 
@@ -91,21 +91,22 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
   }, []);
 
   const selectedModel = models.find(m => m.id === selectedModelId && m.providerId === providerId);
-  const displayText = selectedModel ? selectedModel.fullName : 'Default (OpenCode + OpenRouter)';
+  const isDefault = !selectedModelId || !providerId;
+  const displayText = selectedModel ? selectedModel.name : 'Default model';
 
   if (loading) {
     return (
-      <div className={cn("flex items-center gap-2 px-2 py-1 border-b border-dashed border-[var(--border)] opacity-50", className)}>
-        <Settings2 size={12} className="animate-spin text-[var(--primary)]" />
-        <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">Scanning Engines...</span>
+      <div className={cn('flex items-center gap-2 px-2.5 py-1.5', className)}>
+        <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+        <span className="text-sm text-muted-foreground">Loading models…</span>
       </div>
     );
   }
 
   if (error || models.length === 0) {
     return (
-      <div className={cn("flex items-center gap-2 px-2 py-1 border-b border-[var(--error)]", className)}>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--error)]">Engine Link Failure</span>
+      <div className={cn('px-2.5 py-1.5', className)}>
+        <span className="text-sm text-destructive">Couldn’t load models</span>
       </div>
     );
   }
@@ -113,52 +114,50 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button 
+        <button
+          type="button"
+          aria-label={`Model: ${displayText}`}
           className={cn(
-            "flex items-center gap-3 px-4 py-2 bg-black/40 border border-[var(--border)] rounded-md transition-all hover:border-[var(--primary)] hover:bg-black/60 group text-left outline-none",
+            'group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm text-muted-foreground outline-none transition-colors',
+            'hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
             className
           )}
         >
-          <Cpu size={14} className="text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-          <div className="flex flex-col gap-0">
-            <span className="text-[7px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)]">Engine</span>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--foreground)] truncate max-w-[150px]">
-              {displayText}
-            </span>
-          </div>
-          <ChevronDown size={12} className={cn("ml-2 transition-transform duration-300 text-[var(--muted-text)] group-hover:text-[var(--primary)]", open && "rotate-180")} />
+          <CircuitryIcon size={15} />
+          <span className="max-w-[9rem] truncate">{displayText}</span>
+          <CaretDownIcon
+            size={11}
+            weight="bold"
+            className={cn('transition-transform duration-200', open && 'rotate-180')}
+          />
         </button>
       </Popover.Trigger>
-      
+
       <Popover.Portal>
-        <Popover.Content 
-          className="z-[100] w-72 mt-2 bg-[var(--background-overlay)] border border-[var(--border)] shadow-2xl backdrop-blur-md overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        <Popover.Content
           align="start"
+          sideOffset={8}
+          className="z-30 w-80 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-elev-lg animate-in fade-in zoom-in-95 duration-150"
         >
-          <div className="max-h-[350px] overflow-y-auto custom-scrollbar">
-            <div className="p-1 border-b border-[var(--border)] bg-[var(--background-surface)] flex items-center justify-between px-3 py-2">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] animate-pulse" />
-                <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-[var(--muted-text)]">Defaults</span>
-              </div>
-              <Cpu size={10} className="text-[var(--muted-text)]" />
-            </div>
-            
+          <div className="custom-scrollbar max-h-[340px] overflow-y-auto p-1.5">
             <button
+              type="button"
               onClick={() => {
                 onModelChange('', '');
                 setOpen(false);
               }}
               className={cn(
-                "w-full px-4 py-3 text-left flex items-center justify-between hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)] group transition-all border-b border-[var(--border)]",
-                (!selectedModelId || !providerId) ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--foreground)]"
+                'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition-colors',
+                isDefault ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'
               )}
             >
-              <div className="flex flex-col">
-                <span className="text-[10px] font-mono font-black uppercase tracking-wider">Aggregated Default</span>
-                <span className="text-[8px] font-mono opacity-70 uppercase">High-Speed Parallel Processing</span>
-              </div>
-              {(!selectedModelId || !providerId) && <Check size={14} strokeWidth={3} />}
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">Default model</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  Routed across available providers
+                </span>
+              </span>
+              {isDefault && <CheckIcon size={15} weight="bold" className="shrink-0" />}
             </button>
 
             {['opencode', 'openrouter'].map(pId => {
@@ -166,40 +165,43 @@ export function ModelSelector({ selectedModelId, providerId, onModelChange, clas
               if (providerModels.length === 0) return null;
 
               return (
-                <div key={pId}>
-                  <div className="px-3 py-1.5 bg-[var(--background-surface)] border-b border-[var(--border)] flex items-center gap-2">
-                    <ZapIcon size={10} className="text-[var(--primary)]" />
-                    <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--primary)] opacity-80">{pId} Models</span>
-                  </div>
+                <div key={pId} className="mt-1">
+                  <p className="label-meta px-2.5 pb-1 pt-2">{pId}</p>
                   {providerModels.map((m) => {
                     const isSelected = m.id === selectedModelId && m.providerId === providerId;
                     return (
                       <button
                         key={`${m.providerId}-${m.id}`}
+                        type="button"
                         onClick={() => {
                           onModelChange(m.id, m.providerId);
                           setOpen(false);
                         }}
                         className={cn(
-                          "w-full px-4 py-3 text-left flex items-center justify-between hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)] group transition-all border-b border-[var(--border)]/50 last:border-b-0",
-                          isSelected ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--foreground)]"
+                          'flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition-colors',
+                          isSelected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent hover:text-accent-foreground'
                         )}
                       >
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono uppercase tracking-tight font-bold">{m.name}</span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium">{m.name}</span>
                             {m.hasVision && (
-                              <div className="flex items-center gap-0.5 px-1 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-[2px]" title="Vision Capable">
-                                <Eye size={8} className="text-[var(--primary)]" />
-                                <span className="text-[7px] font-mono text-[var(--primary)] font-black uppercase">Vision</span>
-                              </div>
+                              <span
+                                title="Supports images"
+                                className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1 py-px text-[10px] text-muted-foreground"
+                              >
+                                <EyeIcon size={9} />
+                                Vision
+                              </span>
                             )}
-                          </div>
+                          </span>
                           {m.name !== m.id && (
-                            <span className="text-[8px] font-mono opacity-70 uppercase truncate max-w-[200px] font-light">{m.id}</span>
+                            <span className="block truncate font-mono text-xs text-muted-foreground">
+                              {m.id}
+                            </span>
                           )}
-                        </div>
-                        {isSelected && <Check size={14} strokeWidth={3} />}
+                        </span>
+                        {isSelected && <CheckIcon size={15} weight="bold" className="shrink-0" />}
                       </button>
                     );
                   })}
