@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { logout } from '@/lib/logout';
 import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical, Save } from 'lucide-react';
-import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
+import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
+import { AddableOpenRouterModels } from '@/components/ui/addable-openrouter-models';
 import CloudflareConnect from '@/components/cloudflare-connect';
 
 type IntegrationStatus = {
@@ -173,23 +174,26 @@ export default function SettingsPage() {
     }
   };
 
-  const addCustomModel = (providerId: AIProviderId) => {
-    const candidate = customModelInput[providerId].trim();
-    if (!candidate) return;
+  const addCustomModelId = (providerId: AIProviderId, candidate: string) => {
+    const trimmed = candidate.trim();
+    if (!trimmed) return;
 
     setCustomModelsConfig((prev) => {
       const current = prev[providerId] ?? [];
-      if (current.includes(candidate)) {
+      if (current.includes(trimmed)) {
         return prev;
       }
       const next = {
         ...prev,
-        [providerId]: [...current, candidate],
+        [providerId]: [...current, trimmed],
       };
       void persistCustomModels(next);
       return next;
     });
+  };
 
+  const addCustomModel = (providerId: AIProviderId) => {
+    addCustomModelId(providerId, customModelInput[providerId]);
     setCustomModelInput((prev) => ({ ...prev, [providerId]: '' }));
   };
 
@@ -572,7 +576,7 @@ export default function SettingsPage() {
                         value={customModelInput[providerId]}
                         onChange={(event) => setCustomModelInput((prev) => ({ ...prev, [providerId]: event.target.value }))}
                         className="text-[11px] font-mono"
-                        placeholder={`Add ${providerLabel[providerId]} model id`}
+                        placeholder="openrouter/free or provider/model:free"
                       />
                       <Button
                         variant="outline"
@@ -582,6 +586,9 @@ export default function SettingsPage() {
                       >
                         Add
                       </Button>
+                    </div>
+                    <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                      Only free OpenRouter models are accepted (`openrouter/free` or ids ending in `:free`).
                     </div>
                     {(customModelsConfig[providerId] ?? []).length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -599,6 +606,13 @@ export default function SettingsPage() {
                     ) : (
                       <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models added.</div>
                     )}
+                    <AddableOpenRouterModels
+                      alreadyHave={[
+                        ...DEFAULT_MODEL_OPTIONS.openrouter,
+                        ...(customModelsConfig[providerId] ?? []),
+                      ]}
+                      onAdd={(modelId) => addCustomModelId(providerId, modelId)}
+                    />
                   </div>
                   )}
                 </div>

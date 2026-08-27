@@ -9,7 +9,7 @@ import { ModelSelector } from "@/components/ui/model-selector";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Zap as ZapIcon } from 'lucide-react';
 import AccountMenu from "@/components/account-menu";
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
 import { isHttpUrl } from '@/lib/url-reference';
 import { EXAMPLE_PROMPTS, PROMPT_TEMPLATE_CATEGORIES } from '@/lib/constants';
 import TemplateFillDialog from '@/components/template-fill-dialog';
@@ -19,6 +19,7 @@ export default function Home() {
   const [referenceUrl, setReferenceUrl] = useState('');
   const [projectName, setProjectName] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
+  const [modelHydrated, setModelHydrated] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string>('');
   const [inspirationMode, setInspirationMode] = useState<'examples' | 'templates'>('examples');
@@ -33,6 +34,16 @@ export default function Home() {
       textareaRef.current.focus();
     }
   }, []);
+
+  useEffect(() => {
+    setSelectedModel(getStoredSelectedModel());
+    setModelHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!modelHydrated) return;
+    setStoredSelectedModel(selectedModel);
+  }, [selectedModel, modelHydrated]);
 
 
   const handleStart = async () => {

@@ -53,6 +53,10 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
   const [transformProgress, setTransformProgress] = useState<TransformProgressState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const filesRef = useRef(files);
+  const selectedModelRef = useRef(selectedModel);
+  useEffect(() => {
+    selectedModelRef.current = selectedModel;
+  }, [selectedModel]);
 
   useEffect(() => {
     filesRef.current = files;
@@ -124,8 +128,8 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         projectName,
         activeFile: activeFilePath,
         prompt: finalPrompt,
-        modelId: selectedModel.id || undefined,
-        providerId: selectedModel.providerId || undefined,
+        modelId: selectedModelRef.current.id || undefined,
+        providerId: selectedModelRef.current.providerId || undefined,
       });
       if (!result) return;
       setTransformPrompt('');
@@ -139,7 +143,6 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     postTransform,
     projectName,
     activeFilePath,
-    selectedModel,
     setTransformPrompt,
     setSelectedElement,
   ]);
@@ -147,7 +150,13 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
   const runPolish = useCallback(
     async (polishDescription: string) => {
       try {
-        await postTransform({ projectName, activeFile: activeFilePath, polishDescription });
+        await postTransform({
+          projectName,
+          activeFile: activeFilePath,
+          polishDescription,
+          modelId: selectedModelRef.current.id || undefined,
+          providerId: selectedModelRef.current.providerId || undefined,
+        });
       } catch {
         /* toast in postTransform */
       }

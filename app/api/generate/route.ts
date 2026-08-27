@@ -10,6 +10,7 @@ import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
+import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -84,16 +85,21 @@ export async function runGeneration(
   if (!project) return { error: 'Project not found during generation' };
 
   try {
-    // Update status
+    // Update status. Honor the model the user picked in the selector; only fall
+    // back to the OpenCode default when nothing valid was stored on the project.
+    const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
     project.status = 'generating';
-    project.selectedModel = MODEL;
-    project.providerId = 'opencode';
+    if (requested) {
+      project.selectedModel = requested.model;
+      project.providerId = requested.providerId;
+    }
     await saveProject(project).catch(() => { });
 
     if (signal.aborted) return { error: 'Aborted' };
 
     const client = await getAIClient(runtimeConfig);
-    const selectedOpenCodeModel = MODEL;
+    const selectedModel = requested?.model;
+    const selectedProviderId = requested?.providerId;
 
     if (signal.aborted) return { error: 'Aborted' };
 
@@ -101,8 +107,8 @@ export async function runGeneration(
     const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
 
     const designSession = await client.createSession({
-      model: selectedOpenCodeModel,
-      providerId: 'opencode',
+      model: selectedModel,
+      providerId: selectedProviderId,
       systemMessage: { content: architectSystemMsg },
     });
 
@@ -120,7 +126,7 @@ export async function runGeneration(
       });
 
       try {
-        const cacheKey = `${selectedOpenCodeModel}:opencode:${finalPrompt}`;
+        const cacheKey = `${selectedModel || MODEL}:${selectedProviderId || 'auto'}:${finalPrompt}`;
         const cached = getCachedDesignSpec(cacheKey);
         if (cached) {
           designSpec = cached;
@@ -185,8 +191,8 @@ You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
 
     const htmlSession = await client.createSession({
-      model: selectedOpenCodeModel,
-      providerId: 'opencode',
+      model: selectedModel,
+      providerId: selectedProviderId,
       systemMessage: { content: developerSystemMsg },
     });
 

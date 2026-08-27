@@ -23,12 +23,12 @@ vi.mock('@/lib/resolve-reference-url', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
+    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } },
+    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } },
     providerOrder: ['opencode', 'openrouter'],
   }),
 }));
@@ -147,7 +147,7 @@ describe('POST /api/generate', () => {
     expect(res.status).toBe(400);
   });
 
-  test('replaces a stale OpenRouter project selection with the configured OpenCode primary', async () => {
+  test('uses the stored OpenRouter free model instead of forcing OpenCode', async () => {
     const { runGeneration } = await import('@/app/api/generate/route');
     const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
     const session = (content: string) => ({
@@ -162,7 +162,7 @@ describe('POST /api/generate', () => {
       name: 'monkey-type',
       prompt: 'Build a typing test',
       status: 'error',
-      selectedModel: 'z-ai/glm-4.5-air:free',
+      selectedModel: 'openrouter/free',
       providerId: 'openrouter',
     });
     aiMocks.createSession
@@ -183,16 +183,56 @@ describe('POST /api/generate', () => {
 
     expect(aiMocks.createSession).toHaveBeenCalledTimes(2);
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      model: 'deepseek-v4-flash-free',
-      providerId: 'opencode',
+      model: 'openrouter/free',
+      providerId: 'openrouter',
     }));
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      model: 'deepseek-v4-flash-free',
-      providerId: 'opencode',
+      model: 'openrouter/free',
+      providerId: 'openrouter',
     }));
     expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({
-      selectedModel: 'deepseek-v4-flash-free',
-      providerId: 'opencode',
+      selectedModel: 'openrouter/free',
+      providerId: 'openrouter',
+    }));
+  });
+
+  test('ignores a paid OpenRouter selection so the default chain can run', async () => {
+    const { runGeneration } = await import('@/app/api/generate/route');
+    const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
+    const session = (content: string) => ({
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content } }),
+      on: vi.fn(() => () => {}),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+
+    (saveProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      name: 'paid-model',
+      prompt: 'Build a landing page',
+      status: 'pending',
+      selectedModel: 'anthropic/claude-3.5-sonnet',
+      providerId: 'openrouter',
+    });
+    aiMocks.createSession
+      .mockResolvedValueOnce(session('Spec'))
+      .mockResolvedValueOnce(session([
+        '```html:index.html',
+        '<link rel="stylesheet" href="styles.css"><main>Hi</main><script src="script.js" defer></script>',
+        '```',
+        '```css:styles.css',
+        'body{}',
+        '```',
+        '```javascript:script.js',
+        'console.log(1);',
+        '```',
+      ].join('\n')));
+
+    await runGeneration('paid-model', 'Build a landing page', new AbortController().signal);
+
+    expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      model: undefined,
+      providerId: undefined,
     }));
   });
 

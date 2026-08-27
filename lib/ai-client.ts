@@ -2,7 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
-import { isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
+import { isAllowedProviderModel, resolveSelectedAIModel, type AIProviderId } from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 
 export type SessionEvent = {
@@ -67,6 +67,13 @@ function getFriendlyModelName(modelId: string): string {
     'mimo-v2.5-free': 'MiMo V2.5 Free',
     'deepseek-v4-flash-free': 'DeepSeek V4 Flash Free',
     'longcat-2.0-free': 'LongCat 2.0 Free',
+    'openrouter/free': 'Free Models Router',
+    'z-ai/glm-5.2:free': 'GLM 5.2 Free',
+    'nvidia/nemotron-3.5-lightning:free': 'Nemotron 3.5 Lightning Free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra Free',
+    'minimax/minimax-m2.7:free': 'MiniMax M2.7 Free',
+    'poolside/laguna-s-2.1:free': 'Laguna S 2.1 Free',
+    'google/gemma-4-31b-it:free': 'Gemma 4 31B Free',
   };
   return mapping[modelId] || modelId;
 }
@@ -76,6 +83,9 @@ function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMa
   const byok = runtimeConfig?.byokConfig;
   const requestedOpenCodeModel = admin?.opencode?.defaultModel || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
   const requestedOpenCodeFallback = process.env.OPENCODE_FALLBACK_MODEL;
+
+  const requestedOpenRouterModel = admin?.openrouter?.defaultModel || process.env.OPENROUTER_MODEL || 'openrouter/free';
+  const requestedOpenRouterFallback = process.env.OPENROUTER_FALLBACK_MODEL;
 
   return {
     opencode: {
@@ -89,8 +99,10 @@ function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMa
     openrouter: {
       enabled: admin?.openrouter?.enabled ?? true,
       apiKey: byok?.openrouter || process.env.OPENROUTER_API_KEY,
-      defaultModel: admin?.openrouter?.defaultModel || process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
-      fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL,
+      defaultModel: isAllowedProviderModel('openrouter', requestedOpenRouterModel) ? requestedOpenRouterModel : 'openrouter/free',
+      fallbackModel: requestedOpenRouterFallback && isAllowedProviderModel('openrouter', requestedOpenRouterFallback)
+        ? requestedOpenRouterFallback
+        : undefined,
     },
   };
 }
@@ -130,20 +142,20 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
   const order: AIProviderId[] = configuredOrder && configuredOrder.length > 0
     ? configuredOrder
     : ['opencode', 'openrouter'];
-  const prioritized = opts?.providerId
-    ? [opts.providerId, ...order.filter((providerId) => providerId !== opts.providerId)]
+  const requested = resolveSelectedAIModel(opts?.model, opts?.providerId);
+  const prioritized = requested
+    ? [requested.providerId, ...order.filter((providerId) => providerId !== requested.providerId)]
     : order;
 
-  if (opts?.providerId && opts?.model && isAllowedProviderModel(opts.providerId, opts.model)) {
-    const selectedModel = opts.model;
-    const providerFactory = factories[opts.providerId];
-    const providerState = state[opts.providerId];
+  if (requested) {
+    const providerFactory = factories[requested.providerId];
+    const providerState = state[requested.providerId];
     if (providerFactory && providerState.enabled && providerState.apiKey) {
       addStep({
-        label: `${opts.providerId.toUpperCase()} (${getFriendlyModelName(selectedModel)})`,
-        providerId: opts.providerId,
-        model: selectedModel,
-        createModel: () => providerFactory(selectedModel),
+        label: `${requested.providerId.toUpperCase()} (${getFriendlyModelName(requested.model)})`,
+        providerId: requested.providerId,
+        model: requested.model,
+        createModel: () => providerFactory(requested.model),
         maxAttempts: 1,
       });
     }

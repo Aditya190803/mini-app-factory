@@ -27,7 +27,7 @@ describe('OpenCode generation options', () => {
           },
           openrouter: {
             enabled: false,
-            defaultModel: 'openai/gpt-oss-120b',
+            defaultModel: 'openrouter/free',
             customModels: [],
             visibleModels: [],
           },
@@ -45,6 +45,41 @@ describe('OpenCode generation options', () => {
       providerOptions: {
         opencode: { reasoningEffort: 'none', textVerbosity: 'low' },
       },
+    }));
+  });
+
+  test('sends the selected OpenRouter free model instead of the OpenCode default', async () => {
+    generateText.mockClear();
+    const { getAIClient } = await import('@/lib/ai-client');
+    const client = await getAIClient({
+      adminConfig: {
+        providers: {
+          opencode: {
+            enabled: true,
+            defaultModel: 'deepseek-v4-flash-free',
+            customModels: [],
+            visibleModels: [],
+          },
+          openrouter: {
+            enabled: true,
+            defaultModel: 'openrouter/free',
+            customModels: [],
+            visibleModels: [],
+          },
+        },
+        providerOrder: ['opencode', 'openrouter'],
+      },
+      byokConfig: { opencode: 'opencode-key', openrouter: 'openrouter-key' },
+    });
+
+    const session = await client.createSession({
+      model: 'z-ai/glm-5.2:free',
+      providerId: 'openrouter',
+    });
+    await session.sendAndWait({ prompt: 'Build a site' });
+
+    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({
+      model: { modelId: 'z-ai/glm-5.2:free' },
     }));
   });
 });

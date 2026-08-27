@@ -31,7 +31,7 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
    - OpenCode Zen free models (`@ai-sdk/openai-compatible`)
-   - OpenRouter (`@openrouter/ai-sdk-provider`)
+   - OpenRouter free models, including `openrouter/free` (`@openrouter/ai-sdk-provider`)
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
 - **Runtime & Package Manager**: [Bun](https://bun.sh/)
@@ -58,8 +58,8 @@ A powerful AI-powered web application that generates production-ready multi-page
    OPENCODE_MODEL=deepseek-v4-flash-free
    OPENCODE_FALLBACK_MODEL=longcat-2.0-free
    OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL=openai/gpt-oss-120b
-   OPENROUTER_FALLBACK_MODEL=optional_openrouter_fallback_model
+   OPENROUTER_MODEL=openrouter/free
+   OPENROUTER_FALLBACK_MODEL=z-ai/glm-5.2:free
 
    # Optional: reference URL → site content at generation (https://exa.ai)
    EXA_API_KEY=your_exa_api_key

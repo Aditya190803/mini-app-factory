@@ -28,7 +28,7 @@ describe('GET /api/ai/models admin guard', () => {
     (getGlobalAdminModelConfig as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       providers: {
         opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] },
-        openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] },
+        openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] },
       },
       providerOrder: ['opencode', 'openrouter'],
     });

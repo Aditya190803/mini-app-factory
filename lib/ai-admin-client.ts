@@ -1,10 +1,13 @@
 import {
   AI_ADMIN_CONFIG_STORAGE_KEY,
   AI_BYOK_STORAGE_KEY,
+  AI_SELECTED_MODEL_STORAGE_KEY,
   AI_USER_CUSTOM_MODELS_STORAGE_KEY,
   DEFAULT_AI_ADMIN_CONFIG,
   type AIAdminConfig,
   type ProviderCustomModelsConfig,
+  type StoredSelectedModel,
+  resolveSelectedAIModel,
   sanitizeAIAdminConfig,
   sanitizeCustomModelsConfig,
 } from '@/lib/ai-admin-config';
@@ -63,6 +66,36 @@ export function getStoredCustomModelsConfig(): ProviderCustomModelsConfig {
 export function setStoredCustomModelsConfig(config: ProviderCustomModelsConfig): void {
   if (!isBrowser()) return;
   window.localStorage.setItem(AI_USER_CUSTOM_MODELS_STORAGE_KEY, JSON.stringify(sanitizeCustomModelsConfig(config)));
+}
+
+const EMPTY_SELECTED_MODEL: StoredSelectedModel = { id: '', providerId: '' };
+
+export function getStoredSelectedModel(): StoredSelectedModel {
+  if (!isBrowser()) return EMPTY_SELECTED_MODEL;
+  const raw = window.localStorage.getItem(AI_SELECTED_MODEL_STORAGE_KEY);
+  if (!raw) return EMPTY_SELECTED_MODEL;
+  try {
+    const parsed = JSON.parse(raw) as { id?: unknown; providerId?: unknown };
+    const id = typeof parsed.id === 'string' ? parsed.id : '';
+    const providerId = typeof parsed.providerId === 'string' ? parsed.providerId : '';
+    const resolved = resolveSelectedAIModel(id, providerId);
+    return resolved ? { id: resolved.model, providerId: resolved.providerId } : EMPTY_SELECTED_MODEL;
+  } catch {
+    return EMPTY_SELECTED_MODEL;
+  }
+}
+
+export function setStoredSelectedModel(value: StoredSelectedModel): void {
+  if (!isBrowser()) return;
+  const resolved = resolveSelectedAIModel(value.id, value.providerId);
+  if (!resolved) {
+    window.localStorage.removeItem(AI_SELECTED_MODEL_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(
+    AI_SELECTED_MODEL_STORAGE_KEY,
+    JSON.stringify({ id: resolved.model, providerId: resolved.providerId }),
+  );
 }
 
 /**

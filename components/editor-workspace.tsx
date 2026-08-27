@@ -22,7 +22,7 @@ import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
 import { useProjectTransform } from '@/hooks/use-project-transform';
 import { useEditorDeploy } from '@/hooks/use-editor-deploy';
 
@@ -58,6 +58,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
+  const modelHydratedRef = useRef(false);
   const [isExporting, setIsExporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
@@ -165,6 +166,32 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       }
     }
   }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+
+  useEffect(() => {
+    if (modelHydratedRef.current) return;
+    if (projectData === undefined) return;
+
+    const fromProject = projectData?.selectedModel && projectData?.providerId
+      ? { id: projectData.selectedModel, providerId: projectData.providerId }
+      : getStoredSelectedModel();
+    setSelectedModel(fromProject);
+    modelHydratedRef.current = true;
+  }, [projectData]);
+
+  const handleSelectedModelChange = useCallback((next: { id: string; providerId: string }) => {
+    setSelectedModel(next);
+    setStoredSelectedModel(next);
+    if (!projectData) return;
+    void saveProject({
+      projectName,
+      prompt: projectData.prompt || initialPrompt,
+      html: projectData.html,
+      status: projectData.status,
+      isPublished: projectData.isPublished ?? false,
+      selectedModel: next.id || '',
+      providerId: next.providerId || '',
+    }).catch(() => { });
+  }, [projectData, projectName, initialPrompt, saveProject]);
 
   // Handle message from preview iframe
   useEffect(() => {
@@ -840,7 +867,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 transformPrompt={transformPrompt}
                 setTransformPrompt={setTransformPrompt}
                 selectedModel={selectedModel}
-                setSelectedModel={setSelectedModel}
+                setSelectedModel={handleSelectedModelChange}
                 selectedElement={selectedElement}
                 setSelectedElement={setSelectedElement}
                 runTransform={runTransform}
