@@ -16,12 +16,10 @@ export function resolveIncludes(html: string, files: ProjectFile[], isPreview = 
   return html.replace(/<!--\s*include:([a-zA-Z0-9._-]+)\s*-->/g, (match, fileName) => {
     const partial = partials.find(p => p.path === fileName);
     if (partial) {
-      // Recursively resolve includes in partials
       const content = resolveIncludes(partial.content, files, isPreview);
       
       if (isPreview) {
-        // Wrap in a marker for the visual selector
-        // We use display: contents to avoid breaking layout while providing a target for the selector
+        // display: contents keeps the wrapper from breaking layout
         return `<div data-source-file="${fileName}" style="display: contents;">${content}</div>`;
       }
       return content;
@@ -50,17 +48,10 @@ export function assembleFullPage(
   let html = resolveIncludes(pageFile.content, files, isEditorPreview);
   const $ = cheerio.load(html);
 
-  // Tag body with source file for visual selector
   if (isEditorPreview) {
     $('body').attr('data-source-file', pagePath);
-    
-    // Process the include comments to add data-source-file to elements
-    // This is a bit tricky with cheerio but we can try to wrap contents
-    // or just let the selector walk up to comments (though DOM doesn't easily walk to comments via parent)
-    // For now, we'll manually tag the body. Recursive tagging for partials below.
   }
 
-  // Set base href if projectName is provided to fix relative links in subfolders
   if (projectName) {
     const baseHref = `/results/${projectName}/`;
     if ($('head').length === 0 && $('body').length > 0) {
@@ -72,16 +63,13 @@ export function assembleFullPage(
         $('head').prepend(`<base href="${baseHref}">`);
       }
     } else {
-      // Last resort fallback
       $.root().prepend(`<base href="${baseHref}">`);
     }
   }
 
-  // Inject SEO Metadata
   const pageSeo = metadata?.seoData?.find(s => s.path === pagePath);
   const global = metadata?.globalSeo;
 
-  // Title Logic: Page Title || (Site Name | Page Path) || Site Name
   let finalTitle = pageSeo?.title;
   if (!finalTitle && global?.siteName) {
     const displayPath = pagePath === 'index.html' ? '' : ` | ${pagePath.replace(/\.html$/, '')}`;
@@ -100,7 +88,6 @@ export function assembleFullPage(
     }
   }
 
-  // Description Logic: Page Description || Global Description
   const finalDesc = pageSeo?.description || global?.description;
   if (finalDesc) {
     if ($('meta[name="description"]').length > 0) $('meta[name="description"]').attr('content', finalDesc);
@@ -109,7 +96,6 @@ export function assembleFullPage(
     }
   }
 
-  // OG Image Logic: Page OG || Global OG
   const finalOg = pageSeo?.ogImage || global?.ogImage;
   if (finalOg) {
     if ($('meta[property="og:image"]').length > 0) $('meta[property="og:image"]').attr('content', finalOg);
@@ -118,7 +104,6 @@ export function assembleFullPage(
     }
   }
 
-  // Inject Favicon
   if (metadata?.favicon) {
     const isEmoji = !metadata.favicon.startsWith('http') && !metadata.favicon.startsWith('/') && metadata.favicon.length < 8;
 
@@ -136,7 +121,6 @@ export function assembleFullPage(
     else if ($('head').length > 0) $('head').append(faviconEl);
   }
 
-  // Handle Styles: Inline them into the preview so they actually load in srcDoc
   const styleFiles = files.filter(f => f.fileType === 'style');
   styleFiles.forEach(styleFile => {
     const selector = `link[rel="stylesheet"][href="${styleFile.path}"]`;
@@ -150,7 +134,6 @@ export function assembleFullPage(
     }
   });
 
-  // Handle Scripts: Inline them into the preview
   const scriptFiles = files.filter(f => f.fileType === 'script');
   scriptFiles.forEach(scriptFile => {
     const selector = `script[src="${scriptFile.path}"]`;
@@ -164,12 +147,10 @@ export function assembleFullPage(
     }
   });
 
-  // Inject Bridge Script for HMR, Virtual FS, and Visual Selector
   if (isEditorPreview) {
     const bridgeScript = `
 <script id="preview-bridge">
   (function() {
-    // Simple Virtual FS for preview (memfs-like API)
     const vfsSubscribers = new Set();
     const vfs = {
       files: {},
@@ -202,7 +183,6 @@ export function assembleFullPage(
       });
     };
 
-    // Navigation handling
     document.addEventListener('click', (e) => {
       if (window.__SELECTOR_ACTIVE__) return; // Handled by selector logic below
 
@@ -226,7 +206,6 @@ export function assembleFullPage(
       }
     });
 
-    // Communication bridge
     window.addEventListener('message', (event) => {
       if (event.data.type === 'update-css') {
         const { file, content } = event.data;
@@ -237,7 +216,6 @@ export function assembleFullPage(
           document.head.appendChild(style);
         }
         style.textContent = content;
-        console.log(\`[HMR] Updated \${file}\`);
       }
 
       if (event.data.type === 'init-vfs') {

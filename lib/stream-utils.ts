@@ -29,11 +29,9 @@ export async function readStream<TEvent extends StreamEvent = StreamEvent>(
 
             const chunk = decoder.decode(value, { stream: true });
 
-            // If it's a raw text stream (like for transformation)
             if (!onEvent) {
                 onChunk(chunk);
             } else {
-                // SSE parsing for initial generation
                 buffer += chunk;
                 const messages = buffer.split('\n\n');
                 buffer = messages.pop() || '';
@@ -44,8 +42,8 @@ export async function readStream<TEvent extends StreamEvent = StreamEvent>(
                     try {
                         const data = JSON.parse(line.slice(6));
                         onEvent(data);
-                    } catch (e) {
-                        console.debug('Malformed SSE message:', e);
+                    } catch {
+                        continue;
                     }
                 }
             }

@@ -104,7 +104,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [quickOpenIndex, setQuickOpenIndex] = useState(0);
   const quickOpenListRef = useRef<HTMLDivElement>(null);
 
-  // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -149,7 +148,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     setHistory(prev => {
       const next = prev.slice(0, historyIndex + 1);
       next.push([...currentFiles]);
-      // Limit history size
       if (next.length > 50) next.shift();
       return next;
     });
@@ -172,7 +170,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  // Load files from Convex or migrate
   useEffect(() => {
     if (projectFiles && !hasLoaded) {
       let loadedFiles: ProjectFile[] = [];
@@ -220,7 +217,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setHistoryIndex(0);
         setHasLoaded(true);
       } else if (projectFiles.length === 0 && initialHTML === '') {
-        // Handle empty project case where we might be creating from scratch or something
         setHasLoaded(true);
       }
     }
@@ -228,7 +224,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     // than because a re-run is expected.
   }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, projectData?.filesVersion, hasLoaded, migrateLegacyFilesAction, saveProject, projectName, initialPrompt, user?.id]);
 
-  // Handle message from preview iframe
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data.type === 'navigate') {
@@ -337,7 +332,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   }, [user, projectData?._id, projectData?.accessRole, saveFilesAction]);
 
-  // Auto-save to Convex
   useEffect(() => {
     if (!user || !files.length || !projectData?._id) return;
 
@@ -570,7 +564,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const confirmNewFolder = () => {
     if (!newFolderName) return;
     
-    // Check if folder or file with this name already exists
     const folderPath = newFolderName.endsWith('/') ? newFolderName : `${newFolderName}/`;
     if (files.some(f => f.path.startsWith(folderPath) || f.path === newFolderName)) {
       toast.error('A file or folder with this name already exists');
@@ -605,7 +598,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (type === 'file') {
       nextFiles = files.filter(f => f.path !== path);
     } else {
-      // Folder deletion: remove all files starting with "path/"
       const prefix = path.endsWith('/') ? path : `${path}/`;
       nextFiles = files.filter(f => !f.path.startsWith(prefix));
     }
@@ -630,14 +622,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return files.filter(f => f.path.toLowerCase().includes(search));
   }, [files, quickOpenSearch]);
 
-  // Global shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // While typing in an input or textarea, only save stays active —
       // sidebar toggles would swallow characters meant for the field.
       const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
 
-      // Ctrl + S: Save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         persistFiles(files);
@@ -645,20 +635,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
       if (isInput) return;
 
-      // Ctrl + B: Toggle Explorer Sidebar
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         setIsExplorerVisible(prev => !prev);
       }
 
-      // Ctrl + I (or Ctrl + Shift + B): Toggle Right Sidebar
-      // We'll use Ctrl + I as 'Instructions' or 'Insights'
       if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
         e.preventDefault();
         setIsRightSidebarVisible(prev => !prev);
       }
       
-      // Ctrl + P: Quick Open
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
         e.preventDefault();
         setIsQuickOpenOpen(true);
@@ -685,7 +671,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
   const handleRenameItem = (path: string) => {
     setItemToRename(path);
-    // Extract the name part for initial value
     const name = path.endsWith('/') ? path.slice(0, -1).split('/').pop()! : path.split('/').pop()!;
     setRenameValue(name);
     setIsRenameDialogOpen(true);
@@ -705,13 +690,11 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
 
     const nextFiles = files.map(f => {
-      // Exact match (file or the .keep file of a folder)
       if (f.path === oldPath) {
         if (activeFilePath === oldPath) setActiveFilePath(newPath);
         return { ...f, path: newPath };
       }
       
-      // Nested items
       const folderPrefix = `${oldPath}/`;
       if (f.path.startsWith(folderPrefix)) {
         const newFolderPrefix = `${newPath}/`;
@@ -732,27 +715,23 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   const handleMoveItem = (sourcePath: string, destFolderPath: string) => {
-    // If destination is same as source, skip
     if (sourcePath === destFolderPath) return;
 
     const sourceName = sourcePath.split('/').pop()!;
     const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
     const newPathBase = `${targetDir}${sourceName}`;
 
-    // Check for collisions
     if (files.some(f => f.path === newPathBase)) {
         toast.error(`An item named “${sourceName}” already exists in “${destFolderPath}”`);
         return;
     }
 
     const nextFiles = files.map(f => {
-      // If it's the exact file
       if (f.path === sourcePath) {
         if (activeFilePath === f.path) setActiveFilePath(newPathBase);
         return { ...f, path: newPathBase };
       }
       
-      // If it's a file inside a folder being moved
       if (f.path.startsWith(`${sourcePath}/`)) {
         const newPath = f.path.replace(sourcePath, newPathBase);
         if (activeFilePath === f.path) setActiveFilePath(newPath);
@@ -772,7 +751,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
     const newPathBase = `${targetDir}${sourceName}`;
 
-    // 1. Move/Rename
     const movedFiles = files.map(f => {
       if (f.path === sourcePath) {
         if (activeFilePath === f.path) setActiveFilePath(newPathBase);
@@ -786,7 +764,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       return f;
     });
 
-    // 2. Reorder
     const result = [...movedFiles];
     const sourceIndex = result.findIndex(f => f.path === newPathBase);
     const destIndex = result.findIndex(f => f.path === targetPath);
@@ -830,7 +807,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         zip.file(f.path, f.content);
       });
       
-      // Generate README using AI
       let readmeContent = `# ${projectName}\n\n${initialPrompt}\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)`;
       
       try {

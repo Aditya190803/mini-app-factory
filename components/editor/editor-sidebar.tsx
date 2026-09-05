@@ -56,7 +56,6 @@ export default function EditorSidebar({
     const scrollRef = useRef<HTMLDivElement>(null);
     const [attachments, setAttachments] = useState<Array<{ name: string; content: string }>>([]);
 
-    // Follow the conversation as it grows, the way a chat thread should.
     useEffect(() => {
         const node = scrollRef.current;
         if (!node) return;
@@ -157,7 +156,6 @@ export default function EditorSidebar({
                     <div className="flex flex-col gap-y-6">
                         {messages.map((message) => {
                             if (message.role === 'user') {
-                                // User turns get a muted pill, pushed right by the grid.
                                 return (
                                     <div
                                         key={message.id}
@@ -182,8 +180,6 @@ export default function EditorSidebar({
                                 );
                             }
 
-                            // Assistant turns are plain prose at full width and full
-                            // contrast — they are the content, not a chat bubble.
                             return (
                                 <div
                                     key={message.id}
