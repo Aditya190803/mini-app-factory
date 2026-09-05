@@ -1,27 +1,46 @@
-'use client';
+'use client'
 
-import { Button } from '@/components/ui/button';
+import * as React from 'react'
+import { AlertTriangle, Check, Cloud, ExternalLink } from 'lucide-react'
+import type { useEditorDeploy } from '@/hooks/use-editor-deploy'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
-import type { useEditorDeploy } from '@/hooks/use-editor-deploy';
-import CloudflareConnect from '@/components/cloudflare-connect';
+  Badge,
+  Button,
+  Callout,
+  CopyValue,
+  Field,
+  Input,
+  Modal,
+  ModalContent,
+  Select,
+  StatusDot,
+} from '@/components/kit'
+import CloudflareConnect from '@/components/cloudflare-connect'
+import { DEPLOY_SURFACES, TARGETS, type BuildTarget } from '@/lib/targets'
+import { cn } from '@/lib/utils'
 
-type DeployState = ReturnType<typeof useEditorDeploy>;
+type DeployState = ReturnType<typeof useEditorDeploy>
 
 type Props = {
-  projectName: string;
-  deploy: DeployState;
-};
+  projectName: string
+  deploy: DeployState
+  target: BuildTarget
+}
 
-export default function EditorDeployDialog({ projectName, deploy }: Props) {
+/**
+ * The deploy flow.
+ *
+ * Cloudflare is first and is the default, and it is the only surface that can
+ * host both targets. The rest are shown for what they are: a factory-hosted
+ * preview that only handles static output, and mirrors that push the same
+ * bundle somewhere without hosting it.
+ *
+ * Any surface that can create persistent or billable resources is marked, and
+ * the plan gate is a hard stop: the exact list of resources, each labelled
+ * create or reuse, has to be approved before the deploy runs. That is the one
+ * confirmation this product does not let you skip.
+ */
+export default function EditorDeployDialog({ projectName, deploy, target }: Props) {
   const {
     isDeployDialogOpen,
     setIsDeployDialogOpen,
@@ -59,245 +78,331 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
     handleDeploy,
     confirmResourcePlan,
     dismissResourcePlan,
-    copyToClipboard,
     deployDisabled,
-  } = deploy;
-  const isGithubDeploy = deployOption === 'github-netlify' || deployOption === 'github-only';
+  } = deploy
+
+  const isGithubDeploy = deployOption === 'github-netlify' || deployOption === 'github-only'
+
+  // The in-app preview cannot run a Worker, so it is not offered to an edge
+  // app at all rather than being offered and then failing.
+  const surfaces = DEPLOY_SURFACES.filter(
+    (surface) => surface.id !== 'cloudflare-preview' && surface.supports.includes(target)
+  )
+
+  const connected = (need: 'cloudflare' | 'github' | 'netlify') =>
+    need === 'cloudflare'
+      ? integrationStatus.cloudflareConnected
+      : need === 'github'
+        ? integrationStatus.githubConnected
+        : integrationStatus.netlifyConnected
+
+  const createCount = resourcePlan?.filter((item) => item.action === 'create').length ?? 0
 
   return (
-    <Dialog open={isDeployDialogOpen} onOpenChange={setIsDeployDialogOpen}>
-      <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-        <DialogHeader>
-          <DialogTitle className="font-mono uppercase text-sm tracking-tight">Deploy Project</DialogTitle>
-          <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-            Publish directly or connect a provider you control.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
-            {(
-              [
-                ['maf-hosted', 'Deploy with us (Recommended — no setup)'],
-                ['github-netlify', 'GitHub + Netlify'],
-                ['github-only', 'GitHub Repo Only'],
-                ['cloudflare', 'Cloudflare Pages + Worker + D1'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setDeployOption(value)}
-                className={cn(
-                  'w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all',
-                  deployOption === value
-                    ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
-                    : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
-                )}
+    <Modal open={isDeployDialogOpen} onOpenChange={setIsDeployDialogOpen}>
+      <ModalContent
+        size="lg"
+        title="Deploy"
+        description={`This project is ${
+          target === 'edge' ? 'an edge app' : 'a static site'
+        }. ${TARGETS[target].provisions}`}
+        footer={
+          <>
+            <Button onClick={() => setIsDeployDialogOpen(false)}>Close</Button>
+            <Button
+              intent={resourcePlan && createCount > 0 ? 'danger' : 'primary'}
+              busy={isDeploying || isPlanningResources}
+              disabled={deployDisabled}
+              onClick={resourcePlan ? confirmResourcePlan : handleDeploy}
+            >
+              <Cloud className="size-4" />
+              {resourcePlan
+                ? createCount > 0
+                  ? `Create ${createCount} and deploy`
+                  : 'Deploy'
+                : deployOption === 'github-only'
+                  ? 'Push to the repo'
+                  : 'Deploy'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <fieldset>
+            <legend className="key mb-2">Where it goes</legend>
+            <div className="space-y-1.5">
+              {surfaces.map((surface) => {
+                const active = deployOption === surface.id
+                const missing = surface.requires.filter((need) => !connected(need))
+                return (
+                  <label
+                    key={surface.id}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border p-3',
+                      'transition-colors duration-[var(--dur-1)]',
+                      active
+                        ? 'border-[color-mix(in_oklab,var(--primary)_50%,transparent)] bg-[var(--signal-wash)]'
+                        : 'border-[var(--rule)] hover:border-[var(--rule-strong)]'
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="deploy-surface"
+                      checked={active}
+                      onChange={() => setDeployOption(surface.id as typeof deployOption)}
+                      className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{surface.label}</span>
+                        {surface.primary && (
+                          <Badge tone="signal" mono>
+                            recommended
+                          </Badge>
+                        )}
+                        {surface.provisions && <Badge tone="warning">creates resources</Badge>}
+                        {missing.length > 0 && (
+                          <Badge tone="neutral">
+                            connect {missing.join(' and ')}
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-[var(--muted-foreground)]">
+                        {surface.detail}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
+
+          {deployOption === 'cloudflare' && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--rule)] p-3">
+                <CloudflareConnect
+                  connected={integrationStatus.cloudflareConnected}
+                  accountName={integrationStatus.cloudflareAccountName}
+                  onConnected={markCloudflareConnected}
+                />
+              </div>
+
+              <Field
+                label="Pages project name"
+                hint={`Published at https://${normalizedCloudflareProjectName || 'project'}.pages.dev`}
               >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {isGithubDeploy && (
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
-              <Input
-                value={repoName}
-                onChange={(e) => setRepoName(e.target.value)}
-                placeholder={projectName}
-                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                disabled={!!linkedRepoFullName}
-              />
-              <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                {linkedRepoFullName && `Linked repo: ${linkedRepoFullName}. Repo name locked. `}
-                {repoMismatch && `Repo name mismatch: linked repo uses ${linkedRepoName}. `}
-                {normalizedRepoName && `Slug: ${normalizedRepoName}. `}
-                {repoCheck.status === 'checking' && 'Checking availability...'}
-                {repoCheck.status === 'available' && `Available${repoCheck.owner ? ` under ${repoCheck.owner}` : ''}.`}
-                {repoCheck.status === 'taken' && 'Name already exists.'}
-                {repoCheck.status === 'error' && (repoCheck.message || 'Unable to verify repo name.')}
-                {repoCheck.status === 'idle' && 'Leave blank to use the project name.'}
-              </div>
+                <Input
+                  value={cloudflareProjectName}
+                  onChange={(event) => setCloudflareProjectName(event.target.value)}
+                  placeholder={projectName}
+                  className="font-mono"
+                  disabled={Boolean(deployResult?.cloudflareProjectName)}
+                />
+              </Field>
             </div>
           )}
 
-          {deployOption === 'cloudflare' && (
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Pages Project Name</label>
-              <Input
-                value={cloudflareProjectName}
-                onChange={(event) => setCloudflareProjectName(event.target.value)}
-                placeholder={projectName}
-                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                disabled={!!deployResult?.cloudflareProjectName}
-              />
-              <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                Production URL: https://{normalizedCloudflareProjectName || 'project'}.pages.dev
+          {isGithubDeploy && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--rule)] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <StatusDot tone={integrationStatus.githubConnected ? 'live' : 'pending'} />
+                    GitHub
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                    {integrationStatus.githubConnected ? 'Connected' : 'Not connected yet'}
+                  </p>
+                </div>
+                <Button size="sm" onClick={startGithubConnect}>
+                  {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
+                </Button>
+              </div>
+
+              <Field
+                label="Repository name"
+                error={repoCheck.status === 'taken' ? 'That name already exists.' : undefined}
+                hint={
+                  linkedRepoFullName
+                    ? `Already linked to ${linkedRepoFullName}, so the name is fixed.`
+                    : repoMismatch
+                      ? `The linked repo uses ${linkedRepoName}.`
+                      : repoCheck.status === 'checking'
+                        ? 'Checking availability'
+                        : repoCheck.status === 'available'
+                          ? `Available${repoCheck.owner ? ` under ${repoCheck.owner}` : ''}.`
+                          : repoCheck.status === 'error'
+                            ? repoCheck.message || 'Could not verify that name.'
+                            : `Pushed as ${normalizedRepoName || projectName}.`
+                }
+              >
+                <Input
+                  value={repoName}
+                  onChange={(event) => setRepoName(event.target.value)}
+                  placeholder={projectName}
+                  className="font-mono"
+                  disabled={Boolean(linkedRepoFullName)}
+                />
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Visibility">
+                  <Select
+                    value={repoVisibility}
+                    onChange={(event) =>
+                      setRepoVisibility(event.target.value as 'private' | 'public')
+                    }
+                  >
+                    <option value="private">Private</option>
+                    <option value="public">Public</option>
+                  </Select>
+                </Field>
+                <Field label="Owner" disabled={!integrationStatus.githubConnected}>
+                  <Select
+                    value={githubOrg}
+                    onChange={(event) => setGithubOrg(event.target.value)}
+                    disabled={!integrationStatus.githubConnected}
+                  >
+                    <option value="personal">Your personal account</option>
+                    {githubOrgs.map((org) => (
+                      <option key={org} value={org}>
+                        {org}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               </div>
             </div>
           )}
 
           {deployOption === 'github-netlify' && (
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
-              <Input
-                value={netlifySiteName}
-                onChange={(e) => setNetlifySiteName(e.target.value)}
-                placeholder={normalizedRepoName || projectName}
-                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-              />
-              <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                Leave blank to reuse the repo name. Subdomain slug: {normalizedNetlifySiteName || '—'}.
-              </div>
-            </div>
-          )}
-
-          {isGithubDeploy && (
-            <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-              <div>
-                <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
-                <div className="text-[11px] text-[var(--muted-text)]">
-                  {integrationStatus.githubConnected ? 'Connected' : 'Not connected'}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--rule)] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <StatusDot tone={integrationStatus.netlifyConnected ? 'live' : 'pending'} />
+                    Netlify
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                    {integrationStatus.netlifyConnected ? 'Connected' : 'Not connected yet'}
+                  </p>
                 </div>
+                <Button size="sm" onClick={startNetlifyConnect}>
+                  {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
+                </Button>
               </div>
-              <Button onClick={startGithubConnect} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
-                {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
-              </Button>
+
+              <Field
+                label="Netlify site name"
+                optional
+                hint={`Subdomain: ${normalizedNetlifySiteName || 'reuses the repo name'}`}
+              >
+                <Input
+                  value={netlifySiteName}
+                  onChange={(event) => setNetlifySiteName(event.target.value)}
+                  placeholder={normalizedRepoName || projectName}
+                  className="font-mono"
+                />
+              </Field>
             </div>
           )}
 
-          {deployOption === 'github-netlify' && (
-            <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-              <div>
-                <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
-                <div className="text-[11px] text-[var(--muted-text)]">
-                  {integrationStatus.netlifyConnected ? 'Connected' : 'Not connected'}
-                </div>
-              </div>
-              <Button onClick={startNetlifyConnect} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
-                {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
-              </Button>
-            </div>
+          {/* The gate. Nothing is created until this is approved. */}
+          {resourcePlan && (
+            <Callout
+              tone={createCount > 0 ? 'warning' : 'info'}
+              icon={<AlertTriangle className="size-4" />}
+              title={
+                createCount > 0
+                  ? `${createCount} Cloudflare resource${createCount === 1 ? '' : 's'} will be created`
+                  : 'No new resources. Everything is reused.'
+              }
+              action={
+                <Button size="sm" onClick={dismissResourcePlan}>
+                  Cancel
+                </Button>
+              }
+            >
+              <ul className="mt-1 divide-y divide-[var(--rule)] border-y border-[var(--rule)]">
+                {resourcePlan.map((item) => (
+                  <li
+                    key={`${item.kind}:${item.binding}`}
+                    className="flex items-center justify-between gap-3 py-1.5 font-mono text-xs"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="text-[var(--foreground)]">{item.binding}</span>
+                      <span className="text-[var(--muted-foreground)]"> to {item.name}</span>
+                    </span>
+                    <span
+                      className={cn(
+                        'shrink-0',
+                        item.action === 'create'
+                          ? 'text-[var(--warning-text)]'
+                          : 'text-[var(--muted-foreground)]'
+                      )}
+                    >
+                      {item.action}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Callout>
           )}
 
-          {deployOption === 'cloudflare' && (
-            <div className="border border-[var(--border)] rounded-md px-3 py-3">
-              <CloudflareConnect
-                connected={integrationStatus.cloudflareConnected}
-                accountName={integrationStatus.cloudflareAccountName}
-                onConnected={markCloudflareConnected}
-              />
-            </div>
-          )}
-
-          {isGithubDeploy && (
-            <>
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Visibility</label>
-                <select
-                  value={repoVisibility}
-                  onChange={(e) => setRepoVisibility(e.target.value as 'private' | 'public')}
-                  className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                >
-                  <option value="private">Private (Recommended)</option>
-                  <option value="public">Public</option>
-                </select>
-              </div>
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">GitHub Owner</label>
-                <select
-                  value={githubOrg}
-                  onChange={(e) => setGithubOrg(e.target.value)}
-                  className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-                  disabled={!integrationStatus.githubConnected}
-                >
-                  <option value="personal">Personal Account</option>
-                  {githubOrgs.map((org) => (
-                    <option key={org} value={org}>
-                      {org}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-
-          {deployOption === 'github-netlify' && (!integrationStatus.githubConnected || !integrationStatus.netlifyConnected) && (
-            <div className="text-[11px] text-amber-500 font-mono">Connect both GitHub and Netlify to enable this deploy option.</div>
-          )}
-          {deployOption === 'github-only' && !integrationStatus.githubConnected && (
-            <div className="text-[11px] text-amber-500 font-mono">Connect GitHub to enable this deploy option.</div>
-          )}
-          {deployOption === 'cloudflare' && !integrationStatus.cloudflareConnected && (
-            <div className="text-[11px] text-amber-500 font-mono">Connect Cloudflare to enable direct deployment.</div>
-          )}
-          {deployOption === 'maf-hosted' && (
-            <div className="text-[11px] text-amber-500 font-mono">We will deploy your project to a hosted URL under Mini App Factory.</div>
+          {deployResult?.deploymentUrl && (
+            <Callout
+              tone="live"
+              icon={<Check className="size-4" />}
+              title="Deployed"
+              action={
+                <Button size="sm" asChild>
+                  <a href={deployResult.deploymentUrl} target="_blank" rel="noopener noreferrer">
+                    Open
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </Button>
+              }
+            >
+              <CopyValue value={deployResult.deploymentUrl} label="the live URL" />
+            </Callout>
           )}
 
           {deployResult?.repoUrl && (
-            <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-              <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                Repo: <span className="text-[var(--primary)]">{deployResult.repoUrl}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.repoUrl, '_blank', 'noopener,noreferrer')}>
-                  Open Repo
+            <Callout
+              tone="neutral"
+              title="Repository"
+              action={
+                <Button size="sm" asChild>
+                  <a href={deployResult.repoUrl} target="_blank" rel="noopener noreferrer">
+                    Open
+                    <ExternalLink className="size-3.5" />
+                  </a>
                 </Button>
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => copyToClipboard(deployResult.repoUrl!, 'Repo URL')}>
-                  Copy Link
-                </Button>
-              </div>
-            </div>
+              }
+            >
+              <CopyValue value={deployResult.repoUrl} label="the repo URL" />
+            </Callout>
           )}
-          {deployResult?.deploymentUrl && (
-            <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-              <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                Live URL: <span className="text-[var(--primary)]">{deployResult.deploymentUrl}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => window.open(deployResult.deploymentUrl, '_blank', 'noopener,noreferrer')}>
-                  Open Live URL
-                </Button>
-                <Button variant="outline" className="font-mono uppercase text-[10px]" onClick={() => copyToClipboard(deployResult.deploymentUrl!, 'Live URL')}>
-                  Copy Link
-                </Button>
-              </div>
-            </div>
+
+          {deployError && (
+            <Callout tone="failed" title="The deploy failed">
+              <p className="whitespace-pre-wrap font-mono text-xs">{deployError}</p>
+            </Callout>
           )}
-          {resourcePlan && (
-            <div className="border border-amber-500/40 rounded-md p-3 space-y-2">
-              <div className="text-[11px] font-mono font-bold text-amber-500">Confirm Cloudflare resources</div>
-              <div className="space-y-1">
-                {resourcePlan.map((item) => (
-                  <div key={`${item.kind}:${item.binding}`} className="flex justify-between gap-3 text-[10px] font-mono text-[var(--muted-text)]">
-                    <span>{item.binding} → {item.name}</span>
-                    <span className={item.action === 'create' ? 'text-amber-500' : 'text-[var(--secondary-text)]'}>{item.action}</span>
-                  </div>
-                ))}
-              </div>
-              <button type="button" onClick={dismissResourcePlan} className="text-[10px] font-mono underline text-[var(--muted-text)]">Cancel</button>
-            </div>
+
+          {deployNotice && (
+            <p aria-live="polite" className="text-xs text-[var(--muted-foreground)]">
+              {deployNotice}
+            </p>
           )}
-          {deployNotice && <div className="text-[11px] text-[var(--muted-text)] font-mono">{deployNotice}</div>}
-          {deployError && <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">{deployError}</div>}
+
           {isDeploying && deployStatus && (
-            <div className="p-3 border border-[var(--border)] rounded-md bg-[var(--background-overlay)]/30 space-y-2">
-              <div className="text-[12px] font-mono text-[var(--foreground)] pl-4 border-l-2 border-[var(--primary)]/30 py-1">{deployStatus}</div>
-            </div>
+            <p aria-live="polite" className="font-mono text-xs text-[var(--muted-foreground)]">
+              {deployStatus}
+            </p>
           )}
         </div>
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsDeployDialogOpen(false)} className="flex-1 font-mono uppercase text-[10px]">
-            Close
-          </Button>
-          <Button onClick={resourcePlan ? confirmResourcePlan : handleDeploy} disabled={deployDisabled} className="flex-1 bg-[var(--primary)] font-mono uppercase text-[10px] font-black">
-            {isDeploying ? 'Deploying...' : isPlanningResources ? 'Planning...' : resourcePlan ? 'Create & Deploy' : deployOption === 'github-only' ? 'Create Repo' : 'Deploy Now'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+      </ModalContent>
+    </Modal>
+  )
 }

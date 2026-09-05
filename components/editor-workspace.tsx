@@ -3,24 +3,25 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from '@/convex/_generated/dataModel';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
-import { Search } from 'lucide-react';
+  Button,
+  Callout,
+  Field,
+  IconButton,
+  Input,
+  Kbd,
+  Modal,
+  ModalContent,
+  SpecTable,
+  Spinner,
+  Textarea,
+} from '@/components/kit';
+import { Search, X } from 'lucide-react';
+import { resolveTarget } from '@/lib/targets';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 import { toast } from 'sonner';
@@ -965,24 +966,35 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     window.open(previewPath, '_blank');
   };
 
+  const buildTarget = resolveTarget(projectData?.target, files);
+  const isViewer = projectData?.accessRole === 'viewer';
+
   return (
-    <div className="flex h-dvh flex-col bg-background">
+    <div className="flex h-dvh flex-col bg-[var(--background)]">
       {confirmDialog}
+
       <EditorHeader
         projectName={projectName}
+        target={buildTarget}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onBack={onBack}
         saveStatus={saveStatus}
         onExport={downloadZip}
-        onDeploy={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : deploy.setIsDeployDialogOpen(true)}
+        onDeploy={() =>
+          isViewer
+            ? toast.info('You have viewer access, which is read only')
+            : deploy.setIsDeployDialogOpen(true)
+        }
         isDeploying={deploy.isDeploying}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={undo}
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
-        onLibrary={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : setIsLibraryOpen(true)}
+        onLibrary={() =>
+          isViewer ? toast.info('You have viewer access, which is read only') : setIsLibraryOpen(true)
+        }
         onSettings={() => router.push(`/edit/${projectName}/settings`)}
         isExplorerVisible={isExplorerVisible}
         onToggleExplorer={() => setIsExplorerVisible((visible) => !visible)}
@@ -990,24 +1002,52 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onToggleChat={() => setIsRightSidebarVisible((visible) => !visible)}
       />
 
-      {projectData?.accessRole === 'viewer' ? <div className="border-b border-amber-400/20 bg-amber-400/5 px-4 py-2 text-center text-xs text-amber-200">Read-only access · Ask the project owner for editor access to make changes or deploy.</div> : null}
+      {isViewer && (
+        <p className="border-b border-[var(--rule)] bg-[var(--surface-2)] px-4 py-1.5 text-center text-xs text-[var(--muted-foreground)]">
+          Viewer access. Ask the project owner for editor access to make changes or deploy.
+        </p>
+      )}
 
-      {saveStatus === 'conflict' && conflictKind === 'version' ? (
-        <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-center text-xs">
-          <span className="text-red-600 dark:text-red-400">Someone else saved this project — your edits are held locally, not lost.</span>
-          <span className="flex gap-3">
-            <button type="button" onClick={() => void handleConflictReload()} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Load latest</button>
-            <button type="button" onClick={() => void handleConflictOverwrite()} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Save mine anyway</button>
-          </span>
+      {/* Save conflicts get a bar rather than a toast: the user has to be able
+          to read the two recovery options and pick one, and a toast times out
+          while they are still deciding. */}
+      {saveStatus === 'conflict' && conflictKind === 'version' && (
+        <div className="border-b border-[var(--rule)] px-3 py-2">
+          <Callout
+            tone="failed"
+            title="Someone else saved this project"
+            action={
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void handleConflictReload()}>
+                  Load theirs
+                </Button>
+                <Button size="sm" intent="danger" onClick={() => void handleConflictOverwrite()}>
+                  Keep mine
+                </Button>
+              </div>
+            }
+          >
+            Your edits are still here, held locally. Nothing has been lost, and nothing has been
+            written.
+          </Callout>
         </div>
-      ) : null}
+      )}
 
-      {saveStatus === 'conflict' && conflictKind === 'error' ? (
-        <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-center text-xs">
-          <span className="text-red-600 dark:text-red-400">Couldn&apos;t save your changes.</span>
-          <button type="button" onClick={() => void persistFiles(files)} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Try again</button>
+      {saveStatus === 'conflict' && conflictKind === 'error' && (
+        <div className="border-b border-[var(--rule)] px-3 py-2">
+          <Callout
+            tone="failed"
+            title="Your changes could not be saved"
+            action={
+              <Button size="sm" onClick={() => void persistFiles(files)}>
+                Try again
+              </Button>
+            }
+          >
+            They are still in the editor. Leaving this page would lose them.
+          </Callout>
         </div>
-      ) : null}
+      )}
 
       <ComponentLibraryDialog
         open={isLibraryOpen}
@@ -1023,92 +1063,101 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         }}
       />
 
-      <div className="relative flex flex-1 overflow-hidden">
-        <AnimatePresence initial={false}>
-          {isRightSidebarVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 380, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="flex shrink-0 flex-col overflow-hidden max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:shadow-2xl"
-            >
-              <EditorSidebar
-                transformPrompt={transformPrompt}
-                setTransformPrompt={setTransformPrompt}
-                selectedModel={selectedModel}
-                setSelectedModel={handleSelectedModelChange}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-                runTransform={chatMode === 'build' ? runTransform : runDiscussion}
-                runPolish={() => setIsPolishDialogOpen(true)}
-                isTransforming={isTransforming || isDiscussing}
-                transformProgress={transformProgress}
-                onCancelTransform={cancelTransform}
-                mode={chatMode}
-                onModeChange={setChatMode}
-                filePaths={files.map((file) => file.path)}
-                messages={[
-                  ...((projectMessages?.length || 0) === 0 ? [{ id: 'initial-prompt', role: 'user' as const, content: initialPrompt, status: 'completed' }] : []),
-                  ...(projectMessages || []).map((message) => ({
-                    id: message._id,
-                    role: message.role,
-                    content: message.content,
-                    status: message.status,
-                    files: (() => {
-                      try { return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || []; }
-                      catch { return []; }
-                    })(),
-                  })),
-                ]}
-                versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary }))}
-                onRestoreVersion={async (versionId) => {
-                  if (!projectData?._id) return;
-                  const restored = await restoreVersion({ projectId: projectData._id, versionId: versionId as Id<'projectVersions'> });
-                  const restoredFiles = restored as ProjectFile[];
-                  setFiles(restoredFiles);
-                  addToHistory(restoredFiles);
-                  toast.success('Project version restored');
-                }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Panes collapse by unmounting rather than animating width. Animating
+            a layout property on a pane containing an iframe and Monaco makes
+            both relayout on every frame. */}
+        {isRightSidebarVisible && (
+          <div className="flex shrink-0 flex-col overflow-hidden max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-[var(--z-overlay)] max-xl:shadow-[var(--shadow-lg)]">
+            <EditorSidebar
+              transformPrompt={transformPrompt}
+              setTransformPrompt={setTransformPrompt}
+              selectedModel={selectedModel}
+              setSelectedModel={handleSelectedModelChange}
+              selectedElement={selectedElement}
+              setSelectedElement={setSelectedElement}
+              runTransform={chatMode === 'build' ? runTransform : runDiscussion}
+              runPolish={() => setIsPolishDialogOpen(true)}
+              isTransforming={isTransforming || isDiscussing}
+              transformProgress={transformProgress}
+              onCancelTransform={cancelTransform}
+              mode={chatMode}
+              onModeChange={setChatMode}
+              filePaths={files.map((file) => file.path)}
+              messages={[
+                ...((projectMessages?.length || 0) === 0
+                  ? [
+                      {
+                        id: 'initial-prompt',
+                        role: 'user' as const,
+                        content: initialPrompt,
+                        status: 'completed',
+                      },
+                    ]
+                  : []),
+                ...(projectMessages || []).map((message) => ({
+                  id: message._id,
+                  role: message.role,
+                  content: message.content,
+                  status: message.status,
+                  files: (() => {
+                    try {
+                      return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || [];
+                    } catch {
+                      return [];
+                    }
+                  })(),
+                })),
+              ]}
+              versions={(projectVersions || []).map((version) => ({
+                id: version._id,
+                summary: version.summary,
+              }))}
+              onRestoreVersion={async (versionId) => {
+                if (!projectData?._id) return;
+                const restored = await restoreVersion({
+                  projectId: projectData._id,
+                  versionId: versionId as Id<'projectVersions'>,
+                });
+                const restoredFiles = restored as ProjectFile[];
+                setFiles(restoredFiles);
+                addToHistory(restoredFiles);
+                toast.success('Version restored');
+              }}
+            />
+          </div>
+        )}
 
-        <AnimatePresence initial={false}>
-          {isExplorerVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 260, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--border)] max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-20 max-lg:shadow-2xl"
-            >
-              <FileTree 
-                files={files} 
-                activeFilePath={activeFilePath} 
-                onFileSelect={setActiveFilePath}
-                onNewFile={handleNewFile}
-                onNewFolder={handleNewFolder}
-                onDeleteItem={handleDeleteItem}
-                onRenameItem={handleRenameItem}
-                onDuplicateItem={handleDuplicateItem}
-                onNewFileInFolder={handleNewFileInFolder}
-                onMoveItem={handleMoveItem}
-                onMoveAndReorder={handleMoveAndReorder}
-                onReorderFiles={handleReorderFiles}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
-        <main className="flex min-w-0 flex-1 overflow-hidden bg-[var(--background-surface)]">
+        {isExplorerVisible && (
+          <div className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-[var(--rule)] max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-[var(--z-sticky)] max-lg:shadow-[var(--shadow-lg)]">
+            <FileTree
+              files={files}
+              activeFilePath={activeFilePath}
+              onFileSelect={setActiveFilePath}
+              onNewFile={handleNewFile}
+              onNewFolder={handleNewFolder}
+              onDeleteItem={handleDeleteItem}
+              onRenameItem={handleRenameItem}
+              onDuplicateItem={handleDuplicateItem}
+              onNewFileInFolder={handleNewFileInFolder}
+              onMoveItem={handleMoveItem}
+              onMoveAndReorder={handleMoveAndReorder}
+              onReorderFiles={handleReorderFiles}
+            />
+          </div>
+        )}
+
+        <main className="flex min-w-0 flex-1 overflow-hidden">
           {activeTab === 'preview' && (
-            <PreviewPanel 
-              previewHtml={previewHtml} 
+            <PreviewPanel
+              previewHtml={previewHtml}
               files={files}
               onOpenInNewTab={handleOpenPreviewInNewTab}
-              livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+              livePreviewUrl={
+                (projectData?.cloudflarePreviewExpiresAt || 0) > Date.now()
+                  ? projectData?.cloudflarePreviewUrl
+                  : undefined
+              }
               isDeployingPreview={isDeployingPreview}
               onDeployLivePreview={deployLivePreview}
               onDeleteLivePreview={deleteLivePreview}
@@ -1117,9 +1166,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 setActiveTab('code');
                 if (html) setEditorSearchText(html);
               }}
-              onAttachToChat={(path, html, selector) => {
-                setSelectedElement({ path, html, selector });
-              }}
+              onAttachToChat={(path, html, selector) => setSelectedElement({ path, html, selector })}
             />
           )}
 
@@ -1134,8 +1181,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
 
           {activeTab === 'split' && activeFile && (
-            <div className="flex-1 flex">
-              <div className="flex-1 border-r border-[var(--border)] overflow-hidden">
+            <div className="flex min-w-0 flex-1">
+              <div className="min-w-0 flex-1 overflow-hidden border-r border-[var(--rule)]">
                 <CodePanel
                   html={activeFile.content}
                   language={activeFile.language}
@@ -1143,12 +1190,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   onReset={handleReset}
                 />
               </div>
-              <div className="flex-1 overflow-hidden">
-                <PreviewPanel 
-                  previewHtml={previewHtml} 
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <PreviewPanel
+                  previewHtml={previewHtml}
                   files={files}
                   onOpenInNewTab={handleOpenPreviewInNewTab}
-                  livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+                  livePreviewUrl={
+                    (projectData?.cloudflarePreviewExpiresAt || 0) > Date.now()
+                      ? projectData?.cloudflarePreviewUrl
+                      : undefined
+                  }
                   isDeployingPreview={isDeployingPreview}
                   onDeployLivePreview={deployLivePreview}
                   onDeleteLivePreview={deleteLivePreview}
@@ -1156,408 +1207,352 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                     setActiveFilePath(path);
                     if (html) setEditorSearchText(html);
                   }}
-                  onAttachToChat={(path, html, selector) => {
-                    setSelectedElement({ path, html, selector });
-                  }}
+                  onAttachToChat={(path, html, selector) =>
+                    setSelectedElement({ path, html, selector })
+                  }
                 />
               </div>
             </div>
           )}
         </main>
-
       </div>
 
-      <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">Polish Site</DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Describe how to polish this site (typography, animations, mobile responsiveness).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
+      <Modal open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
+        <ModalContent
+          size="sm"
+          title="Polish pass"
+          description="One request covering the finishing work. It edits files like any other build request, and the result is a restorable version."
+          footer={
+            <>
+              <Button onClick={() => setIsPolishDialogOpen(false)}>Cancel</Button>
+              <Button intent="primary" onClick={onPolishSubmit}>
+                Run the pass
+              </Button>
+            </>
+          }
+        >
+          <Field label="What should it focus on" hint="Ctrl and Enter runs it.">
             <Textarea
               autoFocus
               value={polishDescription}
-              onChange={(e) => setPolishDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                  e.preventDefault();
+              onChange={(event) => setPolishDescription(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  event.preventDefault();
                   void onPolishSubmit();
                 }
               }}
-              className="min-h-[100px] text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
+              className="min-h-24"
             />
-          </div>
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsPolishDialogOpen(false)}
-              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
-            >
-              Cancel
+          </Field>
+        </ModalContent>
+      </Modal>
+
+      <Modal open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen}>
+        <ModalContent
+          title="Shortcuts and tips"
+          description="How the workspace is meant to be driven."
+          footer={
+            <Button intent="primary" onClick={() => setIsHelpDialogOpen(false)}>
+              Close
             </Button>
-            <Button
-              onClick={onPolishSubmit}
-              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-            >
-              Apply Polish
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight flex items-center gap-2">
-              <svg className="w-4 h-4 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
-              Quick Start & Tips
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Master the Mini App Factory workflow.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 py-4 font-mono">
-            <div className="space-y-2">
-              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Workflow</h4>
-              <p className="text-[11px] leading-relaxed">
-                <span className="text-[var(--secondary-text)]">1. FABRICATE:</span> Describe your idea and let the AI build the initial structure.
-                <br />
-                <span className="text-[var(--secondary-text)]">2. PREVIEW:</span> Switch between Desktop, Tablet, and Mobile views.
-                <br />
-                <span className="text-[var(--secondary-text)]">3. TRANSFORM:</span> Use the sidebar to ask for specific changes (e.g., "Add a contact form").
-                <br />
-                <span className="text-[var(--secondary-text)]">4. POLISH:</span> Use the Polish tool for finishing touches like animations and responsiveness.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Keyboard Shortcuts</h4>
-              <ul className="text-[11px] space-y-1 list-disc pl-4 text-[var(--muted-text)]">
-                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + P</span> — Quick Open: jump to any file (arrow keys to navigate)</li>
-                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + S</span> — Save all files now</li>
-                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + B</span> — Toggle the file explorer</li>
-                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + I</span> — Toggle the chat sidebar</li>
+          }
+        >
+          <div className="space-y-6">
+            <section>
+              <h3 className="key">Keyboard</h3>
+              <div className="mt-2">
+                <SpecTable
+                  dense
+                  caption="Keyboard shortcuts"
+                  rows={[
+                    { key: 'quick', label: <Kbd>Ctrl P</Kbd>, value: 'Jump to a file. Arrow keys move, Enter opens.' },
+                    { key: 'save', label: <Kbd>Ctrl S</Kbd>, value: 'Save every file now.' },
+                    { key: 'files', label: <Kbd>Ctrl B</Kbd>, value: 'Show or hide the file tree.' },
+                    { key: 'chat', label: <Kbd>Ctrl I</Kbd>, value: 'Show or hide the conversation.' },
+                    { key: 'send', label: <Kbd>Ctrl Enter</Kbd>, value: 'Send the request in the composer.' },
+                  ]}
+                />
+              </div>
+            </section>
+
+            <section>
+              <h3 className="key">Getting better results</h3>
+              <ul className="mt-2 space-y-2 text-sm leading-relaxed text-[var(--muted-foreground)]">
+                <li>
+                  Name the outcome, not the styling. &ldquo;Overdue invoices sort to the top&rdquo;
+                  beats &ldquo;make it modern&rdquo;.
+                </li>
+                <li>
+                  Use the crosshair in the preview to pick an element, then describe the change. The
+                  selected element is sent with the request.
+                </li>
+                <li>
+                  Switch the conversation to Discuss when you want an answer rather than an edit.
+                  Discuss never writes files.
+                </li>
+                <li>Type @ in the composer to reference a file by path.</li>
               </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Prompting Tips</h4>
-              <ul className="text-[11px] space-y-1 list-disc pl-4 text-[var(--muted-text)]">
-                <li>Be specific about colors, layout, and functionality.</li>
-                <li>Ask for "Glassmorphism", "Dark Mode", or "Neo-brutalism" for modern styles.</li>
-                <li>Mention libraries like "Framer Motion" or "Tailwind" for better results.</li>
-                <li>Use <span className="text-[var(--secondary-text)]">Ctrl+Enter</span> to quickly apply AI transformations.</li>
-              </ul>
-            </div>
+            </section>
           </div>
-          <DialogFooter>
-            <Button
-              onClick={() => setIsHelpDialogOpen(false)}
-              className="w-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-            >
-              Got it
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </ModalContent>
+      </Modal>
 
-      <Dialog open={isExporting} onOpenChange={setIsExporting}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight flex items-center gap-2">
-              <Spinner className="text-[var(--primary)]" />
-              Exporting Project
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Please wait while we generate a professional README using AI and bundle your project files into a ZIP.
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
+      <Modal open={isExporting} onOpenChange={setIsExporting}>
+        <ModalContent
+          size="sm"
+          title="Building the export"
+          description="Generating a README and bundling every file into a zip. This takes a few seconds."
+        >
+          <div className="flex items-center gap-3 text-sm text-[var(--muted-foreground)]">
+            <Spinner />
+            Packaging the project
+          </div>
+        </ModalContent>
+      </Modal>
 
-      <EditorDeployDialog projectName={projectName} deploy={deploy} />
+      <EditorDeployDialog projectName={projectName} deploy={deploy} target={buildTarget} />
 
-      <Dialog open={isNewFileDialogOpen} onOpenChange={setIsNewFileDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
-              New {newFileCopy[newFileType].label}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              {newFileCopy[newFileType].description}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <input
-              type="text"
+      <Modal open={isNewFileDialogOpen} onOpenChange={setIsNewFileDialogOpen}>
+        <ModalContent
+          size="sm"
+          title={`New ${newFileCopy[newFileType].label.toLowerCase()}`}
+          description={newFileCopy[newFileType].description}
+          footer={
+            <>
+              <Button onClick={() => setIsNewFileDialogOpen(false)}>Cancel</Button>
+              <Button intent="primary" onClick={confirmNewFile}>
+                Create
+              </Button>
+            </>
+          }
+        >
+          <Field label="Path" hint={`For example ${newFileCopy[newFileType].placeholder}`}>
+            <Input
+              autoFocus
               value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
+              onChange={(event) => setNewFileName(event.target.value)}
               placeholder={newFileCopy[newFileType].placeholder}
-              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+              className="font-mono"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
                   confirmNewFile();
                 }
               }}
-              autoFocus
             />
-          </div>
-          <DialogFooter>
-            <div className="flex justify-end gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => setIsNewFileDialogOpen(false)}
-                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmNewFile}
-                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-              >
+          </Field>
+        </ModalContent>
+      </Modal>
+
+      <Modal open={isNewFolderDialogOpen} onOpenChange={setIsNewFolderDialogOpen}>
+        <ModalContent
+          size="sm"
+          title="New folder"
+          description="Folders group files in the tree. An empty one is kept with a placeholder file."
+          footer={
+            <>
+              <Button onClick={() => setIsNewFolderDialogOpen(false)}>Cancel</Button>
+              <Button intent="primary" onClick={confirmNewFolder}>
                 Create
               </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isNewFolderDialogOpen} onOpenChange={setIsNewFolderDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
-              New Folder
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Enter a name for the new folder.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <input
-              type="text"
+            </>
+          }
+        >
+          <Field label="Folder name">
+            <Input
+              autoFocus
               value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
+              onChange={(event) => setNewFolderName(event.target.value)}
               placeholder="assets"
-              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+              className="font-mono"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
                   confirmNewFolder();
                 }
               }}
-              autoFocus
             />
-          </div>
-          <DialogFooter>
-            <div className="flex justify-end gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => setIsNewFolderDialogOpen(false)}
-                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmNewFolder}
-                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-              >
-                Create
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </Field>
+        </ModalContent>
+      </Modal>
 
-      <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-[var(--primary)]">
-              Rename Item
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Enter a new name for the item.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <input
-              type="text"
+      <Modal open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+        <ModalContent
+          size="sm"
+          title="Rename"
+          description="References to this path elsewhere in the project are not rewritten for you."
+          footer={
+            <>
+              <Button onClick={() => setIsRenameDialogOpen(false)}>Cancel</Button>
+              <Button intent="primary" onClick={confirmRename}>
+                Rename
+              </Button>
+            </>
+          }
+        >
+          <Field label="New name">
+            <Input
+              autoFocus
               value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] font-mono text-xs rounded-md focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+              onChange={(event) => setRenameValue(event.target.value)}
+              className="font-mono"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
                   confirmRename();
                 }
               }}
-              autoFocus
             />
-          </div>
-          <DialogFooter>
-            <div className="flex justify-end gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => setIsRenameDialogOpen(false)}
-                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmRename}
-                className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-              >
-                Rename
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </Field>
+        </ModalContent>
+      </Modal>
 
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-red-500">
-              Delete {itemToDelete?.type === 'folder' ? 'Folder' : 'File'}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              {itemToDelete?.type === 'folder' ? (
-                <>
-                  Are you sure you want to delete the folder <span className="text-[var(--foreground)] font-bold">{itemToDelete.path}</span>?
-                  {(() => {
-                    const prefix = itemToDelete.path.endsWith('/') ? itemToDelete.path : `${itemToDelete.path}/`;
-                    const hasFiles = files.some(f => f.path.startsWith(prefix) && !f.path.endsWith('.keep'));
-                    return hasFiles ? (
-                      <span className="block mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-red-500 font-bold uppercase text-[10px]">
-                        Warning: This folder contains files. All of them will be permanently deleted.
-                      </span>
-                    ) : null;
-                  })()}
-                </>
-              ) : (
-                <>
-                  Are you sure you want to delete <span className="text-[var(--foreground)] font-bold">{itemToDelete?.path}</span>? This action cannot be undone.
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <div className="flex justify-end gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => setIsDeleteDialogOpen(false)}
-                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmDeleteItem}
-                className="bg-red-500 hover:bg-red-600 text-white font-mono uppercase text-[10px] font-black"
-              >
+      <Modal open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <ModalContent
+          size="sm"
+          title={`Delete this ${itemToDelete?.type ?? 'file'}?`}
+          description={
+            itemToDelete?.type === 'folder'
+              ? 'Deleting a folder deletes everything inside it. This cannot be undone from here.'
+              : 'This cannot be undone from here, though the previous build is still restorable from the version history.'
+          }
+          footer={
+            <>
+              <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+              <Button intent="danger" onClick={confirmDeleteItem}>
                 Delete
               </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </>
+          }
+        >
+          <p className="font-mono text-sm">{itemToDelete?.path}</p>
+          {itemToDelete?.type === 'folder' &&
+            (() => {
+              const prefix = itemToDelete.path.endsWith('/')
+                ? itemToDelete.path
+                : `${itemToDelete.path}/`;
+              const contained = files.filter(
+                (file) => file.path.startsWith(prefix) && !file.path.endsWith('.keep')
+              );
+              if (contained.length === 0) return null;
+              return (
+                <Callout
+                  tone="failed"
+                  className="mt-3"
+                  title={`${contained.length} file${contained.length === 1 ? '' : 's'} will go with it`}
+                >
+                  <ul className="mt-1 space-y-0.5 font-mono text-xs">
+                    {contained.slice(0, 8).map((file) => (
+                      <li key={file.path}>{file.path}</li>
+                    ))}
+                    {contained.length > 8 && <li>and {contained.length - 8} more</li>}
+                  </ul>
+                </Callout>
+              );
+            })()}
+        </ModalContent>
+      </Modal>
 
-      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight text-red-500">
-              Reset Project
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Are you sure you want to reset to the initial version? <span className="text-[var(--foreground)] font-bold">All manual changes will be lost.</span>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <div className="flex justify-end gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => setIsResetDialogOpen(false)}
-                className="font-mono uppercase text-[10px] font-black text-[var(--muted-text)]"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmReset}
-                className="bg-red-500 hover:bg-red-600 text-white font-mono uppercase text-[10px] font-black"
-              >
+      <Modal open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <ModalContent
+          size="sm"
+          title="Reset to the first build?"
+          description="Every manual edit made since the project was generated is discarded."
+          footer={
+            <>
+              <Button onClick={() => setIsResetDialogOpen(false)}>Cancel</Button>
+              <Button intent="danger" onClick={confirmReset}>
                 Reset
               </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </>
+          }
+        />
+      </Modal>
 
-      <Dialog open={isQuickOpenOpen} onOpenChange={setIsQuickOpenOpen}>
-        <DialogContent className="sm:max-w-[500px] p-0 gap-0 bg-[var(--background)] border-[var(--border)] overflow-hidden shadow-2xl">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Quick Open Files</DialogTitle>
-          </DialogHeader>
-          <div className="flex items-center border-b border-[var(--border)] px-3">
-            <Search className="w-4 h-4 text-[var(--muted-text)] mr-2" />
-            <Input
-              autoFocus
-              placeholder="Search files..."
-              className="flex-1 border-0 focus-visible:ring-0 bg-transparent text-sm h-12 font-mono"
-              value={quickOpenSearch}
-              onChange={(e) => setQuickOpenSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  setQuickOpenIndex((i) => Math.min(i + 1, filteredQuickOpenFiles.length - 1));
-                } else if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  setQuickOpenIndex((i) => Math.max(i - 1, 0));
-                } else if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
-                  e.preventDefault();
-                  setActiveFilePath(filteredQuickOpenFiles[quickOpenIndex]?.path ?? filteredQuickOpenFiles[0].path);
-                  setIsQuickOpenOpen(false);
-                }
-              }}
-            />
-          </div>
-          <div ref={quickOpenListRef} className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
-            {filteredQuickOpenFiles.length > 0 ? (
-              filteredQuickOpenFiles.map((file, index) => (
-                <button
-                  key={file.path}
-                  data-active={index === quickOpenIndex}
-                  className={cn(
-                    'w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group',
-                    index === quickOpenIndex && 'bg-[var(--background-overlay)]',
-                  )}
-                  onMouseMove={() => setQuickOpenIndex(index)}
-                  onClick={() => {
-                    setActiveFilePath(file.path);
+      {/* Quick open. Its own overlay rather than a Modal, because it is a
+          command surface: it opens near the top of the viewport, not centred,
+          and the workspace behind it stays legible. */}
+      {isQuickOpenOpen && (
+        <div
+          className="fixed inset-0 z-[var(--z-modal)] flex items-start justify-center bg-[oklch(0.14_0.006_62/0.4)] p-4 pt-[12vh]"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsQuickOpenOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-label="Jump to a file"
+            className="anim-rise w-full max-w-lg overflow-hidden rounded-xl border border-[var(--rule)] bg-[var(--popover)] shadow-[var(--shadow-lg)]"
+          >
+            <div className="flex items-center gap-2 border-b border-[var(--rule)] px-3">
+              <Search aria-hidden className="size-4 shrink-0 text-[var(--muted-foreground)]" />
+              <label htmlFor="quick-open" className="sr-only">
+                Search files by path
+              </label>
+              <input
+                id="quick-open"
+                autoFocus
+                value={quickOpenSearch}
+                onChange={(event) => setQuickOpenSearch(event.target.value)}
+                placeholder="Search files"
+                className="h-11 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setQuickOpenIndex((i) => Math.min(i + 1, filteredQuickOpenFiles.length - 1));
+                  } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    setQuickOpenIndex((i) => Math.max(i - 1, 0));
+                  } else if (event.key === 'Escape') {
                     setIsQuickOpenOpen(false);
-                  }}
-                >
-                  <div className="w-8 h-8 rounded border border-[var(--border)] flex items-center justify-center bg-[var(--background)] group-hover:bg-[var(--background-overlay)] transition-colors">
-                    <span className="text-[9px] uppercase font-bold text-[var(--muted-text)]">
-                      {file.path.split('.').pop()}
-                    </span>
-                  </div>
-                  <div className="flex flex-col flex-1 overflow-hidden">
-                    <span className="text-xs font-mono truncate">{file.path}</span>
-                    <span className="text-[9px] text-[var(--muted-text)] font-mono uppercase tracking-widest leading-none mt-1">
+                  } else if (event.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
+                    event.preventDefault();
+                    setActiveFilePath(
+                      filteredQuickOpenFiles[quickOpenIndex]?.path ?? filteredQuickOpenFiles[0].path
+                    );
+                    setIsQuickOpenOpen(false);
+                  }
+                }}
+              />
+              <IconButton label="Close" size="sm" onClick={() => setIsQuickOpenOpen(false)}>
+                <X className="size-4" />
+              </IconButton>
+            </div>
+
+            <div ref={quickOpenListRef} className="scroll-thin max-h-80 overflow-y-auto p-1">
+              {filteredQuickOpenFiles.length > 0 ? (
+                filteredQuickOpenFiles.map((file, index) => (
+                  <button
+                    key={file.path}
+                    type="button"
+                    data-active={index === quickOpenIndex}
+                    onMouseMove={() => setQuickOpenIndex(index)}
+                    onClick={() => {
+                      setActiveFilePath(file.path);
+                      setIsQuickOpenOpen(false);
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-[5px] px-2 py-1.5 text-left transition-colors',
+                      index === quickOpenIndex ? 'row-selected' : 'hover:bg-[var(--surface-3)]'
+                    )}
+                  >
+                    <span className="inline-block h-3 w-[3px] shrink-0 rounded-[1px] bg-[var(--rule-strong)]" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm">{file.path}</span>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted-foreground)]">
                       {file.fileType}
                     </span>
-                  </div>
-                  {activeFilePath === file.path && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" />
-                  )}
-                </button>
-              ))
-            ) : (
-              <div className="p-12 text-center text-xs text-[var(--muted-text)] font-mono uppercase tracking-widest opacity-50">
-                No matching files
-              </div>
-            )}
+                  </button>
+                ))
+              ) : (
+                <p className="px-3 py-10 text-center text-sm text-[var(--muted-foreground)]">
+                  No file matches that.
+                </p>
+              )}
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 }

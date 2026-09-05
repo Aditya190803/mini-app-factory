@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ProjectFile } from '@/lib/page-builder';
 import { cn } from '@/lib/utils';
-import { Button } from '../ui/button';
+import { IconButton } from '@/components/kit';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import {
   ContextMenu,
@@ -31,7 +31,7 @@ import {
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
-} from '../ui/context-menu';
+} from '@/components/kit/context-menu';
 
 interface FileTreeProps {
   files: ProjectFile[];
@@ -82,14 +82,14 @@ export default function FileTree({
   };
 
   const getIcon = (file: ProjectFile) => {
-    if (file.fileType === 'page') return <File className="w-4 h-4 text-blue-400" />;
-    if (file.fileType === 'partial') return <Puzzle className="w-4 h-4 text-purple-400" />;
-    if (file.fileType === 'style') return <Palette className="w-4 h-4 text-pink-400" />;
-    if (file.fileType === 'script') return <Code className="w-4 h-4 text-yellow-400" />;
-    if (file.fileType === 'worker') return <CloudCog className="w-4 h-4 text-orange-400" />;
-    if (file.fileType === 'migration') return <Database className="w-4 h-4 text-emerald-400" />;
-    if (file.fileType === 'config') return <Braces className="w-4 h-4 text-cyan-400" />;
-    return <FileCode className="w-4 h-4 text-gray-400" />;
+    if (file.fileType === 'page') return <File className="w-4 h-4 text-[var(--muted-foreground)]" />;
+    if (file.fileType === 'partial') return <Puzzle className="w-4 h-4 text-[var(--muted-foreground)]" />;
+    if (file.fileType === 'style') return <Palette className="w-4 h-4 text-[var(--muted-foreground)]" />;
+    if (file.fileType === 'script') return <Code className="w-4 h-4 text-[var(--muted-foreground)]" />;
+    if (file.fileType === 'worker') return <CloudCog className="w-4 h-4 text-[var(--signal-text)]" />;
+    if (file.fileType === 'migration') return <Database className="w-4 h-4 text-[var(--signal-text)]" />;
+    if (file.fileType === 'config') return <Braces className="w-4 h-4 text-[var(--signal-text)]" />;
+    return <FileCode className="w-4 h-4 text-[var(--muted-foreground)]" />;
   };
 
   const visibleItems = useMemo(() => {
@@ -178,66 +178,54 @@ export default function FileTree({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] border-r border-[#2d2d2d] w-full select-none">
-      <div className="p-3 flex items-center justify-between border-b border-[#2d2d2d]">
-        <h3 className="text-xs font-semibold uppercase text-gray-500 tracking-wider flex items-center gap-2">
+    <div className="flex flex-col h-full bg-[var(--sidebar)] border-r border-[var(--rule)] w-full select-none">
+      <div className="p-3 flex items-center justify-between border-b border-[var(--rule)]">
+        <h3 className="key flex items-center gap-2">
           Explorer
         </h3>
         <div className="flex gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          <IconButton
+            size="sm"
+            label="New Page"
             onClick={() => onNewFile('page')}
-            title="New Page"
           >
             <Plus className="w-4 h-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="New Partial"
             onClick={() => onNewFile('partial')}
-            title="New Partial"
           >
             <Puzzle className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="New Cloudflare Worker"
             onClick={() => onNewFile('worker')}
-            title="New Cloudflare Worker"
           >
             <CloudCog className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="New D1 Migration"
             onClick={() => onNewFile('migration')}
-            title="New D1 Migration"
           >
             <Database className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="New Cloudflare Config"
             onClick={() => onNewFile('config')}
-            title="New Cloudflare Config"
           >
             <Braces className="w-4 h-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-6 w-6 hover:bg-[#2d2d2d]"
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="New Folder"
             onClick={() => onNewFolder?.()}
-            title="New Folder"
           >
             <FolderPlus className="w-4 h-4" />
-          </Button>
+          </IconButton>
         </div>
       </div>
       
@@ -258,12 +246,12 @@ export default function FileTree({
                             className={cn(
                               "group flex items-center py-1 cursor-pointer text-xs transition-colors",
                               item.type === 'folder' 
-                                ? "hover:bg-[#252525] text-gray-400 hover:text-gray-200"
+                                ? "hover:bg-[var(--surface-2)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                                 : activeFilePath === item.path 
-                                  ? "bg-[#2d2d2d] text-white border-l-2 border-primary" 
-                                  : "text-gray-400 hover:bg-[#252525] hover:text-gray-200",
-                              snapshot.isDragging && "bg-[#363636] shadow-xl z-50 opacity-80",
-                              snapshot.combineWith && "bg-primary/20 ring-2 ring-primary border-primary"
+                                  ? "row-selected font-medium" 
+                                  : "text-[var(--muted-foreground)] hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]",
+                              snapshot.isDragging && "bg-[var(--surface-3)] shadow-xl z-50 opacity-80",
+                              snapshot.combineWith && "bg-[var(--signal-wash)] ring-2 ring-[var(--ring)]"
                             )}
                             style={{ 
                               ...provided.draggableProps.style,
@@ -278,7 +266,7 @@ export default function FileTree({
                             )}
                             <span className="mr-2">
                               {item.type === 'folder' 
-                                ? (item.isExpanded ? <FolderOpen className="w-4 h-4 text-yellow-500/60" /> : <Folder className="w-4 h-4 text-yellow-500/60" />)
+                                ? (item.isExpanded ? <FolderOpen className="w-4 h-4 text-[var(--muted-foreground)]" /> : <Folder className="w-4 h-4 text-[var(--muted-foreground)]" />)
                                 : getIcon(item.file!)
                               }
                             </span>
@@ -290,7 +278,7 @@ export default function FileTree({
                             <div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                               {item.path !== 'index.html' && (
                                 <button
-                                  className="p-1 hover:text-primary transition-colors"
+                                  className="p-1 hover:text-[var(--foreground)] transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onRenameItem?.(item.path);
@@ -302,7 +290,7 @@ export default function FileTree({
                               )}
                               {item.path !== 'index.html' && (
                                 <button
-                                  className="p-1 hover:text-red-400 transition-colors"
+                                  className="p-1 hover:text-[var(--destructive-text)] transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onDeleteItem(item.path, item.type);
@@ -315,48 +303,48 @@ export default function FileTree({
                             </div>
                           </div>
                         </ContextMenuTrigger>
-                        <ContextMenuContent className="bg-[#252525] border-[#333] text-gray-200 min-w-[160px]">
+                        <ContextMenuContent className="bg-[var(--popover)] border-[var(--rule)] text-[var(--popover-foreground)] min-w-[160px]">
                           {item.type === 'folder' && (
                             <>
                               <ContextMenuSub>
-                                <ContextMenuSubTrigger className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs">
+                                <ContextMenuSubTrigger className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs">
                                   <Plus className="mr-2 h-3.5 w-3.5" />
                                   <span>New File in folder</span>
                                 </ContextMenuSubTrigger>
-                                <ContextMenuSubContent className="bg-[#252525] border-[#333] text-gray-200">
+                                <ContextMenuSubContent className="bg-[var(--popover)] border-[var(--rule)] text-[var(--popover-foreground)]">
                                   <ContextMenuItem 
-                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                                     onClick={() => onNewFileInFolder?.(item.path, 'page')}
                                   >
-                                    <File className="mr-2 h-3.5 w-3.5 text-blue-400" />
+                                    <File className="mr-2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
                                     <span>New Page</span>
                                   </ContextMenuItem>
                                   <ContextMenuItem 
-                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                                     onClick={() => onNewFileInFolder?.(item.path, 'partial')}
                                   >
-                                    <Puzzle className="mr-2 h-3.5 w-3.5 text-purple-400" />
+                                    <Puzzle className="mr-2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
                                     <span>New Partial</span>
                                   </ContextMenuItem>
                                   <ContextMenuItem 
-                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                                     onClick={() => onNewFileInFolder?.(item.path, 'style')}
                                   >
-                                    <Palette className="mr-2 h-3.5 w-3.5 text-pink-400" />
+                                    <Palette className="mr-2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
                                     <span>New Stylesheet</span>
                                   </ContextMenuItem>
                                   <ContextMenuItem 
-                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                                     onClick={() => onNewFileInFolder?.(item.path, 'script')}
                                   >
-                                    <Code className="mr-2 h-3.5 w-3.5 text-yellow-400" />
+                                    <Code className="mr-2 h-3.5 w-3.5 text-[var(--muted-foreground)]" />
                                     <span>New Script</span>
                                   </ContextMenuItem>
                                   <ContextMenuItem
-                                    className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                                    className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                                     onClick={() => onNewFileInFolder?.(item.path, 'migration')}
                                   >
-                                    <Database className="mr-2 h-3.5 w-3.5 text-emerald-400" />
+                                    <Database className="mr-2 h-3.5 w-3.5 text-[var(--signal-text)]" />
                                     <span>New D1 Migration</span>
                                   </ContextMenuItem>
                                 </ContextMenuSubContent>
@@ -367,7 +355,7 @@ export default function FileTree({
                           
                           {item.path !== 'index.html' && (
                             <ContextMenuItem 
-                              className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                              className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                               onClick={() => onRenameItem?.(item.path)}
                             >
                               <Edit2 className="mr-2 h-3.5 w-3.5" />
@@ -377,7 +365,7 @@ export default function FileTree({
                           
                           {item.type === 'file' && (
                             <ContextMenuItem 
-                              className="focus:bg-[#333] focus:text-white px-2 py-1.5 text-xs"
+                              className="focus:bg-[var(--surface-3)] focus:text-[var(--foreground)] px-2 py-1.5 text-xs"
                               onClick={() => onDuplicateItem?.(item.path)}
                             >
                               <Copy className="mr-2 h-3.5 w-3.5" />
