@@ -3,16 +3,51 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Wordmark } from '@/components/brand/mark'
-import { APP_FOOTER_GROUPS, APP_NAME } from '@/lib/constants'
+import { APP_FOOTER_GROUPS, APP_FOOTER_LINKS, APP_NAME } from '@/lib/constants'
 
 /**
- * The footer, laid out as a plate: a wordmark column, then grouped links under
- * uppercase keys. Hidden inside the editor, where a full-height workspace has
- * no room for legal navigation below it.
+ * The footer, in two weights.
+ *
+ * Working surfaces get a single ruled row: on a page someone opens to do a
+ * task, a four-column sitemap is furniture in the way. Reading surfaces (the
+ * marketing page, docs, legal) get the full grid, because that is where
+ * someone is actually looking for another page.
+ *
+ * The editor gets nothing at all; it is a full-height workspace.
  */
+
+/** Surfaces where the full sitemap earns its space. */
+const READING_SURFACES = ['/about', '/docs', '/privacy', '/eula', '/support']
+
 export function SiteFooter() {
-  const pathname = usePathname()
-  if (pathname?.startsWith('/edit')) return null
+  const pathname = usePathname() ?? '/'
+
+  if (pathname.startsWith('/edit')) return null
+
+  const full = READING_SURFACES.some(
+    (surface) => pathname === surface || pathname.startsWith(`${surface}/`)
+  )
+
+  if (!full) {
+    return (
+      <footer className="border-t border-[var(--rule)] bg-[var(--background)]">
+        <div className="mx-auto flex w-full max-w-[84rem] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3.5 sm:px-6">
+          <p className="font-mono text-xs text-[var(--muted-foreground)]">{APP_NAME}</p>
+          <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {APP_FOOTER_LINKS.map((link, index) => (
+              <Link
+                key={`${link.href}-${index}`}
+                href={link.href}
+                className="rounded text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </footer>
+    )
+  }
 
   return (
     <footer className="border-t border-[var(--rule)] bg-[var(--background)]">
@@ -28,8 +63,8 @@ export function SiteFooter() {
           <nav key={group.title} aria-label={group.title}>
             <h2 className="key">{group.title}</h2>
             <ul className="mt-3 space-y-2">
-              {group.links.map((link) => (
-                <li key={link.href}>
+              {group.links.map((link, index) => (
+                <li key={`${link.href}-${index}`}>
                   <Link
                     href={link.href}
                     className="rounded text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
@@ -44,9 +79,7 @@ export function SiteFooter() {
       </div>
 
       <div className="mx-auto flex w-full max-w-[84rem] flex-wrap items-center justify-between gap-2 border-t border-[var(--rule)] px-4 py-4 sm:px-6">
-        <p className="font-mono text-xs text-[var(--muted-foreground)]">
-          {APP_NAME}
-        </p>
+        <p className="font-mono text-xs text-[var(--muted-foreground)]">{APP_NAME}</p>
         <p className="font-mono text-xs text-[var(--muted-foreground)]">
           Built on Cloudflare Pages, Workers, D1, KV, R2
         </p>

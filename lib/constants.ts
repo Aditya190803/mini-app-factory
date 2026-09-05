@@ -20,8 +20,9 @@ export const APP_FOOTER_GROUPS: ReadonlyArray<FooterGroup> = [
   {
     title: 'Platform',
     links: [
-      { href: '/docs#targets', label: 'Static sites' },
-      { href: '/docs#targets', label: 'Edge apps' },
+      { href: '/about', label: 'What it does' },
+      { href: '/docs#targets', label: 'Static and edge' },
+      { href: '/docs#manifest', label: 'The manifest' },
       { href: '/docs#deploy', label: 'Deploying' },
     ],
   },

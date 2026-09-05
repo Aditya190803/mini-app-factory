@@ -67,6 +67,8 @@ export function Composer({ className }: { className?: string }) {
     }
     setModel(getStoredSelectedModel())
     setModelReady(true)
+    // This is the primary action on the page it lives on, so it takes focus.
+    textareaRef.current?.focus()
   }, [])
 
   React.useEffect(() => {
@@ -74,7 +76,17 @@ export function Composer({ className }: { className?: string }) {
     setStoredSelectedModel(model)
   }, [model, modelReady])
 
-  const starters = target === 'edge' ? EDGE_STARTERS : target === 'static' ? STATIC_STARTERS : null
+  /**
+   * Starters follow the chosen target. On "Decide for me" they alternate, so
+   * the list itself demonstrates that both shapes come from the same box
+   * rather than leaving a first-time visitor with no examples at all.
+   */
+  const starters =
+    target === 'edge'
+      ? EDGE_STARTERS.slice(0, 4)
+      : target === 'static'
+        ? STATIC_STARTERS.slice(0, 4)
+        : [STATIC_STARTERS[0], EDGE_STARTERS[0], STATIC_STARTERS[1], EDGE_STARTERS[1]]
 
   const start = async () => {
     setError('')
