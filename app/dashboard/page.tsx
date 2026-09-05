@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Trash2,
   Settings2,
@@ -38,6 +38,18 @@ export default function DashboardPage() {
   const [remixSource, setRemixSource] = useState<NonNullable<typeof projects>[number] | null>(null);
   const [remixName, setRemixName] = useState('');
   const [isRemixing, setIsRemixing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredProjects = useMemo(() => {
+    if (!projects) return [];
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return projects;
+    return projects.filter(
+      (project) =>
+        project.projectName.toLowerCase().includes(query) ||
+        (project.deploymentUrl ?? '').toLowerCase().includes(query),
+    );
+  }, [projects, searchQuery]);
 
   const handleDelete = async (projectName: string) => {
     if (!user) return;
@@ -164,6 +176,21 @@ export default function DashboardPage() {
           </Button>
         </div>
 
+        {/* Search only earns its place once the list is long enough to scan. */}
+        {projects.length > 6 && (
+          <div className="mb-6 max-w-sm">
+            <label htmlFor="project-search" className="sr-only">Search projects</label>
+            <Input
+              id="project-search"
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search projects…"
+              autoComplete="off"
+            />
+          </div>
+        )}
+
         {projects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-6 py-20 text-center">
             <span className="mx-auto grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground">
@@ -179,9 +206,13 @@ export default function DashboardPage() {
               <ArrowRight className="size-4" />
             </Button>
           </div>
+        ) : filteredProjects.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border px-6 py-16 text-center text-sm text-muted-foreground">
+            No projects match “{searchQuery}”.
+          </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => {
+            {filteredProjects.map((project) => {
               const deployLabel = project.deploymentUrl
                 ? (project.deployProvider ?? 'Deployed')
                 : project.isPublished

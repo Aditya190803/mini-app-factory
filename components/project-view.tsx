@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Check, Circle, Code2, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
 import EditorWorkspace from '@/components/editor-workspace';
 import type { ProjectMetadata } from '@/lib/projects';
@@ -33,6 +34,7 @@ function ActivityIcon({ activity }: { activity: Activity }) {
 }
 
 export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
+  const router = useRouter();
   const [project, setProject] = useState(initialProject);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
@@ -173,7 +175,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   }, [persistedEvents]);
 
   if (project.status === 'completed') {
-    return <EditorWorkspace initialHTML={project.html || ''} initialPrompt={project.prompt} projectName={projectName} onBack={() => { window.location.href = '/'; }} />;
+    return <EditorWorkspace initialHTML={project.html || ''} initialPrompt={project.prompt} projectName={projectName} onBack={() => router.push('/')} />;
   }
 
   return (
