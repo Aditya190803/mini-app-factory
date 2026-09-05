@@ -1,20 +1,12 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Button, Modal, ModalContent } from '@/components/kit'
 
 type ConfirmOptions = {
   title: string
-  description?: string
-  /** Rendered in a monospace block — use for resource lists and file paths. */
+  description: string
+  /** Rendered as a monospace block. Use it for resource lists and file paths. */
   details?: string
   confirmLabel?: string
   cancelLabel?: string
@@ -25,16 +17,19 @@ type ConfirmOptions = {
  * A promise-based replacement for window.confirm.
  *
  *   const { confirm, confirmDialog } = useConfirm()
- *   if (!(await confirm({ title: 'Delete this?' }))) return
+ *   if (!(await confirm({ title: 'Delete this?', description: '...' }))) return
  *
  * Render `confirmDialog` once anywhere in the component tree.
+ *
+ * This is one of only two modals in the product. It earns the interruption
+ * because the thing on the other side of it is irreversible, or bills.
  */
 export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const resolverRef = useRef<((value: boolean) => void) | null>(null)
 
-  const confirm = useCallback((opts: ConfirmOptions) => {
-    setOptions(opts)
+  const confirm = useCallback((next: ConfirmOptions) => {
+    setOptions(next)
     return new Promise<boolean>((resolve) => {
       resolverRef.current = resolve
     })
@@ -47,41 +42,38 @@ export function useConfirm() {
   }, [])
 
   const confirmDialog = (
-    <Dialog
+    <Modal
       open={options !== null}
       onOpenChange={(open) => {
-        // Covers Esc, overlay click and the close button, all of
-        // which must resolve the promise rather than leave it hanging.
+        // Esc, the overlay, and the close button all land here. Every one of
+        // them has to settle the promise rather than leave the caller awaiting
+        // forever.
         if (!open) settle(false)
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{options?.title}</DialogTitle>
-          {options?.description && (
-            <DialogDescription>{options.description}</DialogDescription>
-          )}
-        </DialogHeader>
-
+      <ModalContent
+        size="sm"
+        title={options?.title ?? ''}
+        description={options?.description ?? ''}
+        footer={
+          <>
+            <Button onClick={() => settle(false)}>{options?.cancelLabel ?? 'Cancel'}</Button>
+            <Button
+              intent={options?.destructive ? 'danger' : 'primary'}
+              onClick={() => settle(true)}
+            >
+              {options?.confirmLabel ?? 'Confirm'}
+            </Button>
+          </>
+        }
+      >
         {options?.details && (
-          <pre className="custom-scrollbar max-h-48 overflow-auto rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+          <pre className="scroll-thin max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-[var(--rule)] bg-[var(--surface-2)] p-3 font-mono text-xs leading-relaxed">
             {options.details}
           </pre>
         )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => settle(false)}>
-            {options?.cancelLabel ?? 'Cancel'}
-          </Button>
-          <Button
-            variant={options?.destructive ? 'destructive' : 'default'}
-            onClick={() => settle(true)}
-          >
-            {options?.confirmLabel ?? 'Confirm'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </ModalContent>
+    </Modal>
   )
 
   return { confirm, confirmDialog }

@@ -1,66 +1,37 @@
 import { ImageResponse } from 'next/og'
 
-// Route segment config
 export const runtime = 'edge'
-
-// Image metadata
-export const size = {
-  width: 180,
-  height: 180,
-}
+export const size = { width: 180, height: 180 }
 export const contentType = 'image/png'
 
-// Image generation
-export default function Icon() {
+/**
+ * The touch icon. Same mark, more room, so the registration corners get to sit
+ * at their intended weight instead of being thickened for legibility.
+ */
+export default function AppleIcon() {
   return new ImageResponse(
     (
-      // ImageResponse JSX element
       <div
         style={{
-          fontSize: 120,
-          background: '#F59E0B',
+          background: '#2A2622',
           width: '100%',
           height: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'black',
-          borderRadius: '20%',
         }}
       >
-        <svg
-          width="120"
-          height="120"
-          viewBox="0 0 256 256"
-          fill="none"
-        >
+        <svg width="112" height="112" viewBox="0 0 24 24" fill="none">
           <path
-            d="M224,200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V104a8,8,0,0,1,12.8-6.4L80,124.26V104a8,8,0,0,1,12.8-6.4L128,124.26V104a8,8,0,0,1,12.8-6.4L176,124.26V80a8,8,0,0,1,8-8h32a8,8,0,0,1,8,8Z"
-            fill="currentColor"
-            fillOpacity="0.2"
+            d="M3 7.5V3h4.5M16.5 3H21v4.5M21 16.5V21h-4.5M7.5 21H3v-4.5"
+            stroke="#E8E4DE"
+            strokeWidth="1.5"
           />
-          <path
-            d="M32,208H224"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="16"
-          />
-          <path
-            d="M224,200V80a8,8,0,0,0-8-8H184a8,8,0,0,0-8,8v44.26L140.8,97.6A8,8,0,0,0,128,104v20.26L92.8,97.6A8,8,0,0,0,80,104v20.26L44.8,97.6A8,8,0,0,0,32,104v96a8,8,0,0,0,8,8H216A8,8,0,0,0,224,200Z"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="16"
-          />
+          <path d="M7 7h7.5L17 9.5V17H7V7Z" fill="#C4482E" />
+          <path d="M14.5 7v2.5H17" stroke="#2A2622" strokeWidth="1.1" fill="none" />
         </svg>
       </div>
     ),
-    // ImageResponse options
-    {
-      // For convenience, we can re-use the exported icons size metadata
-      // config to also set the ImageResponse's width and height.
-      ...size,
-    }
+    { ...size }
   )
 }
