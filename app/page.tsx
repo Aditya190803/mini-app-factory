@@ -29,9 +29,6 @@ export default function Home() {
   const promptId = useId();
   const errorId = useId();
 
-  // Derive a URL-safe slug from the prompt so nobody has to name their app
-  // before they've seen it. A short random suffix keeps collisions rare;
-  // handleStart retries with a new one if the name is taken.
   const slugify = (text: string, suffix: string) => {
     const base = text
       .toLowerCase()
@@ -59,7 +56,6 @@ export default function Home() {
         sessionStorage.removeItem(DRAFT_KEY);
       }
     } catch {
-      // Ignore unreadable drafts.
     }
     if (textareaRef.current) {
       textareaRef.current.focus();
@@ -100,8 +96,6 @@ export default function Home() {
     setIsChecking(true);
 
     try {
-      // The name is invented from the prompt, not chosen by the user. Retry
-      // a couple of times with a fresh suffix if it collides.
       let lastError = 'We couldn’t start that project. Try again.';
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const name = slugify(prompt, randomSuffix());
