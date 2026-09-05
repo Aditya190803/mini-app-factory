@@ -1,157 +1,100 @@
- # Mini App Factory
+# Mini App Factory
 
-A powerful AI-powered web application that generates production-ready multi-page websites from natural language descriptions. Simply describe what you want to build, and the AI will create a complete, responsive project for you.
+Describe an application in plain language. Read the files it produces. Publish
+them to your own Cloudflare account.
 
-## Features
+## What it makes
 
-- **Natural Language Input**: Describe your website in plain English
-- **Multi-page Architecture**: Automatically generates multiple linked pages based on description
-- **Two-Pass AI Pipeline**:
-  - **Conceptualize**: AI creates a detailed design specification and site map
-  - **Generate**: AI builds production-ready files with Tailwind CSS v4
-- **Project Dashboard**: Manage and track all your generated sites (including redeploys)
-- **Authentication**: Secure access to your projects via Stack Auth
-- **AI Control Panel**: Per-user persisted AI settings (BYOK + model/provider controls)
-- **Admin-Only Controls**: Global provider controls restricted to `aditya.mer@somaiya.edu`
-- **Live Preview & Editor**: Interactive workspace to see and edit your sites in real-time
-- **Download & Deploy**: Export as ZIP with all assets or deploy to the web
-- **Modern UI**: Built with Tailwind CSS v4 and shadcn/ui components
+Every project compiles to one of exactly two shapes, and the shape is read off
+the files rather than set as a mode you have to remember.
 
-## How It Works
+**Static site.** Pages, styles, browser scripts. Uploaded to Cloudflare Pages as
+a plain asset bundle. Nothing billable.
 
-1. **Input Your Description**: Tell the AI what kind of website you want to create.
-2. **AI Conceptualizes**: The AI analyzes your request, creates a design spec, and plans the page structure.
-3. **AI Generates**: The AI generates all necessary HTML, CSS (Tailwind), and assets.
-4. **Manage & Edit**: Access your project from the dashboard to preview, edit, or export.
+**Edge app.** The same bundle plus a `_worker.js` and, usually, stored data:
+D1, KV, R2, Queues, Vectorize, or Durable Objects, declared in a
+`cloudflare.manifest.json` you can read and edit.
 
-## Tech Stack
+A project becomes an edge app the moment it contains a Worker, a SQL migration,
+or a Cloudflare config file. See `lib/targets.ts`.
 
-- **Framework**: [Next.js 16](https://nextjs.org/) with App Router
-- **Database & Backend**: [Convex](https://convex.dev/)
-- **Authentication**: [Stack Auth](https://stack-auth.com/)
-- **AI Providers**:
-   - OpenCode Zen free models (`@ai-sdk/openai-compatible`)
-   - OpenRouter free models, including `openrouter/free` (`@openrouter/ai-sdk-provider`)
+## How it behaves
 
-Free-model lists are fetched live from both providers on every visit, never hardcoded.
-- **Styling**: Tailwind CSS v4
-- **Components**: shadcn/ui
-- **Runtime & Package Manager**: [Bun](https://bun.sh/)
+- **Nothing is created without asking.** The deploy dialog shows the exact list
+  of Cloudflare resources, each labelled `create` or `reuse`, and does nothing
+  until you approve it.
+- **Migrations are guarded.** One that has already been applied cannot be
+  edited afterwards, and a destructive one is refused outright.
+- **Every successful build is restorable.** From the version history in the
+  conversation pane.
+- **The output is portable.** Ordinary web files and standard Wrangler config.
+  Export a zip or push to a repo you own; deleting this account does not take
+  your app down.
 
-## Getting Started
+## Deploy surfaces
 
-### Prerequisites
+| Surface | Hosts | Notes |
+| --- | --- | --- |
+| **Cloudflare** | static and edge | The default. Into your own account. |
+| Cloudflare preview | static and edge | Throwaway subdomain with preview-suffixed resources. Expires on its own. |
+| Factory preview | static only | Served from this app. No account needed. |
+| GitHub mirror | neither | Pushes the bundle to a repo. Hosts nothing. |
+| Netlify | static only | Mirrors to GitHub, then hosts the assets. No Worker runtime. |
 
-- [Bun](https://bun.sh/) installed on your machine
+## Stack
 
-### Installation
+- **Framework**: Next.js 16, App Router
+- **Database**: Convex
+- **Auth**: Stack Auth
+- **Models**: OpenCode Zen and OpenRouter, both fetched live on every visit,
+  never hardcoded
+- **Styling**: Tailwind CSS v4, plus the Plate design system in
+  `app/globals.css` and `components/kit/`
+- **Runtime**: Bun
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   bun install
-   ```
+## Design
 
-3. Set up your environment variables in `.env.local` (you can start from `.env.example` or `.env.local.example`):
-   
-   ```bash
-   # AI Providers
-   OPENCODE_API_KEY=your_opencode_zen_api_key
-   OPENCODE_MODEL=deepseek-v4-flash-free
-   OPENCODE_FALLBACK_MODEL=longcat-2.0-free
-   OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL=openrouter/free
-   OPENROUTER_FALLBACK_MODEL=z-ai/glm-5.2:free
+The interface is documented in [`DESIGN.md`](DESIGN.md). The short version:
+a drafting plate. Ink on warm paper, hairline rules, dense spec tables, one deep
+red-lead accent used only for the primary action, the current selection, and
+anything live. Dark by default.
 
-   # Optional: reference URL → site content at generation (https://exa.ai)
-   EXA_API_KEY=your_exa_api_key
-   
-   # Convex
-   CONVEX_DEPLOYMENT_KEY=your_convex_key # or run bun convex dev
-   NEXT_PUBLIC_CONVEX_URL=your_convex_url
-   
-   # Stack Auth
-   NEXT_PUBLIC_STACK_PROJECT_ID=your_stack_project_id
-   NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=your_stack_key
-   STACK_SECRET_SERVER_KEY=your_stack_secret
+Product intent is in [`PRODUCT.md`](PRODUCT.md).
 
-   # GitHub OAuth (Deployments)
-   GITHUB_CLIENT_ID=your_github_oauth_client_id
-   GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
-
-   # Optional Deployment Integrations
-   NETLIFY_CLIENT_ID=your_netlify_oauth_client_id
-   NETLIFY_CLIENT_SECRET=your_netlify_oauth_client_secret
-   VERCEL_CLIENT_ID=your_vercel_oauth_client_id
-   VERCEL_CLIENT_SECRET=your_vercel_oauth_client_secret
-
-   CLOUDFLARE_CLIENT_ID=your_cloudflare_oauth_client_id
-   CLOUDFLARE_CLIENT_SECRET=your_cloudflare_oauth_client_secret
-   CLOUDFLARE_OAUTH_SCOPES="your registered Cloudflare OAuth scopes"
-
-   # Integration Token Encryption
-   INTEGRATION_TOKEN_SECRET=your_32+_char_secret
-   ```
-
-### One-Click Deploy
-
-The editor includes a deploy flow that can create or reuse a GitHub repo and publish the project.
-
-1. Configure deployment integrations in your environment.
-2. Open a project in the editor and click **Deploy**.
-3. Connect required accounts when prompted.
-4. Choose repo ownership and visibility.
-5. Redeploy from the dashboard whenever needed.
-
-### Project Settings
-
-Each project has a settings page at `/edit/[projectName]/settings` that centralizes deployment info and metadata/SEO.
-
-### AI Settings & Access Control
-
-- BYOK keys are available to any signed-in user.
-- AI admin controls (provider enable/disable, provider defaults, custom models) are restricted to:
-   - `aditya.mer@somaiya.edu`
-- AI settings are persisted per user in Convex and synchronized through `/api/ai/settings`.
-- Admin config changes are audit logged in Convex.
-
-4. Initialize Convex:
-   ```bash
-   bun convex dev
-   ```
-
-### Development
-
-Run the development server:
+## Running it
 
 ```bash
+bun install
+bun convex dev     # pushes the schema, including the `target` field
 bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the application.
+Open http://localhost:3000.
 
-### Testing
+Environment variables, OAuth scopes, and the decisions still outstanding are all
+in [`REQUIREMENTS.md`](REQUIREMENTS.md). The Cloudflare OAuth scope list in
+particular is worth reading before the first deploy: a missing scope surfaces as
+a runtime failure in the deploy dialog, not at build time.
 
-Run unit tests (Vitest):
-
-```bash
-bun test
-```
-
-Run type checks:
+## Checks
 
 ```bash
 bun run typecheck
-```
-
-Run lint:
-
-```bash
 bun run lint
+bun run test:ci
+bun run build
 ```
 
-Build the project:
+## Layout
 
-```bash
-bun run build
+```
+app/                    routes
+components/kit/         the whole component vocabulary
+components/shell/       top bar, footer, account, theme, model picker
+components/brand/       the mark and lockup
+components/landing/     landing page sections
+components/editor/      workspace panes
+lib/targets.ts          build targets and deploy surfaces
+lib/cloudflare*.ts      manifest parsing, provisioning, deployment
+convex/                 schema and server functions
 ```

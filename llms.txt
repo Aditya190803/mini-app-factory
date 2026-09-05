@@ -1,37 +1,61 @@
 # Mini App Factory
 
-> A powerful AI-powered web application that generates production-ready static websites from natural language descriptions.
+> A Cloudflare-first application factory. Describe an app in plain language, read
+> the files it produces, and publish them into your own Cloudflare account.
 
 ## Overview
-Mini App Factory is an AI-driven platform that transforms natural language prompts into complete, production-ready static websites. Users describe what they want, and the AI generates, previews, and deploys fully functional web applications.
+
+Mini App Factory turns a natural-language description into a real project of
+ordinary web files, previews it, and deploys it to Cloudflare. Output is
+portable: standard web files and standard Wrangler configuration, exportable as
+a zip or a GitHub repo.
+
+## Build targets
+
+Every project is one of two shapes, derived from its files rather than set as a
+mode.
+
+- **Static site** — HTML, CSS, browser JS. Uploaded to Cloudflare Pages as an
+  asset bundle. Nothing billable is created.
+- **Edge app** — the same bundle plus `_worker.js` and, usually, stored data
+  through D1, KV, R2, Queues, Vectorize, or Durable Objects, declared in
+  `cloudflare.manifest.json`.
 
 ## Key Features
-- **AI Website Generation** — Generate complete websites from natural language descriptions
-- **Visual Reference Upload** — Upload reference images for design guidance
-- **Live Preview** — Real-time preview of generated sites
-- **Code Editor** — Built-in code editor with file tree for custom edits
-- **Template System** — Pre-built templates to accelerate development
-- **Project Management** — Organize and manage multiple projects
-- **One-click Deploy** — Deploy generated sites instantly
-- **Multi-model Support** — Choose from various AI models for generation
-- **Admin Console** — AI-powered admin dashboard for platform management
+
+- **Two targets, one host** — static sites and full edge apps from the same
+  description, both deployed to Cloudflare
+- **Confirmed provisioning** — the exact list of Cloudflare resources, labelled
+  create or reuse, is approved before anything is created
+- **Guarded migrations** — an applied migration cannot be edited afterwards and
+  destructive ones are refused
+- **Live preview** — files render in memory as you type; an edge app can also
+  run against a throwaway Cloudflare preview deployment
+- **Element selector** — click an element in the preview to jump to its line or
+  attach it to the next request
+- **Build and Discuss modes** — Build writes files, Discuss never does
+- **Restorable versions** — every successful build is kept
+- **Export** — a zip with a generated README, or a push to a repo you own
+- **Live model list** — fetched from the providers on every visit, never
+  hardcoded; bring your own key per provider
 
 ## Pages
-- `/` — Landing page
-- `/dashboard` — Project dashboard
-- `/edit/[projectName]` — Code editor workspace
-- `/admin` — Admin dashboard
-- `/admin/models` — AI model management
-- `/docs` — Documentation
-- `/settings` — User settings
-- `/support` — Support page
-- `/privacy` — Privacy policy
-- `/eula` — End User License Agreement
+
+- `/` — landing page and the composer
+- `/dashboard` — projects, filterable by deploy state and build target
+- `/edit/[projectName]` — the workspace: conversation, files, preview, code
+- `/edit/[projectName]/settings` — deployment, Cloudflare, access, architecture,
+  project memory, metadata
+- `/settings` — connected accounts and API keys
+- `/admin`, `/admin/models` — provider and model administration
+- `/docs` — documentation
+- `/support`, `/privacy`, `/eula`
 
 ## Tech Stack
-- Next.js (App Router)
-- Convex (Backend/Database)
-- Stack Auth (Authentication)
-- AI/LLM Integration
-- TypeScript
-- Tailwind CSS
+
+- Next.js 16 (App Router)
+- Convex (database and server functions)
+- Stack Auth
+- Cloudflare Pages, Workers, D1, KV, R2, Queues
+- TypeScript, Tailwind CSS v4
+- The Plate design system: `app/globals.css` and `components/kit/`
