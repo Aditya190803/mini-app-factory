@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { logout } from '@/lib/logout';
 import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical, Save } from 'lucide-react';
-import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
+import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
-import { AddableOpenRouterModels } from '@/components/ui/addable-openrouter-models';
 import CloudflareConnect from '@/components/cloudflare-connect';
 
 type IntegrationStatus = {
@@ -612,13 +611,9 @@ export default function SettingsPage() {
                     ) : (
                       <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models added.</div>
                     )}
-                    <AddableOpenRouterModels
-                      alreadyHave={[
-                        ...DEFAULT_MODEL_OPTIONS.openrouter,
-                        ...(customModelsConfig[providerId] ?? []),
-                      ]}
-                      onAdd={(modelId) => addCustomModelId(providerId, modelId)}
-                    />
+                    <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                      The selector lists every free model from OpenRouter's live catalog — no need to add them here.
+                    </div>
                   </div>
                   )}
                 </div>

@@ -2,87 +2,20 @@ import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { isAdminUser } from '@/lib/admin-access';
 import { DEFAULT_MODEL_OPTIONS, isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
-import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
+import { fetchOpenRouterFreeModels } from '@/lib/openrouter-models';
+import { getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 export const dynamic = 'force-dynamic';
-
-type ProviderModel = {
-  id: string;
-  name?: string;
-  displayName?: string;
-  supportedGenerationMethods?: string[];
-};
-
-type ProviderResponse = {
-  data?: ProviderModel[];
-  models?: ProviderModel[];
-};
 
 type ProviderConfig = {
   id: AIProviderId;
   name: string;
-  endpoint?: string;
 };
 
 const PROVIDERS: ProviderConfig[] = [
   { id: 'opencode', name: 'OpenCode Zen' },
-  { id: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/models' },
+  { id: 'openrouter', name: 'OpenRouter' },
 ];
-
-function getProviderApiKey(providerId: AIProviderId, byok: Partial<Record<AIProviderId, string>>) {
-  return providerId === 'opencode'
-    ? byok.opencode || process.env.OPENCODE_API_KEY
-    : byok.openrouter || process.env.OPENROUTER_API_KEY;
-}
-
-async function fetchProviderModels(provider: ProviderConfig, apiKey?: string): Promise<Array<{ id: string; name?: string }>> {
-  if (!provider.endpoint) return [];
-
-  const headers = new Headers({ Accept: 'application/json' });
-  if (apiKey) {
-    headers.set('Authorization', `Bearer ${apiKey}`);
-  }
-  if (provider.id === 'openrouter') {
-    headers.set('HTTP-Referer', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-    headers.set('X-Title', 'Mini App Factory');
-  }
-
-  const response = await fetch(provider.endpoint, {
-    headers,
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    return [];
-  }
-
-  const json = (await response.json()) as ProviderResponse | ProviderModel[];
-  if (Array.isArray(json)) {
-    return json
-      .map((model) => ({
-        id: (model.id || model.name || '').replace(/^models\//, '').trim(),
-        name: model.displayName || model.name,
-      }))
-      .filter((model) => model.id.length > 0);
-  }
-  if (Array.isArray(json.data)) {
-    return json.data
-      .map((model) => ({
-        id: (model.id || model.name || '').replace(/^models\//, '').trim(),
-        name: model.displayName || model.name,
-      }))
-      .filter((model) => model.id.length > 0);
-  }
-  if (Array.isArray(json.models)) {
-    return json.models
-      .map((model) => ({
-        id: (model.id || model.name || '').replace(/^models\//, '').trim(),
-        name: model.displayName || model.name,
-      }))
-      .filter((model) => model.id.length > 0);
-  }
-  return [];
-}
 
 function addModel(
   modelMap: Map<string, { id: string; name: string; isDefault: boolean; isCustom: boolean }>,
@@ -120,8 +53,6 @@ export async function GET(_request: Request) {
   }
 
   const adminConfig = await getGlobalAdminModelConfig();
-  const persisted = await getPersistedAISettings();
-  const byokConfig = persisted.byokConfig;
 
   const providers = await Promise.all(
     adminConfig.providerOrder.map(async (providerId) => {
@@ -136,9 +67,8 @@ export async function GET(_request: Request) {
       providerConfig.customModels.forEach((modelId) => addModel(modelMap, modelId, { isCustom: true }));
       providerConfig.visibleModels.forEach((modelId) => addModel(modelMap, modelId));
 
-      const apiKey = getProviderApiKey(providerId, byokConfig);
-      if (apiKey || providerId === 'openrouter') {
-        const discovered = await fetchProviderModels(provider, apiKey).catch(() => []);
+      if (providerId === 'openrouter') {
+        const discovered = await fetchOpenRouterFreeModels().catch(() => []);
         discovered.forEach((model) => {
           if (isAllowedProviderModel(providerId, model.id)) {
             addModel(modelMap, model.id, { name: model.name });
