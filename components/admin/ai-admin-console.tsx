@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Shield, Settings2, ArrowLeft, ArrowUp, ArrowDown } from 'lucide-react';
 import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
-import { AddableOpenRouterModels } from '@/components/ui/addable-openrouter-models';
 import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
 const providerLabel: Record<AIProviderId, string> = {
@@ -344,15 +343,9 @@ export default function AIAdminConsole() {
                         <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models configured.</div>
                       )}
 
-                      <AddableOpenRouterModels
-                        alreadyHave={[
-                          ...DEFAULT_MODEL_OPTIONS.openrouter,
-                          ...provider.customModels,
-                          ...provider.visibleModels,
-                          provider.defaultModel,
-                        ]}
-                        onAdd={(modelId) => addCustomModelId(providerId, modelId)}
-                      />
+                      <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                        The selector lists every free model from OpenRouter's live catalog.
+                      </div>
                     </div>
                     )}
                   </div>

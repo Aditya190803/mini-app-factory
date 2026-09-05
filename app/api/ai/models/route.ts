@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_MODEL_OPTIONS, getProviderModelLabel, type AIProviderId } from '@/lib/ai-admin-config';
+import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { fetchOpenRouterFreeModels, OPENROUTER_AUTO_ROUTER_ID } from '@/lib/openrouter-models';
 import { stackServerApp } from '@/stack/server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -38,7 +39,7 @@ function addModel(
   if (seen.has(key)) return;
   seen.add(key);
 
-  const label = (name || getProviderModelLabel(provider.id, trimmed)).trim() || trimmed;
+  const label = (name || trimmed).trim() || trimmed;
   const lowered = trimmed.toLowerCase();
   const hasVision = lowered.includes('vision') || lowered.includes('gemini') || lowered.includes('vl');
 
@@ -59,8 +60,8 @@ function canExposeModel(modelId: string, defaultModel: string, visibleModels: st
 }
 
 /**
- * Returns admin-selected models from Convex only (no live provider API calls).
- * Live catalog discovery is reserved for /api/admin/models.
+ * OpenRouter models are discovered live from the provider catalog on every
+ * request (short server cache); OpenCode serves its configured models.
  */
 export async function GET(_request: Request) {
   const user = await stackServerApp.getUser();
@@ -75,13 +76,22 @@ export async function GET(_request: Request) {
     const providerAdmin = adminConfig.providers[provider.id];
     if (!providerAdmin?.enabled) continue;
 
-    // Add the default model (always visible)
-    addModel(models, seen, provider, providerAdmin.defaultModel);
+    if (provider.id === 'openrouter') {
+      const live = await fetchOpenRouterFreeModels();
+      const liveNames = new Map(live.map((model) => [model.id, model.name]));
+      const defaultName = liveNames.get(providerAdmin.defaultModel)
+        ?? (providerAdmin.defaultModel === OPENROUTER_AUTO_ROUTER_ID ? 'Free Models Router (auto)' : undefined);
+      addModel(models, seen, provider, providerAdmin.defaultModel, defaultName);
+      live
+        .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
+        .forEach((model) => addModel(models, seen, provider, model.id, model.name));
+    } else {
+      addModel(models, seen, provider, providerAdmin.defaultModel);
 
-    // Add built-in defaults that pass the admin visibility filter
-    DEFAULT_MODEL_OPTIONS[provider.id]
-      .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
-      .forEach((modelId) => addModel(models, seen, provider, modelId));
+      DEFAULT_MODEL_OPTIONS[provider.id]
+        .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
+        .forEach((modelId) => addModel(models, seen, provider, modelId));
+    }
 
     // Add admin-configured custom models that pass the visibility filter
     providerAdmin.customModels
@@ -123,7 +133,6 @@ export async function GET(_request: Request) {
     { models },
     {
       headers: {
-        // Allow short browser caching — models change rarely
         'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
       },
     },

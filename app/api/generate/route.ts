@@ -11,6 +11,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
+import { resolveOpenRouterModel } from '@/lib/openrouter-models';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -92,9 +93,12 @@ export async function runGeneration(
     // Update status. Honor the model the user picked in the selector; only fall
     // back to the OpenCode default when nothing valid was stored on the project.
     const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
+    const liveModel = requested?.providerId === 'openrouter'
+      ? await resolveOpenRouterModel(requested.model)
+      : requested?.model;
     project.status = 'generating';
     if (requested) {
-      project.selectedModel = requested.model;
+      project.selectedModel = liveModel ?? requested.model;
       project.providerId = requested.providerId;
     }
     await saveProject(project).catch(() => { });
@@ -102,7 +106,7 @@ export async function runGeneration(
     if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
 
     const client = await getAIClient(runtimeConfig);
-    const selectedModel = requested?.model;
+    const selectedModel = liveModel ?? requested?.model;
     const selectedProviderId = requested?.providerId;
 
     if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };

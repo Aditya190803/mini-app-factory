@@ -31,7 +31,7 @@ A powerful AI-powered web application that generates production-ready multi-page
 - **Authentication**: [Stack Auth](https://stack-auth.com/)
 - **AI Providers**:
    - OpenCode Zen free models (`@ai-sdk/openai-compatible`)
-   - OpenRouter free models, including `openrouter/free` (`@openrouter/ai-sdk-provider`)
+   - OpenRouter free models, including `openrouter/free` (`@openrouter/ai-sdk-provider`) — the free list is fetched live from OpenRouter on every visit, never hardcoded
 - **Styling**: Tailwind CSS v4
 - **Components**: shadcn/ui
 - **Runtime & Package Manager**: [Bun](https://bun.sh/)
