@@ -90,20 +90,15 @@
   --z-toast: 50;
 
   /* ---- Deprecation shim -------------------------------------
-     Legacy names still referenced by ~430 call sites across
-     surfaces not yet migrated. Each maps onto a real token above
-     so the old markup keeps rendering. Delete this block once
-     every surface is on the new scale. */
+     Legacy names still referenced by legal surfaces pending
+     migration. Each maps onto a real token above so the old
+     markup keeps rendering. Delete this block once every
+     surface is on the new scale. */
   --background-surface: var(--card);
   --background-overlay: var(--accent);
   --secondary-text: var(--muted-foreground);
   --muted-text: oklch(0.646 0.014 285.9);
   --border-active: var(--ring);
-  --docs-bg: var(--background);
-  --docs-surface: var(--card);
-  --docs-surface-hover: var(--accent);
-  --docs-border: var(--border);
-  --docs-border-bright: oklch(0.85 0.005 286);
   --error: var(--destructive);
 }
 
