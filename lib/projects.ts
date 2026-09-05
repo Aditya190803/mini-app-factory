@@ -89,6 +89,7 @@ export async function reserveProjectName(params: {
   referenceUrl?: string;
   selectedModel?: string;
   providerId?: string;
+  target?: 'static' | 'edge';
 }): Promise<boolean> {
   const convex = await getConvex();
   const id = await convex.mutation(api.projects.reserveProjectName, params);

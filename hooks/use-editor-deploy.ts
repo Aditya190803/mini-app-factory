@@ -13,6 +13,7 @@ import {
   validateRepoName,
 } from '@/lib/deploy-shared';
 import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
+import { DEFAULT_DEPLOY_SURFACE } from '@/lib/targets';
 import type { FunctionArgs } from 'convex/server';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
@@ -76,7 +77,12 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
-  const [deployOption, setDeployOption] = useState<DeployOption>('maf-hosted');
+  /**
+   * Cloudflare is the default. This product deploys to Cloudflare; the factory-hosted
+   * preview and the GitHub mirror are fallbacks, and defaulting to one of those used
+   * to send most first deploys somewhere the user did not actually want them.
+   */
+  const [deployOption, setDeployOption] = useState<DeployOption>(DEFAULT_DEPLOY_SURFACE as DeployOption);
   const [repoName, setRepoName] = useState(projectName);
   const [netlifySiteName, setNetlifySiteName] = useState('');
   const [cloudflareProjectName, setCloudflareProjectName] = useState('');

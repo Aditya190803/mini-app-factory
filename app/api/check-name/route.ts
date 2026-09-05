@@ -12,6 +12,7 @@ const checkNameSchema = z
     selectedModel: z.string().max(200).optional(),
     providerId: z.string().max(60).optional(),
     referenceUrl: z.string().max(2_000).optional(),
+    target: z.enum(['static', 'edge']).optional(),
   })
   .strict();
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
-  const { name, prompt, selectedModel, providerId, referenceUrl } = parsed.data;
+  const { name, prompt, selectedModel, providerId, referenceUrl, target } = parsed.data;
 
   const normalizedName = name.trim().toLowerCase();
 
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     selectedModel,
     providerId,
     referenceUrl: storedRef,
+    target,
   });
 
   if (!reserved) {

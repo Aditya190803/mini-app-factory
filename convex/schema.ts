@@ -6,6 +6,12 @@ export default defineSchema({
   projects: defineTable({
     projectName: v.string(),
     prompt: v.string(),
+    /**
+     * Build target. "static" is assets only; "edge" adds a Worker and Cloudflare bindings.
+     * Optional because rows created before targets existed have none: those are read through
+     * resolveTarget(), which infers the shape from the files instead. See lib/targets.ts.
+     */
+    target: v.optional(v.union(v.literal("static"), v.literal("edge"))),
     html: v.optional(v.string()), // Kept for migration, will be removed later
     pages: v.optional(v.array(v.object({
       html: v.string(),

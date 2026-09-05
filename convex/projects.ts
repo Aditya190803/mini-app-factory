@@ -163,6 +163,7 @@ export const reserveProjectName = mutation({
     referenceUrl: v.optional(v.string()),
     selectedModel: v.optional(v.string()),
     providerId: v.optional(v.string()),
+    target: v.optional(v.union(v.literal("static"), v.literal("edge"))),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -186,6 +187,7 @@ export const reserveProjectName = mutation({
       referenceUrl: args.referenceUrl,
       selectedModel: args.selectedModel,
       providerId: args.providerId,
+      target: args.target,
       createdAt: now,
       updatedAt: now,
     });
