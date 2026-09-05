@@ -21,12 +21,12 @@ vi.mock('@/lib/ai-client', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
+    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openai/gpt-oss-120b', customModels: [], visibleModels: [] } },
+    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } },
     providerOrder: ['opencode', 'openrouter'],
   }),
 }));
@@ -196,6 +196,51 @@ describe('POST /api/transform', () => {
     expect(Array.isArray(body.files)).toBe(true);
     expect(body.files![0].path).toBe('index.html');
     expect(body.files![0].content).toContain('New');
+  });
+
+  test('forwards the selected model to the AI session', async () => {
+    const { POST } = await import('@/app/api/transform/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFiles, saveFiles } = await import('@/lib/projects');
+    const { getAIClient } = await import('@/lib/ai-client');
+
+    const createSession = vi.fn().mockResolvedValue({
+      sendAndWait: vi.fn().mockResolvedValue({
+        data: {
+          content: '[{"tool":"replaceContent","args":{"file":"index.html","selector":"h1","newContent":"New"}}]',
+        },
+      }),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      userId: 'user_123',
+      html: '<html><body><h1>Old</h1></body></html>',
+    });
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
+    ]);
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ createSession });
+
+    const req = new Request('http://localhost/api/transform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectName: 'demo-project',
+        prompt: 'Update title',
+        modelId: 'openrouter/free',
+        providerId: 'openrouter',
+      }),
+    });
+
+    const res = await POST(req);
+    await consumeTransformStream(res);
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'openrouter/free',
+      providerId: 'openrouter',
+    }));
   });
 
   test('repairs malformed tool-call output automatically', async () => {

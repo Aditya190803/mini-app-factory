@@ -11,7 +11,7 @@ import {
   buildProjectContextWithIntent,
 } from '@/lib/edit-intent/context';
 import { withRetry } from '@/lib/ai-retry';
-import { isAIProviderId } from '@/lib/ai-admin-config';
+import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import type { TransformStreamEvent } from '@/lib/transform-stream';
 import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-project-validation';
@@ -221,8 +221,9 @@ export async function runTransformWork(input: TransformWorkInput) {
   });
 
   const client = await getAIClient(runtimeConfig);
-  const effectiveModelId = modelId || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
-  const effectiveProviderId = isAIProviderId(providerId) ? providerId : undefined;
+  const requested = resolveSelectedAIModel(modelId, providerId);
+  const effectiveModelId = requested?.model;
+  const effectiveProviderId = requested?.providerId;
 
   const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
 You will be given the complete project context comprising all files.

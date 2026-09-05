@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { DEFAULT_MODEL_OPTIONS, getProviderModelLabel, type AIProviderId } from '@/lib/ai-admin-config';
 import { stackServerApp } from '@/stack/server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -38,7 +38,7 @@ function addModel(
   if (seen.has(key)) return;
   seen.add(key);
 
-  const label = (name || trimmed).trim() || trimmed;
+  const label = (name || getProviderModelLabel(provider.id, trimmed)).trim() || trimmed;
   const lowered = trimmed.toLowerCase();
   const hasVision = lowered.includes('vision') || lowered.includes('gemini') || lowered.includes('vl');
 

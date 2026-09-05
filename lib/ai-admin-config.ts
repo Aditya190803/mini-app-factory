@@ -10,6 +10,51 @@ export const OPENCODE_FREE_MODELS = [
   'deepseek-v4-flash-free',
 ] as const;
 
+export type OpenRouterFreeModelInfo = {
+  id: string;
+  name: string;
+  note: string;
+};
+
+/** Shown in the model selector by default. */
+export const OPENROUTER_FREE_MODELS = [
+  'openrouter/free',
+  'z-ai/glm-5.2:free',
+  'nvidia/nemotron-3.5-lightning:free',
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'minimax/minimax-m2.7:free',
+  'poolside/laguna-s-2.1:free',
+  'google/gemma-4-31b-it:free',
+] as const;
+
+/**
+ * Extra OpenRouter free models that can be added from Settings / Admin.
+ * Kept out of the default selector so the list stays short.
+ */
+export const OPENROUTER_ADDABLE_FREE_MODELS: readonly OpenRouterFreeModelInfo[] = [
+  { id: 'thinkingmachines/inkling:free', name: 'Inkling Free', note: 'Long-context multimodal coding model' },
+  { id: 'thinkingmachines/inkling-small:free', name: 'Inkling Small Free', note: 'Faster Inkling variant' },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'Nemotron 3 Super Free', note: '120B reasoning / coding' },
+  { id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', name: 'Nemotron 3 Nano Omni Free', note: 'Multimodal reasoning' },
+  { id: 'minimax/minimax-m3:free', name: 'MiniMax M3 Free', note: '1M-context multimodal' },
+  { id: 'poolside/laguna-xs-2.1:free', name: 'Laguna XS 2.1 Free', note: 'Smaller Poolside coding model' },
+  { id: 'google/gemma-4-26b-a4b-it:free', name: 'Gemma 4 26B Free', note: 'Mixture-of-experts Gemma' },
+  { id: 'inclusionai/ling-3.0-flash-fin:free', name: 'Ling 3.0 Flash Free', note: 'Fast instruction model' },
+  { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots3-Note Preview Free', note: 'Long-context notes / docs' },
+  { id: 'liquid/lfm-2.5-2.6b:free', name: 'LFM 2.5 2.6B Free', note: 'Tiny / low-latency fallback' },
+];
+
+export const OPENROUTER_FREE_MODEL_INFO: Record<string, { name: string; note: string }> = {
+  'openrouter/free': { name: 'Free Models Router', note: 'Auto-picks a free model that matches the request' },
+  'z-ai/glm-5.2:free': { name: 'GLM 5.2 Free', note: 'Strong general coding model' },
+  'nvidia/nemotron-3.5-lightning:free': { name: 'Nemotron 3.5 Lightning Free', note: 'Fast NVIDIA coding model' },
+  'nvidia/nemotron-3-ultra-550b-a55b:free': { name: 'Nemotron 3 Ultra Free', note: 'Largest NVIDIA free model' },
+  'minimax/minimax-m2.7:free': { name: 'MiniMax M2.7 Free', note: 'Coding-focused MiniMax' },
+  'poolside/laguna-s-2.1:free': { name: 'Laguna S 2.1 Free', note: 'Poolside coding model' },
+  'google/gemma-4-31b-it:free': { name: 'Gemma 4 31B Free', note: 'Google instruction model' },
+  ...Object.fromEntries(OPENROUTER_ADDABLE_FREE_MODELS.map((model) => [model.id, { name: model.name, note: model.note }])),
+};
+
 export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
 
 export type ProviderAdminConfig = {
@@ -27,6 +72,16 @@ export type AIAdminConfig = {
 export type ProviderBYOKConfig = Partial<Record<AIProviderId, string>>;
 export type ProviderCustomModelsConfig = Partial<Record<AIProviderId, string[]>>;
 
+export type ResolvedAIModel = {
+  model: string;
+  providerId: AIProviderId;
+};
+
+export type StoredSelectedModel = {
+  id: string;
+  providerId: string;
+};
+
 export function isAIProviderId(value: unknown): value is AIProviderId {
   return typeof value === 'string' && (AI_PROVIDER_IDS as readonly string[]).includes(value);
 }
@@ -34,19 +89,52 @@ export function isAIProviderId(value: unknown): value is AIProviderId {
 export const AI_ADMIN_CONFIG_STORAGE_KEY = 'mini_app_factory_ai_admin_config_v1';
 export const AI_BYOK_STORAGE_KEY = 'mini_app_factory_ai_byok_v1';
 export const AI_USER_CUSTOM_MODELS_STORAGE_KEY = 'mini_app_factory_user_custom_models_v1';
+export const AI_SELECTED_MODEL_STORAGE_KEY = 'mini_app_factory_selected_model_v1';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
   opencode: 'deepseek-v4-flash-free',
-  openrouter: 'openai/gpt-oss-120b',
+  openrouter: 'openrouter/free',
 };
 
 export const DEFAULT_MODEL_OPTIONS: Record<AIProviderId, string[]> = {
   opencode: [...OPENCODE_FREE_MODELS],
-  openrouter: ['openai/gpt-oss-120b', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct'],
+  openrouter: [...OPENROUTER_FREE_MODELS],
 };
 
+export function isOpenRouterFreeModel(modelId: string): boolean {
+  const trimmed = modelId.trim();
+  if (!trimmed) return false;
+  if (trimmed === 'openrouter/free') return true;
+  return trimmed.endsWith(':free');
+}
+
 export function isAllowedProviderModel(providerId: AIProviderId, modelId: string): boolean {
-  return providerId !== 'opencode' || (OPENCODE_FREE_MODELS as readonly string[]).includes(modelId);
+  if (providerId === 'opencode') {
+    return (OPENCODE_FREE_MODELS as readonly string[]).includes(modelId);
+  }
+  return isOpenRouterFreeModel(modelId);
+}
+
+export function resolveSelectedAIModel(
+  model?: string | null,
+  providerId?: string | null,
+): ResolvedAIModel | undefined {
+  if (!isAIProviderId(providerId)) return undefined;
+  const trimmed = typeof model === 'string' ? model.trim() : '';
+  if (!trimmed || !isAllowedProviderModel(providerId, trimmed)) return undefined;
+  return { model: trimmed, providerId };
+}
+
+export function getProviderModelLabel(providerId: AIProviderId, modelId: string): string {
+  if (providerId === 'openrouter') {
+    return OPENROUTER_FREE_MODEL_INFO[modelId]?.name || modelId;
+  }
+  return modelId;
+}
+
+export function addableOpenRouterModels(alreadyHave: string[] = []): OpenRouterFreeModelInfo[] {
+  const have = new Set(alreadyHave);
+  return OPENROUTER_ADDABLE_FREE_MODELS.filter((model) => !have.has(model.id));
 }
 
 export const DEFAULT_AI_ADMIN_CONFIG: AIAdminConfig = {

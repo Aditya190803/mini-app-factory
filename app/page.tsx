@@ -8,7 +8,8 @@ import { SiteHeader, SiteHeaderLink } from '@/components/site-header';
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { cn } from "@/lib/utils";
 import AccountMenu from "@/components/account-menu";
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
+import { ModelSelector } from '@/components/ui/model-selector';
 import { isHttpUrl } from '@/lib/url-reference';
 import { APP_NAME, EXAMPLE_PROMPTS } from '@/lib/constants';
 
@@ -18,6 +19,8 @@ export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [referenceUrl, setReferenceUrl] = useState('');
   const [showReferenceUrl, setShowReferenceUrl] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
+  const [modelHydrated, setModelHydrated] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,7 +62,14 @@ export default function Home() {
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
+    setSelectedModel(getStoredSelectedModel());
+    setModelHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!modelHydrated) return;
+    setStoredSelectedModel(selectedModel);
+  }, [selectedModel, modelHydrated]);
 
   const handleStart = async () => {
     setError('');
@@ -105,6 +115,8 @@ export default function Home() {
             name,
             prompt: prompt.trim(),
             referenceUrl: trimmedReferenceUrl || undefined,
+            selectedModel: selectedModel.id || undefined,
+            providerId: selectedModel.providerId || undefined,
           }),
         });
 
@@ -206,18 +218,23 @@ export default function Home() {
               )}
 
               <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1.5">
-                {showReferenceUrl ? (
-                  <span />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowReferenceUrl(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  >
-                    <LinkIcon size={13} />
-                    Reference a site
-                  </button>
-                )}
+                <div className="flex min-w-0 items-center gap-1">
+                  {!showReferenceUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReferenceUrl(true)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      <LinkIcon size={13} />
+                      Reference a site
+                    </button>
+                  )}
+                  <ModelSelector
+                    selectedModelId={selectedModel.id}
+                    providerId={selectedModel.providerId}
+                    onModelChange={(id, providerId) => setSelectedModel({ id, providerId })}
+                  />
+                </div>
 
                 <div className="flex items-center gap-2.5">
                   <kbd className="hidden text-xs text-muted-foreground sm:block">

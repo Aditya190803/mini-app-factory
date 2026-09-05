@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Shield, Settings2, ArrowLeft, ArrowUp, ArrowDown } from 'lucide-react';
 import { AI_PROVIDER_IDS, DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { AddableOpenRouterModels } from '@/components/ui/addable-openrouter-models';
 import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
 const providerLabel: Record<AIProviderId, string> = {
@@ -149,17 +150,20 @@ export default function AIAdminConsole() {
     });
   };
 
-  const addCustomModel = (providerId: AIProviderId) => {
-    const candidate = newModelInput[providerId].trim();
-    if (!candidate) return;
+  const addCustomModelId = (providerId: AIProviderId, candidate: string) => {
+    const trimmed = candidate.trim();
+    if (!trimmed) return;
 
     updateProvider(providerId, (provider) => ({
       ...provider,
-      customModels: provider.customModels.includes(candidate)
+      customModels: provider.customModels.includes(trimmed)
         ? provider.customModels
-        : [...provider.customModels, candidate],
+        : [...provider.customModels, trimmed],
     }));
+  };
 
+  const addCustomModel = (providerId: AIProviderId) => {
+    addCustomModelId(providerId, newModelInput[providerId]);
     setNewModelInput((prev) => ({ ...prev, [providerId]: '' }));
   };
 
@@ -309,7 +313,7 @@ export default function AIAdminConsole() {
                           value={newModelInput[providerId]}
                           onChange={(event) => setNewModelInput((prev) => ({ ...prev, [providerId]: event.target.value }))}
                           className="text-[11px] font-mono"
-                          placeholder="add model id"
+                          placeholder="openrouter/free or provider/model:free"
                         />
                         <Button
                           variant="outline"
@@ -319,6 +323,9 @@ export default function AIAdminConsole() {
                           <Settings2 className="w-3 h-3 mr-1" />
                           Add Model
                         </Button>
+                      </div>
+                      <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                        OpenRouter is limited to free models (`openrouter/free` or ids ending in `:free`).
                       </div>
 
                       {provider.customModels.length > 0 ? (
@@ -336,6 +343,16 @@ export default function AIAdminConsole() {
                       ) : (
                         <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models configured.</div>
                       )}
+
+                      <AddableOpenRouterModels
+                        alreadyHave={[
+                          ...DEFAULT_MODEL_OPTIONS.openrouter,
+                          ...provider.customModels,
+                          ...provider.visibleModels,
+                          provider.defaultModel,
+                        ]}
+                        onAdd={(modelId) => addCustomModelId(providerId, modelId)}
+                      />
                     </div>
                     )}
                   </div>

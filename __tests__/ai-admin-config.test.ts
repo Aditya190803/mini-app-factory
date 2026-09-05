@@ -28,10 +28,47 @@ describe('OpenCode model restrictions', () => {
 
     expect(sanitizeCustomModelsConfig({
       opencode: ['gpt-5.6-sol', 'big-pickle'],
-      openrouter: ['custom/model'],
+      openrouter: ['custom/model', 'openrouter/free', 'z-ai/glm-5.2:free'],
     })).toEqual({
       opencode: ['big-pickle'],
-      openrouter: ['custom/model'],
+      openrouter: ['openrouter/free', 'z-ai/glm-5.2:free'],
     });
+  });
+
+  test('replaces paid OpenRouter defaults with the free router', () => {
+    const config = sanitizeAIAdminConfig({
+      providers: {
+        openrouter: {
+          enabled: true,
+          defaultModel: 'anthropic/claude-3.5-sonnet',
+          customModels: ['openai/gpt-oss-120b', 'openrouter/free'],
+          visibleModels: ['meta-llama/llama-3.3-70b-instruct'],
+        },
+      },
+    });
+
+    expect(config.providers.openrouter.defaultModel).toBe('openrouter/free');
+    expect(config.providers.openrouter.customModels).toEqual(['openrouter/free']);
+    expect(config.providers.openrouter.visibleModels).toEqual([]);
+  });
+});
+
+describe('resolveSelectedAIModel', () => {
+  test('accepts OpenRouter free models and rejects paid ones', async () => {
+    const { resolveSelectedAIModel } = await import('@/lib/ai-admin-config');
+    expect(resolveSelectedAIModel('openrouter/free', 'openrouter')).toEqual({
+      model: 'openrouter/free',
+      providerId: 'openrouter',
+    });
+    expect(resolveSelectedAIModel('z-ai/glm-5.2:free', 'openrouter')).toEqual({
+      model: 'z-ai/glm-5.2:free',
+      providerId: 'openrouter',
+    });
+    expect(resolveSelectedAIModel('anthropic/claude-3.5-sonnet', 'openrouter')).toBeUndefined();
+    expect(resolveSelectedAIModel('deepseek-v4-flash-free', 'opencode')).toEqual({
+      model: 'deepseek-v4-flash-free',
+      providerId: 'opencode',
+    });
+    expect(resolveSelectedAIModel('openrouter/free', 'opencode')).toBeUndefined();
   });
 });

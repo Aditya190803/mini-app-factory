@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { isAdminUser } from '@/lib/admin-access';
-import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { DEFAULT_MODEL_OPTIONS, isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 export const dynamic = 'force-dynamic';
@@ -139,7 +139,11 @@ export async function GET(_request: Request) {
       const apiKey = getProviderApiKey(providerId, byokConfig);
       if (apiKey || providerId === 'openrouter') {
         const discovered = await fetchProviderModels(provider, apiKey).catch(() => []);
-        discovered.forEach((model) => addModel(modelMap, model.id, { name: model.name }));
+        discovered.forEach((model) => {
+          if (isAllowedProviderModel(providerId, model.id)) {
+            addModel(modelMap, model.id, { name: model.name });
+          }
+        });
       }
 
       const models = Array.from(modelMap.values())
