@@ -17,7 +17,6 @@ import {
   Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FactoryIcon } from "@/components/ui/factory-icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import AccountMenu from "@/components/account-menu";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { SiteHeader } from '@/components/site-header';
 import { useConfirm } from "@/hooks/use-confirm";
 
 export default function DashboardPage() {
@@ -145,20 +145,10 @@ export default function DashboardPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
-          <Link href="/" className="flex items-center gap-2.5 rounded-md">
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <FactoryIcon size={18} />
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">Projects</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <ThemeSwitcher className="mx-1" />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <SiteHeader title="Projects">
+        <ThemeSwitcher className="mx-1" />
+        <AccountMenu />
+      </SiteHeader>
 
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4">

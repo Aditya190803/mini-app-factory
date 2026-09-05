@@ -2,10 +2,9 @@
 
 import { useState, useRef, useEffect, useId } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useUser } from "@stackframe/stack";
 import { ArrowUpIcon, WarningIcon, LinkIcon } from '@phosphor-icons/react';
-import { FactoryIcon } from "@/components/ui/factory-icon";
+import { SiteHeader, SiteHeaderLink } from '@/components/site-header';
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { cn } from "@/lib/utils";
 import AccountMenu from "@/components/account-menu";
@@ -138,37 +137,12 @@ export default function Home() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
-          <Link href="/" className="flex items-center gap-2.5 rounded-md">
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <FactoryIcon size={18} />
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">
-              {APP_NAME}
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-1">
-            <Link
-              href="/docs"
-              className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:px-3"
-            >
-              Docs
-            </Link>
-            {user && (
-              <Link
-                href="/dashboard"
-                className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:px-3"
-              >
-                Projects
-              </Link>
-            )}
-            <ThemeSwitcher className="mx-1 hidden sm:inline-flex" />
-            <AccountMenu />
-          </div>
-        </div>
-      </header>
+      <SiteHeader title={APP_NAME}>
+        <SiteHeaderLink href="/docs">Docs</SiteHeaderLink>
+        {user && <SiteHeaderLink href="/dashboard">Projects</SiteHeaderLink>}
+        <ThemeSwitcher className="mx-1 hidden sm:inline-flex" />
+        <AccountMenu />
+      </SiteHeader>
 
       <main id="main" className="flex-1">
         <div className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-24">
@@ -195,7 +169,7 @@ export default function Home() {
             )}
 
             {/* Composer — the primary object on the page. */}
-            <div className="composer-surface border border-border/60 focus-within:border-border">
+            <div className="composer-surface border border-border/60 focus-within:border-ring/60">
               <label htmlFor={promptId} className="sr-only">
                 What should this app do?
               </label>
