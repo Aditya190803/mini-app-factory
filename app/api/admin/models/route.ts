@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { isAdminUser } from '@/lib/admin-access';
-import { DEFAULT_MODEL_OPTIONS, isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
+import { isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
 import { fetchOpenRouterFreeModels } from '@/lib/openrouter-models';
+import { fetchOpenCodeFreeModels } from '@/lib/opencode-models';
 import { getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 export const dynamic = 'force-dynamic';
@@ -62,19 +63,18 @@ export async function GET(_request: Request) {
       const providerConfig = adminConfig.providers[providerId];
       const modelMap = new Map<string, { id: string; name: string; isDefault: boolean; isCustom: boolean }>();
 
-      DEFAULT_MODEL_OPTIONS[providerId].forEach((modelId) => addModel(modelMap, modelId));
       addModel(modelMap, providerConfig.defaultModel, { isDefault: true });
       providerConfig.customModels.forEach((modelId) => addModel(modelMap, modelId, { isCustom: true }));
       providerConfig.visibleModels.forEach((modelId) => addModel(modelMap, modelId));
 
-      if (providerId === 'openrouter') {
-        const discovered = await fetchOpenRouterFreeModels().catch(() => []);
-        discovered.forEach((model) => {
-          if (isAllowedProviderModel(providerId, model.id)) {
-            addModel(modelMap, model.id, { name: model.name });
-          }
-        });
-      }
+      const discovered = providerId === 'openrouter'
+        ? await fetchOpenRouterFreeModels().catch(() => [])
+        : await fetchOpenCodeFreeModels().catch(() => []);
+      discovered.forEach((model) => {
+        if (isAllowedProviderModel(providerId, model.id)) {
+          addModel(modelMap, model.id, { name: model.name });
+        }
+      });
 
       const models = Array.from(modelMap.values())
         .map((model) => {

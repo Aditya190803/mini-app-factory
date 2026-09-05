@@ -12,6 +12,7 @@ import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
 import { resolveOpenRouterModel } from '@/lib/openrouter-models';
+import { resolveOpenCodeModel } from '@/lib/opencode-models';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -95,7 +96,9 @@ export async function runGeneration(
     const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
     const liveModel = requested?.providerId === 'openrouter'
       ? await resolveOpenRouterModel(requested.model)
-      : requested?.model;
+      : requested?.providerId === 'opencode'
+        ? await resolveOpenCodeModel(requested.model)
+        : requested?.model;
     project.status = 'generating';
     if (requested) {
       project.selectedModel = liveModel ?? requested.model;

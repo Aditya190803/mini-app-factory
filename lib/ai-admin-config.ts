@@ -1,15 +1,5 @@
 export const AI_PROVIDER_IDS = ['opencode', 'openrouter'] as const;
 
-export const OPENCODE_FREE_MODELS = [
-  'big-pickle',
-  'mimo-v2.5-free',
-  'laguna-s-2.1-free',
-  'ling-3.0-tiny-free',
-  'longcat-2.0-free',
-  'nemotron-3-ultra-free',
-  'deepseek-v4-flash-free',
-] as const;
-
 export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
 
 export type ProviderAdminConfig = {
@@ -51,10 +41,13 @@ export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
   openrouter: 'openrouter/free',
 };
 
-export const DEFAULT_MODEL_OPTIONS: Record<AIProviderId, string[]> = {
-  opencode: [...OPENCODE_FREE_MODELS],
-  openrouter: [],
-};
+export function isOpenCodeFreeModelId(modelId: string): boolean {
+  const trimmed = modelId.trim();
+  if (!trimmed) return false;
+  if (trimmed.endsWith('-free')) return true;
+  return trimmed === 'big-pickle';
+}
+
 export function isOpenRouterFreeModel(modelId: string): boolean {
   const trimmed = modelId.trim();
   if (!trimmed) return false;
@@ -64,7 +57,7 @@ export function isOpenRouterFreeModel(modelId: string): boolean {
 
 export function isAllowedProviderModel(providerId: AIProviderId, modelId: string): boolean {
   if (providerId === 'opencode') {
-    return (OPENCODE_FREE_MODELS as readonly string[]).includes(modelId);
+    return isOpenCodeFreeModelId(modelId);
   }
   return isOpenRouterFreeModel(modelId);
 }

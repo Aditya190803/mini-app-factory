@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_MODEL_OPTIONS, type AIProviderId } from '@/lib/ai-admin-config';
+import { type AIProviderId } from '@/lib/ai-admin-config';
 import { fetchOpenRouterFreeModels, OPENROUTER_AUTO_ROUTER_ID } from '@/lib/openrouter-models';
+import { fetchOpenCodeFreeModels } from '@/lib/opencode-models';
 import { stackServerApp } from '@/stack/server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -87,10 +88,10 @@ export async function GET(_request: Request) {
         .forEach((model) => addModel(models, seen, provider, model.id, model.name));
     } else {
       addModel(models, seen, provider, providerAdmin.defaultModel);
-
-      DEFAULT_MODEL_OPTIONS[provider.id]
-        .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
-        .forEach((modelId) => addModel(models, seen, provider, modelId));
+      const liveOpenCode = await fetchOpenCodeFreeModels();
+      liveOpenCode
+        .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
+        .forEach((model) => addModel(models, seen, provider, model.id, model.name));
     }
 
     // Add admin-configured custom models that pass the visibility filter
