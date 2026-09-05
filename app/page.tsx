@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from "@stackframe/stack";
-import { ArrowUpIcon, WarningIcon, LinkIcon } from '@phosphor-icons/react';
+import { ArrowUpIcon, ArrowUpRightIcon, WarningIcon, LinkIcon } from '@phosphor-icons/react';
 import { SiteHeader, SiteHeaderLink } from '@/components/site-header';
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import AccountMenu from "@/components/account-menu";
 import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
 import { ModelSelector } from '@/components/ui/model-selector';
 import { isHttpUrl } from '@/lib/url-reference';
+import { WorkshopBackground } from '@/components/workshop-background';
 import { APP_NAME, EXAMPLE_PROMPTS } from '@/lib/constants';
 
 const DRAFT_KEY = 'maf:landing-draft';
@@ -156,10 +157,14 @@ export default function Home() {
         <AccountMenu />
       </SiteHeader>
 
-      <main id="main" className="flex-1">
-        <div className="mx-auto w-full max-w-3xl px-6 py-16 sm:py-24">
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
-            <h1 className="text-balance text-center text-4xl font-semibold tracking-tight sm:text-5xl">
+      <main id="main" className="relative flex-1">
+        <WorkshopBackground />
+        <div className="relative mx-auto w-full max-w-3xl px-6 py-16 sm:py-24">
+          <div>
+            <p className="text-center font-mono text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Mini App Factory · Workshop
+            </p>
+            <h1 className="mt-3 text-balance text-center text-4xl font-semibold tracking-tight sm:text-5xl">
               Describe an app. Get a working one.
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-pretty text-center text-base leading-relaxed text-muted-foreground">
@@ -168,7 +173,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-10 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both [animation-delay:100ms]">
+          <div className="mt-10 space-y-3">
             {error && (
               <div
                 id={errorId}
@@ -266,27 +271,63 @@ export default function Home() {
 
           <section
             aria-labelledby="starters-heading"
-            className="mt-12 animate-in fade-in duration-500 fill-mode-both [animation-delay:200ms]"
+            className="mt-12"
           >
-            <h2 id="starters-heading" className="text-sm font-medium text-muted-foreground">
-              Not sure where to start?
-            </h2>
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 id="starters-heading" className="text-sm font-medium text-muted-foreground">
+                Not sure where to start?
+              </h2>
+              <p className="hidden font-mono text-xs text-muted-foreground/70 sm:block">
+                Pick one to fill the composer
+              </p>
+            </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {EXAMPLE_PROMPTS.map((example) => (
                 <button
                   key={example}
                   type="button"
+                  title={example}
                   onClick={() => {
                     setPrompt(example);
                     textareaRef.current?.focus();
                   }}
-                  className="max-w-full rounded-full border border-border/60 px-3.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="group flex items-start justify-between gap-2 rounded-xl border border-border/60 bg-card px-3.5 py-2.5 text-left text-[13px] leading-snug text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:bg-muted/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
-                  <span className="line-clamp-1">{example}</span>
+                  <span className="line-clamp-2">{example}</span>
+                  <ArrowUpRightIcon size={14} className="mt-0.5 shrink-0 text-muted-foreground/50 transition-all duration-150 group-hover:translate-x-px group-hover:text-foreground" />
                 </button>
               ))}
             </div>
+          </section>
+
+          <section aria-labelledby="how-heading" className="mt-16">
+            <h2 id="how-heading" className="font-mono text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              How it works
+            </h2>
+            <ol className="mt-4 divide-y divide-border border-y border-border">
+              <li className="grid gap-1 py-4 sm:grid-cols-[3rem_1fr] sm:gap-4">
+                <span aria-hidden className="font-mono text-sm text-muted-foreground/70">01</span>
+                <div>
+                  <h3 className="text-[15px] font-semibold tracking-tight">Describe</h3>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">Write the app in plain language. Reference a site for visual cues if you have one.</p>
+                </div>
+              </li>
+              <li className="grid gap-1 py-4 sm:grid-cols-[3rem_1fr] sm:gap-4">
+                <span aria-hidden className="font-mono text-sm text-muted-foreground/70">02</span>
+                <div>
+                  <h3 className="text-[15px] font-semibold tracking-tight">Inspect</h3>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">Read the files, click through the preview, and refine with follow-up prompts. Every version is kept.</p>
+                </div>
+              </li>
+              <li className="grid gap-1 py-4 sm:grid-cols-[3rem_1fr] sm:gap-4">
+                <span aria-hidden className="font-mono text-sm text-muted-foreground/70">03</span>
+                <div>
+                  <h3 className="text-[15px] font-semibold tracking-tight">Deploy</h3>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">Ship to hosting or export the code. You confirm before anything billable happens.</p>
+                </div>
+              </li>
+            </ol>
           </section>
         </div>
       </main>

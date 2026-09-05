@@ -103,5 +103,12 @@
     "tw-animate-css": "1.3.3",
     "typescript": "^5",
     "vitest": "^1.3.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.2",
+      "onFail": "download"
+    }
   }
 }
