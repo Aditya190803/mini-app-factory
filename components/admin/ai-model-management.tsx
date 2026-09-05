@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Eye, EyeOff, Search } from 'lucide-react';
+import { Eye, EyeOff, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button, Input } from '@/components/kit';
+import { TopBar } from '@/components/shell/top-bar';
+import { ThemeToggle } from '@/components/shell/theme-toggle';
+import { AccountMenu } from '@/components/shell/account-menu';
 import {
   AI_PROVIDER_IDS,
   type AIAdminConfig,
@@ -36,7 +37,6 @@ const emptySearchState: Record<AIProviderId, string> = {
 };
 
 export default function AIModelManagement() {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -185,41 +185,43 @@ export default function AIModelManagement() {
   };
 
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/admin')}
-              className="w-10 h-10 flex items-center justify-center border border-[var(--border)] hover:border-[var(--primary)] text-[var(--secondary-text)] hover:text-[var(--primary)] transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div>
-              <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>
-                Model Visibility
-              </h1>
-              <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
-                Search · Hide/Show · Default Selection
-              </p>
-            </div>
-          </div>
+    <div className="flex min-h-dvh flex-col">
+      <TopBar
+        crumbs={[
+          { label: 'Settings', href: '/settings' },
+          { label: 'AI console', href: '/admin' },
+          { label: 'Models' },
+        ]}
+      >
+        <ThemeToggle className="mr-1 hidden sm:inline-flex" />
+        <AccountMenu isAdmin />
+      </TopBar>
 
+      <main id="main" className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-10 sm:px-6">
+        <div className="ticked flex flex-wrap items-end justify-between gap-4 pb-3">
+          <div>
+            <h1 className="text-2xl font-medium tracking-[-0.024em]">Model visibility</h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Which models users can pick, and which one is offered by default.
+            </p>
+          </div>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono uppercase text-[var(--muted-text)]">{saveMessage}</span>
+            <span aria-live="polite" className="text-xs text-[var(--muted-foreground)]">
+              {saveMessage}
+            </span>
             <Button
-              variant="outline"
-              className="text-[10px] font-mono uppercase border-[var(--border)]"
+              intent="primary"
               onClick={saveChanges}
-              disabled={isSaving || isLoading}
+              busy={isSaving}
+              disabled={isLoading}
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              Save changes
             </Button>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="border border-[var(--border)] bg-[var(--background-surface)] p-6 text-[11px] font-mono text-[var(--muted-text)]">
+          <div className="border border-[var(--rule)] bg-[var(--surface-1)] p-6 text-xs font-mono text-[var(--muted-foreground)]">
             Loading model catalogs...
           </div>
         ) : (
@@ -238,31 +240,29 @@ export default function AIModelManagement() {
               const hiddenCount = Math.max(provider.models.length - visibleCount, 0);
 
               return (
-                <section key={provider.providerId} className="border border-[var(--border)] bg-[var(--background-surface)] p-4 space-y-3">
+                <section key={provider.providerId} className="border border-[var(--rule)] bg-[var(--surface-1)] p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-mono uppercase tracking-widest text-[var(--secondary-text)]">
+                      <div className="text-xs font-mono uppercase tracking-[0.08em] text-[var(--foreground)]">
                         {provider.providerName}
                       </div>
-                      <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                      <div className="text-xs font-mono text-[var(--muted-foreground)]">
                         {visibleCount} visible of {provider.models.length} total
                       </div>
-                      <div className="text-[10px] font-mono text-[var(--muted-text)]">
+                      <div className="text-xs font-mono text-[var(--muted-foreground)]">
                         {hiddenCount} hidden
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="outline"
-                        className="h-8 px-3 text-[10px] font-mono uppercase border-[var(--border)]"
+                        className="h-8 px-3 text-xs font-mono uppercase border-[var(--rule)]"
                         onClick={() => hideOrShowAll(provider.providerId, provider.models, 'hide')}
                       >
                         Hide All
                       </Button>
                       <Button
-                        variant="outline"
-                        className="h-8 px-3 text-[10px] font-mono uppercase border-[var(--border)]"
+                        className="h-8 px-3 text-xs font-mono uppercase border-[var(--rule)]"
                         onClick={() => hideOrShowAll(provider.providerId, provider.models, 'show')}
                       >
                         Show All
@@ -272,11 +272,11 @@ export default function AIModelManagement() {
 
                   <div className="grid md:grid-cols-2 gap-3">
                     <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-text)]" />
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]" />
                       <Input
                         value={searchByProvider[provider.providerId]}
                         onChange={(event) => setSearchByProvider((prev) => ({ ...prev, [provider.providerId]: event.target.value }))}
-                        className="pl-9 text-[11px] font-mono"
+                        className="pl-9 text-xs font-mono"
                         placeholder={`search ${provider.providerName.toLowerCase()} models`}
                       />
                     </div>
@@ -285,7 +285,7 @@ export default function AIModelManagement() {
                       <select
                         value={providerConfig.defaultModel}
                         onChange={(event) => setDefaultModel(provider.providerId, event.target.value)}
-                        className="w-full h-9 px-3 border border-[var(--border)] bg-[var(--background)] text-[11px] font-mono text-[var(--foreground)]"
+                        className="w-full h-9 px-3 border border-[var(--rule)] bg-[var(--background)] text-xs font-mono text-[var(--foreground)]"
                       >
                         {visibleModels.map((model) => (
                           <option key={`${provider.providerId}-default-${model.id}`} value={model.id}>
@@ -294,8 +294,7 @@ export default function AIModelManagement() {
                         ))}
                       </select>
                       <Button
-                        variant="outline"
-                        className="h-9 px-3 text-[10px] font-mono uppercase border-[var(--border)]"
+                        className="h-9 px-3 text-xs font-mono uppercase border-[var(--rule)]"
                         onClick={() => setSearchByProvider((prev) => ({ ...prev, [provider.providerId]: '' }))}
                         disabled={!searchByProvider[provider.providerId]}
                       >
@@ -304,9 +303,9 @@ export default function AIModelManagement() {
                     </div>
                   </div>
 
-                  <div className="max-h-[340px] overflow-y-auto border border-[var(--border)] rounded-md">
+                  <div className="max-h-[340px] overflow-y-auto border border-[var(--rule)] rounded-md">
                     {filteredModels.length === 0 ? (
-                      <div className="px-3 py-4 text-[10px] font-mono text-[var(--muted-text)]">No models match this search.</div>
+                      <div className="px-3 py-4 text-xs font-mono text-[var(--muted-foreground)]">No models match this search.</div>
                     ) : (
                       filteredModels.map((model) => {
                         const isDefault = providerConfig.defaultModel === model.id;
@@ -315,22 +314,21 @@ export default function AIModelManagement() {
                         return (
                           <div
                             key={`${provider.providerId}-${model.id}`}
-                            className="px-3 py-2 border-b border-[var(--border)] last:border-b-0 flex items-center justify-between gap-3"
+                            className="px-3 py-2 border-b border-[var(--rule)] last:border-b-0 flex items-center justify-between gap-3"
                           >
                             <div className="min-w-0">
-                              <div className="text-[11px] font-mono text-[var(--foreground)] truncate">{model.name}</div>
-                              <div className="text-[10px] font-mono text-[var(--muted-text)] truncate">{model.id}</div>
+                              <div className="text-xs font-mono text-[var(--foreground)] truncate">{model.name}</div>
+                              <div className="text-xs font-mono text-[var(--muted-foreground)] truncate">{model.id}</div>
                             </div>
 
                             <div className="flex items-center gap-2">
                               {isDefault && (
-                                <span className="text-[9px] px-2 py-1 border border-[var(--primary)] text-[var(--primary)] font-mono uppercase">
+                                <span className="text-xs px-2 py-1 border border-[var(--primary)] text-[var(--primary)] font-mono uppercase">
                                   Default
                                 </span>
                               )}
                               <Button
-                                variant="outline"
-                                className="h-8 px-2 border-[var(--border)]"
+                                className="h-8 px-2 border-[var(--rule)]"
                                 onClick={() => toggleVisible(provider.providerId, model.id, provider.models)}
                                 disabled={isDefault}
                                 title={isDefault ? 'Default model is always visible' : isVisible ? 'Hide model' : 'Show model'}
@@ -348,7 +346,7 @@ export default function AIModelManagement() {
             })}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

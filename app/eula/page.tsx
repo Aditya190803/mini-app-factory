@@ -1,70 +1,93 @@
-'use client';
+import type { Metadata } from 'next'
+import { ProsePage, ProseSection } from '@/components/shell/prose-page'
+
+export const metadata: Metadata = {
+  title: 'Terms',
+  description: 'The terms that apply to using Mini App Factory.',
+}
+
+const TOC = [
+  { id: 'license', label: 'What you may do' },
+  { id: 'ownership', label: 'Who owns the output' },
+  { id: 'responsibilities', label: 'Your responsibilities' },
+  { id: 'costs', label: 'Cloud costs' },
+  { id: 'third-party', label: 'Third-party services' },
+  { id: 'availability', label: 'Availability' },
+  { id: 'contact', label: 'Contact' },
+] as const
 
 export default function EulaPage() {
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-5xl mx-auto px-6 py-12 space-y-10">
-        <div className="space-y-3">
-          <h1 className="text-2xl font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>
-            End User License Agreement
-          </h1>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">
-            Effective Date: February 4, 2026
-          </div>
-          <p className="text-sm font-sans text-[var(--secondary-text)] max-w-3xl">
-            By accessing or using Mini App Factory, you agree to the terms below.
-          </p>
-        </div>
+    <ProsePage
+      title="Terms of use"
+      subtitle="Using Mini App Factory means accepting the terms below."
+      updated="4 February 2026"
+      toc={TOC}
+    >
+      <ProseSection id="license" title="What you may do">
+        <p>
+          You get a limited, non-exclusive, revocable licence to use the product to create and
+          manage projects.
+        </p>
+        <p>
+          You may export what you generate and deploy it to your own infrastructure or to any
+          provider you control, without further permission.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            License Grant
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>We grant you a limited, non-exclusive, revocable license to use the product for creating and managing your projects.</p>
-            <p>You may export and deploy generated content to your own infrastructure or providers you control.</p>
-          </div>
-        </section>
+      <ProseSection id="ownership" title="Who owns the output">
+        <p>
+          The projects you generate are yours. The generated files are ordinary web files and
+          standard Cloudflare configuration, deliberately, so that nothing you build here depends on
+          this product continuing to exist.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Your Responsibilities
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>You are responsible for the content you generate, publish, or deploy using the product.</p>
-            <p>You must ensure you have rights to any assets, code, or data you upload or generate.</p>
-          </div>
-        </section>
+      <ProseSection id="responsibilities" title="Your responsibilities">
+        <p>You are responsible for what you generate, publish, and deploy.</p>
+        <p>
+          You must hold the rights to any asset, code, or data you upload or reference, including
+          anything at a reference URL you point the generator at.
+        </p>
+        <p>
+          Generated code is not reviewed by a person before it reaches you. Read it before you put
+          it in front of anyone, particularly where it handles other people&apos;s data.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Third-Party Services
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>Deployments can be made through GitHub/Netlify integrations or via the hosted publishing option.</p>
-            <p>Your use of third-party services is subject to their own terms and policies.</p>
-          </div>
-        </section>
+      <ProseSection id="costs" title="Cloud costs">
+        <p>
+          Deployments run in <strong>your</strong> cloud accounts, so any usage they incur is billed
+          to you by those providers, not by this product.
+        </p>
+        <p>
+          Every resource that can persist or bill is listed and confirmed by you before it is
+          created. Watching what those resources then cost is on you, and your provider&apos;s
+          dashboard is the authority on it.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Availability and Changes
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>The product is provided “as is” and may change or be discontinued at any time.</p>
-            <p>We may update these terms periodically; continued use indicates acceptance.</p>
-          </div>
-        </section>
+      <ProseSection id="third-party" title="Third-party services">
+        <p>
+          Cloudflare, GitHub, Netlify, Vercel, the authentication provider, and the model providers
+          each have their own terms, and your use of them is governed by those terms as well as
+          these.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Contact
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)]">
-            Questions about these terms? Reach out via the Support page.
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+      <ProseSection id="availability" title="Availability">
+        <p>
+          The product is provided as is. It may change, break, or be discontinued. Keep an exported
+          copy of anything you cannot afford to lose.
+        </p>
+        <p>These terms may be updated. Continuing to use the product accepts the update.</p>
+      </ProseSection>
+
+      <ProseSection id="contact" title="Contact">
+        <p>
+          Questions about these terms go through the <a href="/support">support page</a>.
+        </p>
+      </ProseSection>
+    </ProsePage>
+  )
 }

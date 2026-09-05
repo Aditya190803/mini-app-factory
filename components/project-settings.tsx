@@ -1,185 +1,372 @@
-'use client';
+'use client'
 
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import MetadataDashboard from "@/components/metadata-dashboard";
-import { Button } from "@/components/ui/button";
-import { Globe, GitBranch, Activity, Settings2, Brain } from "lucide-react";
-import { extractNetlifySiteNameFromUrl } from "@/lib/deploy-shared";
-import CloudflareProjectSettings from "@/components/cloudflare-project-settings";
-import { inspectProject } from '@/lib/project-inspector';
-import ProjectCollaboration from '@/components/project-collaboration';
-import GitHubProjectSync from '@/components/github-project-sync';
+import * as React from 'react'
+import Link from 'next/link'
+import { useMutation, useQuery } from 'convex/react'
+import { ExternalLink } from 'lucide-react'
+import { api } from '@/convex/_generated/api'
+import MetadataDashboard from '@/components/metadata-dashboard'
+import CloudflareProjectSettings from '@/components/cloudflare-project-settings'
+import ProjectCollaboration from '@/components/project-collaboration'
+import GitHubProjectSync from '@/components/github-project-sync'
+import { TopBar } from '@/components/shell/top-bar'
+import { ThemeToggle } from '@/components/shell/theme-toggle'
+import { AccountMenu } from '@/components/shell/account-menu'
+import {
+  Badge,
+  Button,
+  CopyValue,
+  Field,
+  Row,
+  RowList,
+  Section,
+  Skeleton,
+  SpecTable,
+  Textarea,
+} from '@/components/kit'
+import { extractNetlifySiteNameFromUrl } from '@/lib/deploy-shared'
+import { inspectProject } from '@/lib/project-inspector'
+import { resolveTarget, TARGETS } from '@/lib/targets'
 
-interface ProjectSettingsProps {
-  projectName: string;
-}
-
-export default function ProjectSettings({ projectName }: ProjectSettingsProps) {
-  const project = useQuery(api.projects.getProject, { projectName });
-  const files = useQuery(api.files.getFilesByProject, project?._id ? { projectId: project._id } : "skip");
+/**
+ * Project settings.
+ *
+ * A single scrolling column of ruled sections rather than tabs. Everything
+ * here is read occasionally and in no particular order, and tabs would hide
+ * exactly the section someone came looking for.
+ *
+ * Ordered by how often it is needed: what is deployed, then Cloudflare, then
+ * access, then the things you set once.
+ */
+export default function ProjectSettings({ projectName }: { projectName: string }) {
+  const project = useQuery(api.projects.getProject, { projectName })
+  const files = useQuery(
+    api.files.getFilesByProject,
+    project?._id ? { projectId: project._id } : 'skip'
+  )
   const deploymentHistory = useQuery(
     api.deployments.getDeploymentHistory,
-    project?._id ? { projectId: project._id } : "skip"
-  );
-  const updateInstructions = useMutation(api.projects.updateProjectInstructions);
-  const [instructions, setInstructions] = useState('');
-  const [savingInstructions, setSavingInstructions] = useState(false);
+    project?._id ? { projectId: project._id } : 'skip'
+  )
+  const updateInstructions = useMutation(api.projects.updateProjectInstructions)
 
-  useEffect(() => {
-    if (project) setInstructions(project.projectInstructions || '');
-  }, [project]);
+  const [instructions, setInstructions] = React.useState('')
+  const [savingInstructions, setSavingInstructions] = React.useState(false)
 
-  const deployedAt = useMemo(() => {
-    if (!project?.deployedAt) return null;
-    return new Date(project.deployedAt).toLocaleString();
-  }, [project?.deployedAt]);
-  const architecture = useMemo(() => inspectProject(files || [], projectName), [files, projectName]);
+  React.useEffect(() => {
+    if (project) setInstructions(project.projectInstructions || '')
+  }, [project])
+
+  const projectFiles = React.useMemo(
+    () =>
+      (files || []).map((file) => ({
+        path: file.path,
+        fileType: file.fileType,
+      })),
+    [files]
+  )
+
+  const architecture = React.useMemo(
+    () => inspectProject(files || [], projectName),
+    [files, projectName]
+  )
+
+  const chrome = (
+    <>
+      <ThemeToggle className="mr-1 hidden sm:inline-flex" />
+      <AccountMenu />
+    </>
+  )
 
   if (!project) {
     return (
-      <div className="min-h-dvh flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
-        <div className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Loading settings...</div>
+      <div className="flex min-h-dvh flex-col">
+        <TopBar crumbs={[{ label: 'Projects', href: '/dashboard' }, { label: projectName }]}>
+          {chrome}
+        </TopBar>
+        <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10 sm:px-6">
+          <Skeleton className="h-7 w-56" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </main>
       </div>
-    );
+    )
   }
 
+  const target = resolveTarget(project.target, projectFiles)
+  const liveUrl =
+    project.deploymentUrl ||
+    (project.isPublished ? `/results/${project.projectName}` : undefined)
+
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Project Settings</div>
-            <h1 className="text-lg font-display font-black uppercase tracking-[0.3em]" style={{ color: 'var(--foreground)' }}>
-              {project.projectName}
-            </h1>
+    <div className="flex min-h-dvh flex-col">
+      <TopBar
+        crumbs={[
+          { label: 'Projects', href: '/dashboard' },
+          { label: project.projectName, href: `/edit/${project.projectName}` },
+          { label: 'Settings' },
+        ]}
+      >
+        {chrome}
+      </TopBar>
+
+      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
+        <div className="ticked flex flex-wrap items-end justify-between gap-4 pb-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-mono text-2xl tracking-[-0.04em]">
+                {project.projectName}
+              </h1>
+              <Badge tone={target === 'edge' ? 'signal' : 'neutral'} mono>
+                {target}
+              </Badge>
+            </div>
+            <p className="mt-1.5 max-w-[64ch] text-sm text-[var(--muted-foreground)]">
+              {TARGETS[target].summary}
+            </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => window.location.href = `/edit/${project.projectName}`}
-            className="text-[10px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
-          >
-            Back to Editor
+          <Button asChild>
+            <Link href={`/edit/${project.projectName}`}>Back to the editor</Link>
           </Button>
         </div>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-            <Activity className="w-4 h-4" />
-            <h2 className="text-xs font-mono uppercase tracking-widest">Deployment</h2>
-          </div>
-          <div className="grid md:grid-cols-2 gap-4 text-[11px] font-mono text-[var(--muted-text)]">
-            <div className="space-y-1">
-              <div className="text-[9px] uppercase text-[var(--secondary-text)]">Provider</div>
-              <div>{project.deployProvider ? project.deployProvider.toUpperCase() : project.isPublished ? 'HOSTED' : 'NOT DEPLOYED'}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-[9px] uppercase text-[var(--secondary-text)]">Last Deploy</div>
-              <div>{deployedAt || '—'}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-[9px] uppercase text-[var(--secondary-text)]">Live URL</div>
-              <div className="break-all">{project.deploymentUrl || (project.isPublished ? `${window.location.origin}/results/${project.projectName}` : '—')}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-[9px] uppercase text-[var(--secondary-text)]">Repo</div>
-              <div className="break-all">{project.repoUrl || '—'}</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-[9px] uppercase text-[var(--secondary-text)]">Netlify Site</div>
-              <div className="break-all">
-                {project.netlifySiteName || extractNetlifySiteNameFromUrl(project.deploymentUrl) || '—'}
+        <div className="mt-10 space-y-12">
+          <Section
+            title="Deployment"
+            description="Where this project currently is, and how it got there."
+            actions={
+              liveUrl && (
+                <Button size="sm" asChild>
+                  <a href={liveUrl} target="_blank" rel="noopener noreferrer">
+                    Open
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                </Button>
+              )
+            }
+          >
+            <SpecTable
+              caption="Deployment"
+              rows={[
+                {
+                  key: 'provider',
+                  label: 'Provider',
+                  value: project.deployProvider ?? (project.isPublished ? 'factory' : 'Not deployed'),
+                  muted: !project.deployProvider && !project.isPublished,
+                },
+                {
+                  key: 'when',
+                  label: 'Last deploy',
+                  value: project.deployedAt
+                    ? new Date(project.deployedAt).toLocaleString()
+                    : 'Never',
+                  muted: !project.deployedAt,
+                  mono: Boolean(project.deployedAt),
+                },
+                {
+                  key: 'url',
+                  label: 'Live URL',
+                  value: liveUrl ? <CopyValue value={liveUrl} label="the live URL" /> : 'None yet',
+                  muted: !liveUrl,
+                },
+                {
+                  key: 'repo',
+                  label: 'Repository',
+                  value: project.repoUrl ? (
+                    <CopyValue value={project.repoUrl} label="the repo URL" />
+                  ) : (
+                    'Not linked'
+                  ),
+                  muted: !project.repoUrl,
+                },
+                {
+                  key: 'netlify',
+                  label: 'Netlify site',
+                  value:
+                    project.netlifySiteName ||
+                    extractNetlifySiteNameFromUrl(project.deploymentUrl) ||
+                    'Not used',
+                  muted: !project.netlifySiteName,
+                  mono: Boolean(project.netlifySiteName),
+                },
+              ]}
+            />
+
+            {deploymentHistory && deploymentHistory.length > 0 && (
+              <div className="mt-5">
+                <p className="key mb-2">Recent deploys</p>
+                <RowList>
+                  {deploymentHistory.slice(0, 5).map((entry) => (
+                    <Row key={entry._id}>
+                      <Badge tone="neutral" mono>
+                        {entry.provider}
+                      </Badge>
+                      <span className="tabular min-w-0 flex-1 truncate text-xs text-[var(--muted-foreground)]">
+                        <time dateTime={new Date(entry.createdAt).toISOString()}>
+                          {new Date(entry.createdAt).toLocaleString()}
+                        </time>
+                      </span>
+                      <span className="hidden min-w-0 max-w-64 shrink truncate font-mono text-xs text-[var(--muted-foreground)] sm:block">
+                        {entry.deploymentUrl || entry.repoUrl || entry.netlifySiteName || ''}
+                      </span>
+                    </Row>
+                  ))}
+                </RowList>
               </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {project.deploymentUrl && (
-              <Button
-                variant="outline"
-                onClick={() => window.open(project.deploymentUrl!, '_blank')}
-                className="text-[10px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
-              >
-                <Globe className="w-3 h-3 mr-2" />
-                Open Live
-              </Button>
             )}
-            {project.repoUrl && (
-              <Button
-                variant="outline"
-                onClick={() => window.open(project.repoUrl!, '_blank')}
-                className="text-[10px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
-              >
-                <GitBranch className="w-3 h-3 mr-2" />
-                Open Repo
-              </Button>
-            )}
-          </div>
-          {deploymentHistory && deploymentHistory.length > 0 && (
-            <div className="border-t border-[var(--border)] pt-4 mt-4 space-y-2">
-              <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-                Deployment History
+          </Section>
+
+          <CloudflareProjectSettings
+            projectName={project.projectName}
+            cloudflareProjectName={project.cloudflareProjectName}
+            d1DatabaseName={project.cloudflareD1DatabaseName}
+            resourcesJson={project.cloudflareResourcesJson}
+            customDomain={project.cloudflareCustomDomain}
+            deployments={deploymentHistory || []}
+          />
+
+          <ProjectCollaboration projectId={project._id} />
+
+          <GitHubProjectSync projectName={project.projectName} repoUrl={project.repoUrl} />
+
+          <Section
+            title="Architecture"
+            description="Read straight from the files, so it is always what the project currently contains rather than what it was generated as."
+          >
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="min-w-0">
+                <p className="key">Worker routes</p>
+                {architecture.routes.length ? (
+                  <ul className="mt-2 space-y-1">
+                    {architecture.routes.map((route, index) => (
+                      <li
+                        key={`${route.method}:${route.path}:${index}`}
+                        className="flex items-baseline gap-2 font-mono text-xs"
+                      >
+                        <span className="w-12 shrink-0 text-[var(--signal-text)]">
+                          {route.method}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{route.path}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    No Worker routes. This is a static site.
+                  </p>
+                )}
               </div>
-              <div className="grid gap-2 text-[10px] font-mono text-[var(--muted-text)]">
-                {deploymentHistory.slice(0, 5).map((entry) => (
-                  <div key={entry._id} className="flex items-center justify-between">
-                    <div>
-                      {entry.provider.toUpperCase()} · {new Date(entry.createdAt).toLocaleString()}
-                    </div>
-                    <div className="text-[9px] text-[var(--secondary-text)] truncate max-w-[220px]">
-                      {entry.deploymentUrl || entry.repoUrl || entry.netlifySiteName || '—'}
-                    </div>
-                  </div>
-                ))}
+
+              <div className="min-w-0">
+                <p className="key">Bound resources</p>
+                {architecture.resources.length ? (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {architecture.resources.map((resource) => (
+                      <li key={`${resource.kind}:${resource.binding}`}>
+                        <Badge tone="neutral" mono>
+                          {resource.binding} · {resource.kind} · {resource.name}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    Nothing bound. No database, no storage.
+                  </p>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <p className="key">Background work</p>
+                {architecture.schedules.length || architecture.queues.length ? (
+                  <ul className="mt-2 space-y-1 font-mono text-xs text-[var(--muted-foreground)]">
+                    {architecture.schedules.map((item) => (
+                      <li key={`${item.worker}:${item.cron}`}>
+                        {item.worker} on cron {item.cron}
+                      </li>
+                    ))}
+                    {architecture.queues.map((item) => (
+                      <li key={`${item.worker}:${item.queue}`}>
+                        {item.worker} consumes {item.queue}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    No crons and no queue consumers.
+                  </p>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <p className="key">Expected environment</p>
+                {architecture.environmentNames.length ? (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {architecture.environmentNames.map((name) => (
+                      <li key={name}>
+                        <Badge tone="neutral" mono>
+                          {name}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    Nothing declared in .dev.vars.example.
+                  </p>
+                )}
               </div>
             </div>
-          )}
-        </section>
+          </Section>
 
-        <CloudflareProjectSettings
-          projectName={project.projectName}
-          cloudflareProjectName={project.cloudflareProjectName}
-          d1DatabaseName={project.cloudflareD1DatabaseName}
-          resourcesJson={project.cloudflareResourcesJson}
-          customDomain={project.cloudflareCustomDomain}
-          deployments={deploymentHistory || []}
-        />
+          <Section
+            title="Project memory"
+            description="Rules that every future request has to follow: product requirements, brand constraints, technical decisions, and anything that must not be changed. Both Build and Discuss read this."
+            actions={
+              <Button
+                intent="primary"
+                size="sm"
+                busy={savingInstructions}
+                onClick={async () => {
+                  setSavingInstructions(true)
+                  try {
+                    await updateInstructions({ projectName, instructions })
+                  } finally {
+                    setSavingInstructions(false)
+                  }
+                }}
+              >
+                Save
+              </Button>
+            }
+          >
+            <Field
+              label="Standing instructions"
+              hideLabel
+              hint={`${instructions.length.toLocaleString()} of 20,000 characters`}
+            >
+              <Textarea
+                value={instructions}
+                maxLength={20_000}
+                onChange={(event) => setInstructions(event.target.value)}
+                placeholder="Keep authentication on Stack Auth. Never remove the audit log. Prefer native form controls over custom ones. Use warm neutrals, no purple."
+                className="min-h-36"
+              />
+            </Field>
+          </Section>
 
-        <ProjectCollaboration projectId={project._id} />
-
-        <GitHubProjectSync projectName={project.projectName} repoUrl={project.repoUrl} />
-
-        <section className="space-y-4 border border-[var(--border)] bg-[var(--background-surface)] p-6">
-          <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-            <Brain className="size-4" />
-            <h2 className="text-xs font-mono uppercase tracking-widest">Project memory</h2>
-          </div>
-          <p className="max-w-2xl text-xs leading-5 text-[var(--muted-text)]">Persistent product requirements, brand rules, technical constraints, and components that must not change. Build and Discuss follow these instructions on every request.</p>
-          <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} maxLength={20_000} placeholder="Example: Use warm neutral colors. Keep authentication on Stack Auth. Never remove the audit log. Prefer accessible native controls." className="min-h-36 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm leading-6 text-[var(--foreground)] outline-none focus:border-[var(--primary)]" />
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[var(--muted-text)]">{instructions.length.toLocaleString()} / 20,000</span>
-            <Button type="button" disabled={savingInstructions} onClick={async () => { setSavingInstructions(true); try { await updateInstructions({ projectName, instructions }); } finally { setSavingInstructions(false); } }} className="text-xs">{savingInstructions ? 'Saving…' : 'Save memory'}</Button>
-          </div>
-        </section>
-
-        <section className="space-y-5 border border-[var(--border)] bg-[var(--background-surface)] p-6">
-          <div className="flex items-center gap-2 text-[var(--secondary-text)]"><Activity className="size-4" /><h2 className="text-xs font-mono uppercase tracking-widest">Architecture inspector</h2></div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div><h3 className="mb-2 text-xs font-medium">Worker API routes</h3>{architecture.routes.length ? <div className="space-y-1">{architecture.routes.map((route, index) => <div key={`${route.method}:${route.path}:${index}`} className="flex items-center gap-2 rounded-md bg-[var(--background)] px-3 py-2 text-xs"><span className="w-12 font-mono text-[var(--primary)]">{route.method}</span><span className="min-w-0 flex-1 truncate font-mono">{route.path}</span><span className="truncate text-[10px] text-[var(--muted-text)]">{route.source}</span></div>)}</div> : <p className="text-xs text-[var(--muted-text)]">No explicit Worker routes detected.</p>}</div>
-            <div><h3 className="mb-2 text-xs font-medium">Cloudflare resources</h3>{architecture.resources.length ? <div className="flex flex-wrap gap-2">{architecture.resources.map((resource) => <span key={`${resource.kind}:${resource.binding}`} className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[10px] font-mono"><strong>{resource.binding}</strong> · {resource.kind} · {resource.name}</span>)}</div> : <p className="text-xs text-[var(--muted-text)]">No bound backend resources.</p>}</div>
-            <div><h3 className="mb-2 text-xs font-medium">Schedules and queues</h3><div className="space-y-1 text-xs text-[var(--muted-text)]">{architecture.schedules.map((item) => <p key={`${item.worker}:${item.cron}`}>{item.worker}: cron {item.cron}</p>)}{architecture.queues.map((item) => <p key={`${item.worker}:${item.queue}`}>{item.worker}: queue {item.queue}</p>)}{!architecture.schedules.length && !architecture.queues.length ? <p>No background workflows.</p> : null}</div></div>
-            <div><h3 className="mb-2 text-xs font-medium">Required environment</h3>{architecture.environmentNames.length ? <div className="flex flex-wrap gap-2">{architecture.environmentNames.map((name) => <code key={name} className="rounded-md bg-[var(--background)] px-2 py-1 text-[10px]">{name}</code>)}</div> : <p className="text-xs text-[var(--muted-text)]">No variables declared in .dev.vars.example.</p>}</div>
-          </div>
-        </section>
-
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-            <Settings2 className="w-4 h-4" />
-            <h2 className="text-xs font-mono uppercase tracking-widest">SEO & Metadata</h2>
-          </div>
-          <MetadataDashboard projectId={project._id} projectName={project.projectName} files={files || []} />
-        </section>
-      </div>
+          <Section
+            title="Metadata and SEO"
+            description="Titles, descriptions, and social images, per page and for the site as a whole."
+          >
+            <MetadataDashboard
+              projectId={project._id}
+              projectName={project.projectName}
+              files={files || []}
+            />
+          </Section>
+        </div>
+      </main>
     </div>
-  );
+  )
 }

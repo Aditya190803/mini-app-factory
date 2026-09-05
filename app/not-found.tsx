@@ -1,21 +1,31 @@
 import Link from 'next/link'
+import { FileQuestion } from 'lucide-react'
+import { Button, EmptyState } from '@/components/kit'
 
 export default function NotFound() {
   return (
     <main
       id="main"
-      className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center"
+      className="flex min-h-dvh items-center justify-center bg-[var(--background)] px-6"
     >
-      <h1 className="text-lg font-semibold text-foreground">Page not found</h1>
-      <p className="max-w-md text-sm text-muted-foreground">
-        That page doesn&apos;t exist, or the project was removed.
-      </p>
-      <Link
-        href="/"
-        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-[var(--primary-hover)]"
-      >
-        Go home
-      </Link>
+      <div className="w-full max-w-md">
+        <EmptyState
+          title="Nothing at this address"
+          icon={<FileQuestion className="size-5" />}
+          action={
+            <div className="flex gap-2">
+              <Button intent="primary" asChild>
+                <Link href="/">Back to the composer</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/dashboard">Your projects</Link>
+              </Button>
+            </div>
+          }
+        >
+          <p>The page does not exist, or the project it belonged to was deleted.</p>
+        </EmptyState>
+      </div>
     </main>
   )
 }

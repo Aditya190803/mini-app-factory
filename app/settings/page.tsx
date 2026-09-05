@@ -5,10 +5,24 @@ import { toast } from 'sonner';
 import { useEffect, useState } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import Link from 'next/link';
+import {
+  Badge,
+  Button,
+  Field,
+  IconButton,
+  Input,
+  Row,
+  RowList,
+  Section,
+  Skeleton,
+  StatusDot,
+} from '@/components/kit';
+import { TopBar } from '@/components/shell/top-bar';
+import { ThemeToggle } from '@/components/shell/theme-toggle';
+import { AccountMenu } from '@/components/shell/account-menu';
 import { logout } from '@/lib/logout';
-import { Plug, User, CreditCard, Bell, KeyRound, ExternalLink, Eye, EyeOff, Trash2, FlaskConical, Save } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, FlaskConical, KeyRound, Trash2 } from 'lucide-react';
 import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 import CloudflareConnect from '@/components/cloudflare-connect';
@@ -284,360 +298,364 @@ export default function SettingsPage() {
 
   if (!user) {
     return (
-      <div className="min-h-dvh flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
+      <div className="grid min-h-dvh place-items-center px-6">
         <div className="text-center">
-          <h1 className="text-lg font-mono uppercase tracking-widest" style={{ color: 'var(--foreground)' }}>Sign in required</h1>
-          <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>Please sign in to manage your settings.</p>
-          <button
-            onClick={() => router.push('/handler/sign-in')}
-            className="mt-4 px-4 py-2 text-[10px] font-mono uppercase border border-[var(--border)] text-[var(--primary)] hover:border-[var(--primary)]"
-          >
-            Sign In
-          </button>
+          <h1 className="text-lg font-medium">Sign in to manage settings</h1>
+          <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
+            Connections and keys belong to your account.
+          </p>
+          <Button intent="primary" className="mt-5" onClick={() => router.push('/handler/sign-in')}>
+            Sign in
+          </Button>
         </div>
       </div>
     );
   }
 
+
+  const connections = [
+    {
+      id: 'cloudflare' as const,
+      label: 'Cloudflare',
+      detail: 'Publishes your projects to Pages and Workers in your own account.',
+      connected: status.cloudflareConnected,
+      at: status.cloudflareConnectedAt,
+      extra: status.cloudflareAccountName,
+      primary: true,
+    },
+    {
+      id: 'github' as const,
+      label: 'GitHub',
+      detail: 'Mirrors the project bundle to a repository you own. Hosts nothing itself.',
+      connected: status.githubConnected,
+      at: status.githubConnectedAt,
+    },
+    {
+      id: 'netlify' as const,
+      label: 'Netlify',
+      detail: 'Hosts static output through a GitHub repository. Cannot run a Worker.',
+      connected: status.netlifyConnected,
+      at: status.netlifyConnectedAt,
+    },
+  ];
+
+  const anyConnected = connections.some((connection) => connection.connected);
+
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-5xl mx-auto px-6 py-10 space-y-10">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="w-10 h-10 flex items-center justify-center border border-[var(--border)] hover:border-[var(--primary)] text-[var(--secondary-text)] hover:text-[var(--primary)] transition-all"
-          >
-            ←
-          </button>
-          <div>
-            <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>Settings</h1>
-            <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
-              Manage account, integrations, and keys
-            </p>
-          </div>
+    <div className="flex min-h-dvh flex-col">
+      <TopBar crumbs={[{ label: 'Settings' }]}>
+        <ThemeToggle className="mr-1 hidden sm:inline-flex" />
+        <AccountMenu />
+      </TopBar>
+
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-10 sm:px-6">
+        <div className="ticked pb-3">
+          <h1 className="text-2xl font-medium tracking-[-0.024em]">Settings</h1>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Signed in as {user.primaryEmail ?? 'your account'}
+          </p>
         </div>
 
-        <div className="grid gap-6">
-          <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-                <User className="w-4 h-4" />
-                <h2 className="text-xs font-mono uppercase tracking-widest">Account</h2>
-              </div>
-              {isAdmin && (
+        <div className="mt-10 space-y-12">
+          <Section
+            title="Cloudflare"
+            description="The account every deploy lands in. Nothing is created there without you approving the exact list of resources first."
+          >
+            <div className="rounded-lg border border-[var(--rule)] bg-[var(--surface-1)] p-4">
+              <CloudflareConnect
+                connected={status.cloudflareConnected}
+                accountName={status.cloudflareAccountName}
+                onConnected={(account) =>
+                  setStatus((prev) => ({
+                    ...prev,
+                    cloudflareConnected: true,
+                    cloudflareAccountName: account?.name,
+                  }))
+                }
+              />
+            </div>
+          </Section>
+
+          <Section
+            title="Connected accounts"
+            description="Each one stores an encrypted token so deploys can run on your behalf. Disconnecting deletes the token immediately."
+            actions={
+              anyConnected && (
                 <Button
-                  variant="outline"
-                  className="text-[10px] font-mono uppercase border-[var(--border)]"
-                  onClick={() => router.push('/admin')}
+                  intent="danger"
+                  size="sm"
+                  busy={isDisconnecting === 'all'}
+                  onClick={() => void disconnect('all')}
                 >
-                  Open Admin
+                  Disconnect all
                 </Button>
-              )}
+              )
+            }
+          >
+            {isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Skeleton key={index} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : (
+              <RowList>
+                {connections.map((connection) => (
+                  <Row key={connection.id} className="items-start">
+                    <StatusDot
+                      tone={connection.connected ? 'live' : 'pending'}
+                      label={connection.connected ? 'Connected' : 'Not connected'}
+                      className="mt-1.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium">{connection.label}</p>
+                        {connection.primary && (
+                          <Badge tone="signal" mono>
+                            primary
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                        {connection.detail}
+                      </p>
+                      {connection.connected && (
+                        <p className="tabular mt-1 text-xs text-[var(--muted-foreground)]">
+                          {connection.extra ? `${connection.extra}, connected ` : 'Connected '}
+                          {formatConnectedAt(connection.at)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      {connection.connected ? (
+                        <Button
+                          size="sm"
+                          busy={isDisconnecting === connection.id}
+                          onClick={() => void disconnect(connection.id)}
+                        >
+                          Disconnect
+                        </Button>
+                      ) : connection.id === 'github' ? (
+                        <Button size="sm" onClick={connectGithub}>
+                          Connect
+                        </Button>
+                      ) : connection.id === 'netlify' ? (
+                        <Button size="sm" onClick={connectNetlify}>
+                          Connect
+                        </Button>
+                      ) : null}
+                    </div>
+                  </Row>
+                ))}
+              </RowList>
+            )}
+          </Section>
+
+          <Section
+            title="Your own API keys"
+            description="Optional. A key here is used instead of the shared one for that provider. Keys are stored encrypted and are never sent back to this page, which is why a saved key shows as present rather than as text."
+          >
+            <div className="space-y-6">
+              {AI_PROVIDER_IDS.map((providerId) => {
+                const saved = Boolean(byokStatus[providerId]);
+                const draft = byokDraft[providerId] || '';
+                const models = customModelsConfig[providerId] ?? [];
+                const test = testState[providerId];
+
+                return (
+                  <div
+                    key={providerId}
+                    className="rounded-lg border border-[var(--rule)] bg-[var(--surface-1)] p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-medium">{providerLabel[providerId]}</h3>
+                        {saved ? (
+                          <Badge tone="live">key saved</Badge>
+                        ) : (
+                          <Badge tone="neutral">using the shared key</Badge>
+                        )}
+                      </div>
+                      <a
+                        href={providerKeyUrl[providerId]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[var(--signal-text)] underline underline-offset-2"
+                      >
+                        Get a key
+                        <ExternalLink className="size-3" />
+                      </a>
+                    </div>
+
+                    <div className="mt-3">
+                      <Field
+                        label="API key"
+                        hideLabel
+                        error={
+                          test === 'error' ? testMessage[providerId] || 'That key was rejected.' : undefined
+                        }
+                        hint={
+                          test === 'ok'
+                            ? testMessage[providerId] || 'The key works.'
+                            : saved && !draft
+                              ? 'A key is stored. Type a new one to replace it.'
+                              : undefined
+                        }
+                      >
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Input
+                              type={showKey[providerId] ? 'text' : 'password'}
+                              value={draft}
+                              autoComplete="off"
+                              placeholder={saved ? 'Stored. Type to replace.' : 'Paste your key'}
+                              onChange={(event) => updateByokDraft(providerId, event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') saveByok(providerId);
+                              }}
+                              className="pr-9 font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowKey((prev) => ({ ...prev, [providerId]: !prev[providerId] }))
+                              }
+                              aria-label={showKey[providerId] ? 'Hide the key' : 'Show the key'}
+                              className="absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                            >
+                              {showKey[providerId] ? (
+                                <EyeOff className="size-3.5" />
+                              ) : (
+                                <Eye className="size-3.5" />
+                              )}
+                            </button>
+                          </div>
+
+                          <Button
+                            intent="primary"
+                            disabled={!draft.trim()}
+                            busy={saveState[providerId] === 'saving'}
+                            onClick={() => saveByok(providerId)}
+                          >
+                            {saveState[providerId] === 'saved' ? 'Saved' : 'Save'}
+                          </Button>
+                          <Button
+                            disabled={!draft.trim() && !saved}
+                            busy={test === 'testing'}
+                            onClick={() => void testByok(providerId)}
+                          >
+                            <FlaskConical className="size-3.5" />
+                            Test
+                          </Button>
+                          {saved && (
+                            <IconButton
+                              label={`Remove the stored ${providerLabel[providerId]} key`}
+                              intent="danger"
+                              onClick={() => clearByok(providerId)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </IconButton>
+                          )}
+                        </div>
+                      </Field>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="mt-4 border-t border-[var(--rule)] pt-3">
+                        <p className="key">Extra model ids</p>
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                          Model ids added here appear in the picker alongside the ones fetched from
+                          the provider.
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <Input
+                            value={customModelInput[providerId]}
+                            placeholder="provider/model-id"
+                            className="font-mono"
+                            onChange={(event) =>
+                              setCustomModelInput((prev) => ({
+                                ...prev,
+                                [providerId]: event.target.value,
+                              }))
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                addCustomModel(providerId);
+                              }
+                            }}
+                          />
+                          <Button
+                            disabled={!customModelInput[providerId].trim()}
+                            onClick={() => addCustomModel(providerId)}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                        {models.length > 0 && (
+                          <ul className="mt-2 flex flex-wrap gap-1.5">
+                            {models.map((modelId) => (
+                              <li
+                                key={modelId}
+                                className="inline-flex items-center gap-1 rounded-md border border-[var(--rule)] py-0.5 pl-2 pr-0.5 font-mono text-xs"
+                              >
+                                {modelId}
+                                <IconButton
+                                  label={`Remove ${modelId}`}
+                                  size="sm"
+                                  intent="danger"
+                                  onClick={() => removeCustomModel(providerId, modelId)}
+                                >
+                                  <Trash2 className="size-3" />
+                                </IconButton>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="text-[11px] font-mono text-[var(--muted-text)]">
-              Signed in as <span className="text-[var(--foreground)]">{user.primaryEmail}</span>
-            </div>
-            <div className="flex gap-2">
+          </Section>
+
+          {isAdmin && (
+            <Section
+              title="Administration"
+              description="Provider defaults and the global model configuration, for this deployment as a whole."
+            >
+              <div className="flex flex-wrap gap-2">
+                <Button asChild>
+                  <Link href="/admin">
+                    <KeyRound className="size-3.5" />
+                    AI console
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/admin/models">Model management</Link>
+                </Button>
+              </div>
+            </Section>
+          )}
+
+          <Section
+            title="Account"
+            description="Signing out clears this session on this device only."
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-mono text-sm">{user.primaryEmail ?? 'Signed in'}</p>
               <Button
-                variant="outline"
-                className="text-[10px] font-mono uppercase border-[var(--border)]"
-                onClick={() => logout(user, '/')}
+                onClick={() => {
+                  void logout(user, '/');
+                }}
               >
-                Sign Out
+                Sign out
               </Button>
             </div>
-          </section>
-
-          <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-            <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-              <Plug className="w-4 h-4" />
-              <h2 className="text-xs font-mono uppercase tracking-widest">Integrations</h2>
-            </div>
-            {isLoading ? (
-              <div className="text-[11px] font-mono text-[var(--muted-text)]">Loading integration status...</div>
-            ) : (
-              <div className="grid gap-4">
-                <div className="border border-[var(--border)] rounded-md px-3 py-2">
-                  <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)] mb-2">Global Status</div>
-                  <div className="grid md:grid-cols-3 gap-2 text-[10px] font-mono text-[var(--muted-text)]">
-                    <div>
-                      GitHub: {status.githubConnected ? 'Connected' : 'Not connected'}
-                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
-                    </div>
-                    <div>
-                      Netlify: {status.netlifyConnected ? 'Connected' : 'Not connected'}
-                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
-                    </div>
-                    <div>
-                      Cloudflare: {status.cloudflareConnected ? 'Connected' : 'Not connected'}
-                      <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.cloudflareConnectedAt)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-                  <div>
-                    <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
-                    <div className="text-[11px] text-[var(--muted-text)]">{status.githubConnected ? 'Connected' : 'Not connected'}</div>
-                    <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.githubConnectedAt)}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={connectGithub} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
-                      {status.githubConnected ? 'Reconnect' : 'Connect'}
-                    </Button>
-                    {status.githubConnected && (
-                      <Button
-                        onClick={() => disconnect('github')}
-                        variant="outline"
-                        className="font-mono uppercase text-[10px] border-[var(--border)]"
-                        disabled={isDisconnecting === 'github'}
-                      >
-                        Disconnect
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-                  <div>
-                    <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
-                    <div className="text-[11px] text-[var(--muted-text)]">{status.netlifyConnected ? 'Connected' : 'Not connected'}</div>
-                    <div className="text-[9px] text-[var(--secondary-text)]">Last connected: {formatConnectedAt(status.netlifyConnectedAt)}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={connectNetlify} variant="outline" className="font-mono uppercase text-[10px] border-[var(--border)]">
-                      {status.netlifyConnected ? 'Reconnect' : 'Connect'}
-                    </Button>
-                    {status.netlifyConnected && (
-                      <Button
-                        onClick={() => disconnect('netlify')}
-                        variant="outline"
-                        className="font-mono uppercase text-[10px] border-[var(--border)]"
-                        disabled={isDisconnecting === 'netlify'}
-                      >
-                        Disconnect
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border border-[var(--border)] rounded-md px-3 py-3 space-y-3">
-                  <CloudflareConnect
-                    connected={status.cloudflareConnected}
-                    accountName={status.cloudflareAccountName}
-                    onConnected={(account) => setStatus((current) => ({
-                      ...current,
-                      cloudflareConnected: true,
-                      cloudflareConnectedAt: Date.now(),
-                      cloudflareAccountName: account.name,
-                    }))}
-                  />
-                  {status.cloudflareConnected && (
-                    <Button
-                      onClick={() => disconnect('cloudflare')}
-                      variant="outline"
-                      className="font-mono uppercase text-[10px] border-[var(--border)]"
-                      disabled={isDisconnecting === 'cloudflare'}
-                    >
-                      Disconnect
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-            <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-              <KeyRound className="w-4 h-4" />
-              <h2 className="text-xs font-mono uppercase tracking-widest">AI BYOK</h2>
-            </div>
-            <div className="text-[11px] font-mono text-[var(--muted-text)]">
-              Use your own keys per provider when signed in. Keys are saved to your account and applied automatically.
-            </div>
-
-            <div className="grid gap-3">
-              {AI_PROVIDER_IDS.map((providerId) => (
-                <div key={`byok-${providerId}`} className="border border-[var(--border)] rounded-md p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-                      <span className="w-5 h-5 border border-[var(--border)] rounded-full inline-flex items-center justify-center text-[9px] text-[var(--foreground)]">
-                        {providerLabel[providerId].slice(0, 1)}
-                      </span>
-                      {providerLabel[providerId]}
-                    </div>
-                    <a
-                      href={providerKeyUrl[providerId]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] font-mono uppercase text-[var(--primary)] hover:underline"
-                    >
-                      Get API Key <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type={showKey[providerId] ? 'text' : 'password'}
-                      value={byokDraft[providerId] || ''}
-                      onChange={(event) => updateByokDraft(providerId, event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          saveByok(providerId);
-                        }
-                      }}
-                      className="text-[11px] font-mono"
-                      aria-label={`${providerLabel[providerId]} API key`}
-                      placeholder={
-                        byokStatus[providerId]
-                          ? 'Key saved — paste a new one to replace it'
-                          : `Paste ${providerLabel[providerId]} key`
-                      }
-                    />
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="text-[10px] font-mono uppercase border-[var(--border)]"
-                      aria-label="Save key"
-                      onClick={() => saveByok(providerId)}
-                      disabled={!byokDraft[providerId] || saveState[providerId] === 'saving'}
-                    >
-                      <Save className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="text-[10px] font-mono uppercase border-[var(--border)]"
-                      aria-label={showKey[providerId] ? 'Hide key' : 'Show key'}
-                      onClick={() => setShowKey((prev) => ({ ...prev, [providerId]: !prev[providerId] }))}
-                    >
-                      {showKey[providerId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="text-[10px] font-mono uppercase border-[var(--border)]"
-                      aria-label="Remove saved key"
-                      onClick={() => clearByok(providerId)}
-                      disabled={!byokStatus[providerId] && !byokDraft[providerId]}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="text-[10px] font-mono uppercase border-[var(--border)]"
-                      aria-label="Test key"
-                      onClick={() => testByok(providerId)}
-                      disabled={
-                        (!byokStatus[providerId] && !byokDraft[providerId]) ||
-                        testState[providerId] === 'testing'
-                      }
-                    >
-                      <FlaskConical className="w-3 h-3" />
-                    </Button>
-                  </div>
-                  {byokStatus[providerId] && !byokDraft[providerId] && (
-                    <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-                      Key saved. It is stored on the server and never sent back to this page.
-                    </div>
-                  )}
-                  <div
-                    className="text-[10px] font-mono uppercase"
-                    style={{
-                      color:
-                        saveState[providerId] === 'error'
-                          ? 'var(--error)'
-                          : saveState[providerId] === 'saved'
-                            ? 'var(--foreground)'
-                            : 'var(--secondary-text)',
-                    }}
-                  >
-                    {saveState[providerId] === 'saving' && 'Saving...'}
-                    {saveState[providerId] === 'saved' && 'Saved'}
-                    {saveState[providerId] === 'error' && 'Save failed — key not stored'}
-                  </div>
-                  {testState[providerId] !== 'idle' && testMessage[providerId] && (
-                    <div
-                      className="text-[10px] font-mono"
-                      style={{
-                        color:
-                          testState[providerId] === 'error'
-                            ? 'var(--error)'
-                            : testState[providerId] === 'ok'
-                              ? 'var(--foreground)'
-                              : 'var(--secondary-text)',
-                      }}
-                    >
-                      {testMessage[providerId]}
-                    </div>
-                  )}
-
-                  {providerId === 'openrouter' && (
-                  <div className="border border-[var(--border)] rounded-md p-2 space-y-2">
-                    <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">Custom model IDs</div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={customModelInput[providerId]}
-                        onChange={(event) => setCustomModelInput((prev) => ({ ...prev, [providerId]: event.target.value }))}
-                        className="text-[11px] font-mono"
-                        placeholder="openrouter/free or provider/model:free"
-                      />
-                      <Button
-                        variant="outline"
-                        type="button"
-                        className="text-[10px] font-mono uppercase border-[var(--border)]"
-                        onClick={() => addCustomModel(providerId)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                      Only free OpenRouter models are accepted (`openrouter/free` or ids ending in `:free`).
-                    </div>
-                    {(customModelsConfig[providerId] ?? []).length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {(customModelsConfig[providerId] ?? []).map((modelId) => (
-                          <button
-                            key={`${providerId}-custom-${modelId}`}
-                            type="button"
-                            onClick={() => removeCustomModel(providerId, modelId)}
-                            className="px-2 py-1 border border-[var(--border)] text-[10px] font-mono text-[var(--muted-text)] hover:text-[var(--foreground)]"
-                          >
-                            {modelId} ×
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-[10px] font-mono text-[var(--muted-text)]">No custom models added.</div>
-                    )}
-                    <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                      The selector lists every free model from OpenRouter's live catalog — no need to add them here.
-                    </div>
-                  </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-            <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-              <Bell className="w-4 h-4" />
-              <h2 className="text-xs font-mono uppercase tracking-widest">Notifications</h2>
-            </div>
-            <div className="text-[11px] font-mono text-[var(--muted-text)]">Notification preferences are coming soon.</div>
-          </section>
-
-          <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-            <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-              <CreditCard className="w-4 h-4" />
-              <h2 className="text-xs font-mono uppercase tracking-widest">Billing</h2>
-            </div>
-            <div className="text-[11px] font-mono text-[var(--muted-text)]">Billing settings will appear here when plans are enabled.</div>
-          </section>
+          </Section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

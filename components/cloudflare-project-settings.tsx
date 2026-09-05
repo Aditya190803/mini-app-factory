@@ -1,9 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Boxes, Database, Globe2, RotateCcw, ShieldCheck, Trash2, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Cloud, RotateCcw, Trash2, Upload } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Callout,
+  CopyValue,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Row,
+  RowList,
+  Section,
+  Select,
+  SpecTable,
+  StatusDot,
+} from '@/components/kit';
+import { cn } from '@/lib/utils';
 import { useConfirm } from '@/hooks/use-confirm';
 
 type Deployment = {
@@ -248,114 +263,384 @@ export default function CloudflareProjectSettings({
   );
 
   return (
-    <section className="space-y-5 rounded-xl border border-border bg-card p-6">
+    <div className="space-y-8">
       {confirmDialog}
-      <div className="flex items-center gap-2 text-[var(--secondary-text)]">
-        <ShieldCheck className="w-4 h-4" />
-        <h2 className="text-xs font-mono uppercase tracking-widest">Cloudflare</h2>
-      </div>
 
       {!cloudflareProjectName ? (
-        <div className="text-[11px] font-mono text-[var(--muted-text)]">
-          Deploy this project to Cloudflare to configure domains, secrets, D1, and rollback.
-        </div>
+        <Section
+          title="Cloudflare"
+          description="Domains, secrets, data, and rollback appear here once this project has been deployed to Cloudflare at least once."
+        >
+          <EmptyState title="Not deployed to Cloudflare yet" icon={<Cloud className="size-5" />}>
+            <p>
+              Open the editor and press Deploy. You will see the exact list of resources before any
+              of them are created.
+            </p>
+          </EmptyState>
+        </Section>
       ) : (
         <>
-          <div className="grid md:grid-cols-2 gap-4 text-[11px] font-mono text-[var(--muted-text)]">
-            <div><span className="text-[var(--secondary-text)] uppercase">Pages project</span><br />{cloudflareProjectName}</div>
-            <div><span className="text-[var(--secondary-text)] uppercase">D1 database</span><br />{d1DatabaseName || 'Not provisioned'}</div>
-          </div>
+          <Section
+            title="Cloudflare"
+            description="This project lives in your own Cloudflare account. Everything below acts on it directly."
+          >
+            <SpecTable
+              caption="Cloudflare project"
+              rows={[
+                {
+                  key: 'pages',
+                  label: 'Pages project',
+                  value: <CopyValue value={cloudflareProjectName} label="the Pages project name" />,
+                },
+                {
+                  key: 'd1',
+                  label: 'D1 database',
+                  value: d1DatabaseName || 'Not provisioned',
+                  mono: Boolean(d1DatabaseName),
+                  muted: !d1DatabaseName,
+                },
+                {
+                  key: 'bindings',
+                  label: 'Bindings',
+                  value:
+                    resources.length > 0 ? (
+                      <span className="flex flex-wrap gap-1.5">
+                        {resources.map((resource) => (
+                          <Badge key={`${resource.kind}:${resource.binding}`} tone="neutral" mono>
+                            {resource.binding} · {resource.kind} · {resource.name}
+                          </Badge>
+                        ))}
+                      </span>
+                    ) : (
+                      'None bound'
+                    ),
+                  muted: resources.length === 0,
+                },
+              ]}
+            />
+          </Section>
 
-          {resources.length > 0 && (
-            <div className="grid gap-2 border-t border-[var(--border)] pt-4">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-                <Boxes className="w-3 h-3" /> Resource bindings
-              </div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {resources.map((resource) => (
-                  <div key={`${resource.kind}:${resource.binding}`} className="border border-[var(--border)] px-2 py-1 text-[10px] font-mono text-[var(--muted-text)]">
-                    <span className="text-[var(--secondary-text)]">{resource.binding}</span> · {resource.kind.toUpperCase()} · {resource.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-2 border-t border-[var(--border)] pt-4">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-              <Globe2 className="w-3 h-3" /> Custom domain
-            </div>
+          <Section
+            title="Custom domain"
+            description="Cloudflare configures DNS and issues the certificate. Removing a domain here detaches it from the Pages project and leaves your DNS records alone."
+          >
             {customDomain || domainStatus ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2">
-                <div className="min-w-0"><div className="truncate text-xs text-[var(--foreground)]">{domain}</div><div className="mt-0.5 text-[10px] capitalize text-[var(--muted-text)]">{domainStatus || 'Checking activation'}</div></div>
-                <Button type="button" variant="ghost" className="text-[10px] text-red-400" disabled={busy === 'domain'} onClick={() => void removeDomain()}>Remove</Button>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--rule)] bg-[var(--surface-1)] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm">{domain}</p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                    <StatusDot tone={domainStatus === 'active' ? 'live' : 'pending'} />
+                    {domainStatus || 'Checking activation'}
+                  </p>
+                </div>
+                <Button
+                  intent="danger"
+                  size="sm"
+                  busy={busy === 'domain'}
+                  onClick={() => void removeDomain()}
+                >
+                  Remove
+                </Button>
               </div>
             ) : zones.length ? (
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                <Input value={subdomain} onChange={(event) => setSubdomain(event.target.value.replace(/[^a-zA-Z0-9-]/g, ''))} placeholder="www (blank for apex)" className="text-xs font-mono" />
-                <select value={selectedZone} onChange={(event) => setSelectedZone(event.target.value)} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)]">{zones.map((zone) => <option key={zone.id} value={zone.name}>{zone.name}</option>)}</select>
-                <Button type="button" variant="outline" className="font-mono uppercase text-[10px]" disabled={!domain || busy === 'domain'} onClick={addDomain}>{busy === 'domain' ? 'Adding…' : 'Add'}</Button>
-                <p className="text-[10px] leading-4 text-[var(--muted-text)] sm:col-span-3">Leave the subdomain blank to use the zone apex. Cloudflare will configure DNS and issue TLS automatically.</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field
+                  label="Subdomain"
+                  optional
+                  hint="Leave it empty to use the zone apex."
+                  className="w-40"
+                >
+                  <Input
+                    value={subdomain}
+                    onChange={(event) =>
+                      setSubdomain(event.target.value.replace(/[^a-zA-Z0-9-]/g, ''))
+                    }
+                    placeholder="www"
+                    className="font-mono"
+                  />
+                </Field>
+                <Field label="Zone" className="w-56">
+                  <Select
+                    value={selectedZone}
+                    onChange={(event) => setSelectedZone(event.target.value)}
+                  >
+                    {zones.map((zone) => (
+                      <option key={zone.id} value={zone.name}>
+                        {zone.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Button
+                  intent="primary"
+                  disabled={!domain}
+                  busy={busy === 'domain'}
+                  onClick={addDomain}
+                >
+                  Attach {domain || 'domain'}
+                </Button>
               </div>
-            ) : <p className="text-[10px] leading-4 text-[var(--muted-text)]">No active Cloudflare-managed zones were found. Reauthorize Cloudflare with Pages Write and Zone Read access.</p>}
-          </div>
+            ) : (
+              <Callout tone="warning" title="No managed zones found">
+                Reauthorize Cloudflare with Pages Write and Zone Read access, then reload this page.
+              </Callout>
+            )}
+          </Section>
 
-          <div className="grid gap-2 border-t border-[var(--border)] pt-4">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]">
-              <Database className="w-3 h-3" /> Worker secrets
-            </div>
-            <div className="text-[10px] font-mono text-[var(--muted-text)]">Values are write-only and are never returned to this page.</div>
-            <div className="grid sm:grid-cols-[1fr_1.5fr_auto] gap-2">
-              <Input value={secretName} onChange={(event) => setSecretName(event.target.value.toUpperCase())} placeholder="API_KEY" className="text-xs font-mono" />
-              <Input type="password" value={secretValue} onChange={(event) => setSecretValue(event.target.value)} placeholder="Secret value" className="text-xs font-mono" autoComplete="off" />
-              <Button type="button" variant="outline" className="font-mono uppercase text-[10px]" disabled={!secretName || !secretValue || busy !== null} onClick={() => saveSecret(secretName, secretValue)}>
+          <Section
+            title="Worker secrets"
+            description="Values are write only. They are sent to Cloudflare and never read back to this page, which is why an existing secret can be replaced but not viewed."
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="Name" className="w-48">
+                <Input
+                  value={secretName}
+                  onChange={(event) => setSecretName(event.target.value.toUpperCase())}
+                  placeholder="API_KEY"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label="Value" className="w-64">
+                <Input
+                  type="password"
+                  value={secretValue}
+                  onChange={(event) => setSecretValue(event.target.value)}
+                  placeholder="Never shown again"
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </Field>
+              <Button
+                intent="primary"
+                disabled={!secretName || !secretValue}
+                busy={busy === `secret:${secretName}`}
+                onClick={() => saveSecret(secretName, secretValue)}
+              >
                 Save
               </Button>
             </div>
+
             {secretNames.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <ul className="mt-4 flex flex-wrap gap-1.5">
                 {secretNames.map((name) => (
-                  <div key={name} className="inline-flex items-center gap-2 border border-[var(--border)] px-2 py-1 text-[10px] font-mono">
+                  <li
+                    key={name}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--rule)] bg-[var(--surface-1)] py-0.5 pl-2 pr-0.5 font-mono text-xs"
+                  >
                     {name}
-                    <button type="button" aria-label={`Remove ${name}`} disabled={busy !== null} onClick={() => saveSecret(name, null)} className="text-[var(--muted-text)] hover:text-red-500">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
+                    <IconButton
+                      label={`Delete the secret ${name}`}
+                      size="sm"
+                      intent="danger"
+                      disabled={busy !== null}
+                      onClick={() => saveSecret(name, null)}
+                    >
+                      <Trash2 className="size-3" />
+                    </IconButton>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </Section>
 
-          {d1DatabaseName ? <div className="grid gap-3 border-t border-[var(--border)] pt-4">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]"><Database className="size-3" /> D1 data explorer</div>
-            {d1?.tables.length ? <div className="flex flex-wrap gap-2">{d1.tables.map((table) => <button key={table} type="button" onClick={() => void inspectTable(table)} className={`rounded-md border px-2.5 py-1.5 text-xs ${d1.table === table ? 'border-[var(--primary)] text-[var(--primary)]' : 'border-[var(--border)] text-[var(--secondary-text)]'}`}>{table}</button>)}</div> : <p className="text-xs text-[var(--muted-text)]">No application tables found.</p>}
-            {d1?.table && d1.rows ? <div className="overflow-x-auto rounded-md border border-[var(--border)]"><table className="w-full min-w-max text-left text-xs"><thead className="bg-[var(--background)] text-[var(--muted-text)]"><tr>{(d1.columns || []).map((column) => <th key={column.name} className="px-3 py-2 font-medium">{column.name}</th>)}</tr></thead><tbody>{d1.rows.map((row, index) => <tr key={index} className="border-t border-[var(--border)]">{(d1.columns || []).map((column) => <td key={column.name} className="max-w-64 truncate px-3 py-2 font-mono text-[var(--secondary-text)]">{JSON.stringify(row[String(column.name)])}</td>)}</tr>)}</tbody></table>{d1.rows.length === 100 ? <p className="border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted-text)]">Showing the first 100 rows.</p> : null}</div> : null}
-            {d1Error ? <p role="alert" className="text-xs text-red-400">{d1Error}</p> : null}
-          </div> : null}
+          {d1DatabaseName && (
+            <Section
+              title="D1 data"
+              description="Read only. The first hundred rows of whichever table you pick."
+            >
+              {d1?.tables.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {d1.tables.map((table) => (
+                    <button
+                      key={table}
+                      type="button"
+                      onClick={() => void inspectTable(table)}
+                      aria-pressed={d1.table === table}
+                      className={cn(
+                        'rounded-md border px-2.5 py-1 font-mono text-xs transition-colors',
+                        d1.table === table
+                          ? 'border-[color-mix(in_oklab,var(--primary)_50%,transparent)] bg-[var(--signal-wash)] text-[var(--foreground)]'
+                          : 'border-[var(--rule)] text-[var(--muted-foreground)] hover:border-[var(--rule-strong)] hover:text-[var(--foreground)]'
+                      )}
+                    >
+                      {table}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  No application tables yet. Migrations create them on the next deploy.
+                </p>
+              )}
 
-          {r2Buckets.length ? <div className="grid gap-3 border-t border-[var(--border)] pt-4">
-            <div className="flex items-center gap-2 text-[10px] font-mono uppercase text-[var(--secondary-text)]"><Boxes className="size-3" /> R2 object manager</div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_1.5fr_auto_auto]"><select value={r2Bucket} onChange={(event) => { setR2Bucket(event.target.value); setR2Objects([]); }} className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs">{r2Buckets.map((bucket) => <option key={bucket}>{bucket}</option>)}</select><Input value={r2Prefix} onChange={(event) => setR2Prefix(event.target.value.replace(/\.\./g, ''))} placeholder="Optional prefix, e.g. uploads" className="font-mono text-xs" /><Button variant="outline" disabled={busy === 'r2'} onClick={() => void loadR2()}>Browse</Button><label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-[var(--border)] px-3 text-xs"><Upload className="mr-2 size-3.5" /> Upload<input type="file" className="sr-only" onChange={(event) => { void uploadR2(event.target.files?.[0]); event.target.value = ''; }} /></label></div>
-            {r2Objects.length ? <div className="max-h-72 overflow-y-auto rounded-md border border-[var(--border)]">{r2Objects.map((object) => <div key={object.key} className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2 text-xs last:border-0"><code className="min-w-0 flex-1 truncate">{object.key}</code><span className="text-[10px] text-[var(--muted-text)]">{typeof object.size === 'number' ? `${(object.size / 1024).toFixed(1)} KB` : '—'}</span>{object.key ? <button type="button" onClick={() => void deleteR2(object.key!)} aria-label={`Delete ${object.key}`}><Trash2 className="size-3.5 text-red-400" /></button> : null}</div>)}</div> : <p className="text-xs text-[var(--muted-text)]">Browse a project-bound bucket to inspect up to 200 objects.</p>}
-          </div> : null}
+              {d1?.table && d1.rows && (
+                <div className="scroll-thin mt-4 overflow-x-auto rounded-lg border border-[var(--rule)]">
+                  <table className="w-full min-w-max text-left text-xs">
+                    <caption className="sr-only">Rows in {d1.table}</caption>
+                    <thead className="bg-[var(--surface-2)]">
+                      <tr>
+                        {(d1.columns || []).map((column) => (
+                          <th
+                            key={column.name}
+                            scope="col"
+                            className="whitespace-nowrap px-3 py-2 font-medium text-[var(--muted-foreground)]"
+                          >
+                            {column.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {d1.rows.map((row, index) => (
+                        <tr key={index} className="border-t border-[var(--rule)]">
+                          {(d1.columns || []).map((column) => (
+                            <td
+                              key={column.name}
+                              className="max-w-64 truncate px-3 py-1.5 font-mono text-[var(--foreground)]"
+                            >
+                              {JSON.stringify(row[String(column.name)])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {d1.rows.length === 100 && (
+                    <p className="border-t border-[var(--rule)] px-3 py-1.5 text-xs text-[var(--muted-foreground)]">
+                      Showing the first 100 rows.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {d1Error && (
+                <Callout tone="failed" className="mt-4">
+                  {d1Error}
+                </Callout>
+              )}
+            </Section>
+          )}
+
+          {r2Buckets.length > 0 && (
+            <Section
+              title="R2 objects"
+              description="Browse, upload, and delete files in a bucket bound to this project. Deletes are permanent."
+            >
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Bucket" className="w-48">
+                  <Select
+                    value={r2Bucket}
+                    onChange={(event) => {
+                      setR2Bucket(event.target.value)
+                      setR2Objects([])
+                    }}
+                  >
+                    {r2Buckets.map((bucket) => (
+                      <option key={bucket}>{bucket}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Prefix" optional className="w-56">
+                  <Input
+                    value={r2Prefix}
+                    onChange={(event) => setR2Prefix(event.target.value.replace(/\.\./g, ''))}
+                    placeholder="uploads"
+                    className="font-mono"
+                  />
+                </Field>
+                <Button busy={busy === 'r2'} onClick={() => void loadR2()}>
+                  Browse
+                </Button>
+                <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--rule-strong)] bg-[var(--surface-1)] px-3 text-sm font-medium transition-colors hover:bg-[var(--surface-2)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--ring)]">
+                  <Upload className="size-3.5" />
+                  Upload
+                  <input
+                    type="file"
+                    className="sr-only"
+                    onChange={(event) => {
+                      void uploadR2(event.target.files?.[0])
+                      event.target.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+
+              {r2Objects.length > 0 ? (
+                <div className="scroll-thin mt-4 max-h-80 overflow-y-auto">
+                  <RowList>
+                    {r2Objects.map((object) => (
+                      <Row key={object.key}>
+                        <code className="min-w-0 flex-1 truncate font-mono text-xs">
+                          {object.key}
+                        </code>
+                        <span className="tabular shrink-0 text-xs text-[var(--muted-foreground)]">
+                          {typeof object.size === 'number'
+                            ? `${(object.size / 1024).toFixed(1)} KB`
+                            : ''}
+                        </span>
+                        {object.key && (
+                          <IconButton
+                            label={`Delete ${object.key}`}
+                            size="sm"
+                            intent="danger"
+                            onClick={() => void deleteR2(object.key!)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </IconButton>
+                        )}
+                      </Row>
+                    ))}
+                  </RowList>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-[var(--muted-foreground)]">
+                  Browse a bucket to list up to 200 objects.
+                </p>
+              )}
+            </Section>
+          )}
 
           {cloudflareDeployments.length > 1 && (
-            <div className="grid gap-2 border-t border-[var(--border)] pt-4">
-              <div className="text-[10px] font-mono uppercase text-[var(--secondary-text)]">Rollback</div>
-              {cloudflareDeployments.slice(1, 6).map((deployment) => (
-                <div key={deployment._id} className="flex items-center justify-between gap-3 text-[10px] font-mono text-[var(--muted-text)]">
-                  <span>{new Date(deployment.createdAt).toLocaleString()}</span>
-                  <Button type="button" variant="ghost" className="font-mono uppercase text-[10px]" disabled={busy !== null} onClick={() => rollback(deployment.cloudflareDeploymentId!)}>
-                    <RotateCcw className="w-3 h-3 mr-1" /> Roll back
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <Section
+              title="Rollback"
+              description="Promote an earlier deployment back to production. The assets are already uploaded, so this is immediate."
+            >
+              <RowList>
+                {cloudflareDeployments.slice(1, 6).map((deployment) => (
+                  <Row key={deployment._id}>
+                    <div className="min-w-0 flex-1">
+                      <p className="tabular text-sm">
+                        <time dateTime={new Date(deployment.createdAt).toISOString()}>
+                          {new Date(deployment.createdAt).toLocaleString()}
+                        </time>
+                      </p>
+                      {deployment.deploymentUrl && (
+                        <p className="truncate font-mono text-xs text-[var(--muted-foreground)]">
+                          {deployment.deploymentUrl}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={busy !== null}
+                      onClick={() => rollback(deployment.cloudflareDeploymentId!)}
+                    >
+                      <RotateCcw className="size-3.5" />
+                      Promote
+                    </Button>
+                  </Row>
+                ))}
+              </RowList>
+            </Section>
           )}
         </>
       )}
 
-      {message && <div role="status" className="text-[10px] font-mono text-[var(--muted-text)]">{message}</div>}
-    </section>
-  );
+      {message && (
+        <p role="status" className="text-sm text-[var(--muted-foreground)]">
+          {message}
+        </p>
+      )}
+    </div>
+  )
 }

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Circle, Code2, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
+import { Check, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
+import { Badge, Button, Callout, Spinner, StatusDot } from '@/components/kit';
 import EditorWorkspace from '@/components/editor-workspace';
 import type { ProjectMetadata } from '@/lib/projects';
 import type { ProjectFile } from '@/lib/page-builder';
@@ -24,13 +25,22 @@ type Activity = {
   state: 'running' | 'complete' | 'error';
 };
 
+/**
+ * Each event gets a shape as well as a colour. A row that only differed by hue
+ * would be unreadable to anyone who cannot separate the two greens.
+ */
 function ActivityIcon({ activity }: { activity: Activity }) {
-  if (activity.state === 'error') return <TriangleAlert className="size-4 text-red-400" />;
-  if (activity.state === 'complete') return <Check className="size-4 text-emerald-400" />;
-  if (activity.status === 'file') return <FileCode2 className="size-4 text-[var(--primary)]" />;
-  if (activity.message.toLowerCase().includes('database')) return <Database className="size-4 text-[var(--primary)]" />;
-  if (activity.message.toLowerCase().includes('api')) return <Server className="size-4 text-[var(--primary)]" />;
-  return <Circle className="size-3 animate-pulse fill-[var(--primary)] text-[var(--primary)]" />;
+  if (activity.state === 'error')
+    return <TriangleAlert className="size-3.5 text-[var(--destructive-text)]" />;
+  if (activity.state === 'complete')
+    return <Check className="size-3.5 text-[var(--success-text)]" />;
+  if (activity.status === 'file')
+    return <FileCode2 className="size-3.5 text-[var(--signal-text)]" />;
+  if (activity.message.toLowerCase().includes('database'))
+    return <Database className="size-3.5 text-[var(--signal-text)]" />;
+  if (activity.message.toLowerCase().includes('api'))
+    return <Server className="size-3.5 text-[var(--signal-text)]" />;
+  return <Spinner className="size-3.5 text-[var(--signal-text)]" />;
 }
 
 export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
@@ -146,17 +156,22 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     setError({ message: 'Build cancelled. You can retry when ready.', code: 'ABORTED' });
   }, [activeRun?._id, projectName]);
 
+  // Two ways in. A project with no run yet starts one; a project that already
+  // has a run in flight (the page was reloaded mid-build) rehydrates from the
+  // persisted events and polls instead of starting a second run.
   useEffect(() => {
     if (project.status === 'completed' || hasStarted.current || activeRun === undefined) return;
     if (activeRun) {
       hasStarted.current = true;
-      setActivities((persistedEvents || []).map((event, index, all) => ({
-        id: event._id,
-        status: event.type,
-        message: event.message,
-        path: event.path,
-        state: index === all.length - 1 ? 'running' : 'complete',
-      })));
+      setActivities(
+        (persistedEvents || []).map((event, index, all) => ({
+          id: event._id,
+          status: event.type,
+          message: event.message,
+          path: event.path,
+          state: index === all.length - 1 ? 'running' : 'complete',
+        }))
+      );
       void pollForCompletion();
       return;
     }
@@ -165,67 +180,119 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
   useEffect(() => {
     if (!hasStarted.current || !persistedEvents?.length || completed.current) return;
-    setActivities(persistedEvents.map((event, index) => ({
-      id: event._id,
-      status: event.type,
-      message: event.message,
-      path: event.path,
-      state: index === persistedEvents.length - 1 ? 'running' : 'complete',
-    })));
+    setActivities(
+      persistedEvents.map((event, index) => ({
+        id: event._id,
+        status: event.type,
+        message: event.message,
+        path: event.path,
+        state: index === persistedEvents.length - 1 ? 'running' : 'complete',
+      }))
+    );
   }, [persistedEvents]);
 
   if (project.status === 'completed') {
-    return <EditorWorkspace initialHTML={project.html || ''} initialPrompt={project.prompt} projectName={projectName} onBack={() => router.push('/')} />;
+    return (
+      <EditorWorkspace
+        initialHTML={project.html || ''}
+        initialPrompt={project.prompt}
+        projectName={projectName}
+        onBack={() => router.push('/dashboard')}
+      />
+    );
   }
 
+  const running = activities.some((activity) => activity.state === 'running');
+
   return (
-    <main className="min-h-dvh bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto grid min-h-dvh max-w-6xl lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
-        <section className="flex flex-col justify-between border-b border-[var(--border)] p-8 lg:border-b-0 lg:border-r lg:p-12">
+    <main id="main" className="min-h-dvh bg-[var(--background)]">
+      <div className="mx-auto grid min-h-dvh w-full max-w-[84rem] lg:grid-cols-[minmax(0,0.85fr)_minmax(26rem,1.15fr)]">
+        <section className="flex flex-col justify-between border-b border-[var(--rule)] px-6 py-10 lg:border-b-0 lg:border-r lg:px-10 lg:py-14">
           <div>
-            <div className="mb-10 flex items-center gap-3 text-xs font-mono text-[var(--muted-text)]">
-              <Code2 className="size-4 text-[var(--primary)]" />
-              <span>{projectName}</span>
-              {provider ? <span className="rounded-full border border-[var(--border)] px-2 py-1">{provider}</span> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-sm tracking-[-0.02em] text-[var(--muted-foreground)]">
+                {projectName}
+              </span>
+              {provider && <Badge tone="neutral" mono>{provider}</Badge>}
             </div>
-            <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-[var(--primary)]">Building your app</p>
-            <h1 className="max-w-xl text-3xl font-semibold tracking-tight md:text-4xl">Your request is becoming a working project.</h1>
-            <p className="mt-5 max-w-xl text-sm leading-6 text-[var(--secondary-text)]">{project.prompt}</p>
+
+            <h1 className="display-lg mt-8 max-w-xl">Turning that into files.</h1>
+
+            <p className="mt-6 max-w-[54ch] text-md leading-relaxed text-[var(--muted-foreground)]">
+              {project.prompt}
+            </p>
           </div>
-          <p className="mt-12 max-w-md text-xs leading-5 text-[var(--muted-text)]">You are seeing actual generation events. File creation, validation, persistence, and provider changes appear as they happen.</p>
+
+          <p className="mt-12 max-w-[46ch] text-sm leading-relaxed text-[var(--muted-foreground)]">
+            What you see on the right is the real event stream. File writes, validation, persistence,
+            and provider switches appear as they happen, not on a timer.
+          </p>
         </section>
 
-        <section className="flex min-h-[520px] flex-col p-6 lg:p-10" aria-live="polite">
-          <div className="mb-6 flex items-center justify-between">
+        <section className="flex min-h-[32rem] flex-col px-6 py-8 lg:px-10 lg:py-14" aria-live="polite">
+          <div className="ticked flex items-end justify-between gap-4 pb-2.5">
             <div>
-              <h2 className="text-sm font-semibold">Build activity</h2>
-              <p className="mt-1 text-xs text-[var(--muted-text)]">Live, observable work</p>
+              <h2 className="text-md font-medium">Build activity</h2>
+              <p className="tabular mt-0.5 text-xs text-[var(--muted-foreground)]">
+                {activities.length} event{activities.length === 1 ? '' : 's'}
+              </p>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-2 text-xs text-[var(--primary)]"><Circle className="size-2 fill-current" /> Running</span>
-              {activeRun ? <button type="button" onClick={() => void cancelGeneration()} className="text-xs text-[var(--muted-text)] hover:text-red-300">Stop</button> : null}
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                <StatusDot tone={running ? 'live' : 'pending'} />
+                {running ? 'Running' : 'Waiting'}
+              </span>
+              {activeRun && (
+                <Button size="sm" onClick={() => void cancelGeneration()}>
+                  Stop
+                </Button>
+              )}
             </div>
           </div>
-          <div className="flex-1 space-y-1 overflow-y-auto border-y border-[var(--border)] py-3">
+
+          <ol className="scroll-thin mt-3 min-h-0 flex-1 divide-y divide-[var(--rule)] overflow-y-auto">
             {activities.length === 0 ? (
-              <div className="flex items-center gap-3 px-2 py-4 text-sm text-[var(--muted-text)]"><Circle className="size-3 animate-pulse fill-current" /> Connecting to the build…</div>
-            ) : activities.map((activity) => (
-              <div key={activity.id} className="flex gap-3 rounded-md px-2 py-3 hover:bg-white/[0.025]">
-                <div className="mt-0.5"><ActivityIcon activity={activity} /></div>
-                <div className="min-w-0">
-                  <p className="text-sm text-[var(--secondary-text)]">{activity.message}</p>
-                  {activity.path ? <p className="mt-1 truncate font-mono text-[11px] text-[var(--muted-text)]">{activity.path}</p> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-          {error ? (
-            <div className="mt-5 rounded-md border border-red-400/30 bg-red-400/5 p-4">
-              <p className="text-sm text-red-300">{error.message}</p>
-              {error.code ? <p className="mt-1 font-mono text-[10px] text-red-300/60">{error.code}</p> : null}
-              <button type="button" onClick={() => void startGeneration()} className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-[var(--foreground)] hover:text-[var(--primary)]"><RotateCcw className="size-3" /> Retry build</button>
-            </div>
-          ) : null}
+              <li className="flex items-center gap-3 py-4 text-sm text-[var(--muted-foreground)]">
+                <Spinner />
+                Connecting to the build
+              </li>
+            ) : (
+              activities.map((activity) => (
+                <li key={activity.id} className="anim-rise flex gap-3 py-2.5">
+                  <span className="mt-0.5 shrink-0">
+                    <ActivityIcon activity={activity} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm leading-snug">{activity.message}</p>
+                    {activity.path && (
+                      <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--muted-foreground)]">
+                        {activity.path}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))
+            )}
+          </ol>
+
+          {error && (
+            <Callout
+              tone="failed"
+              className="mt-5"
+              title="The build stopped"
+              action={
+                <Button size="sm" onClick={() => void startGeneration()}>
+                  <RotateCcw className="size-3.5" />
+                  Retry
+                </Button>
+              }
+            >
+              <p>{error.message}</p>
+              {error.code && (
+                <p className="mt-1 font-mono text-xs opacity-70">{error.code}</p>
+              )}
+            </Callout>
+          )}
         </section>
       </div>
     </main>

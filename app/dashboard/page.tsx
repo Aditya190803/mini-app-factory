@@ -1,400 +1,492 @@
-'use client';
+'use client'
 
-import { useUser } from "@stackframe/stack";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import * as React from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useUser } from '@stackframe/stack'
+import { useMutation, useQuery } from 'convex/react'
+import { toast } from 'sonner'
 import {
-  Trash2,
-  Settings2,
-  Layers,
-  Globe,
-  ArrowRight,
-  Rocket,
+  ArrowUpRight,
+  Cloud,
   Copy,
+  ExternalLink,
+  GitBranch,
+  MoreHorizontal,
   Plus,
-  Search
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import { toast } from "sonner";
-import AccountMenu from "@/components/account-menu";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { SiteHeader } from '@/components/site-header';
-import { WorkshopBackground } from '@/components/workshop-background';
-import { useConfirm } from "@/hooks/use-confirm";
+  Search,
+  Settings2,
+  Trash2,
+} from 'lucide-react'
+import { api } from '@/convex/_generated/api'
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+  Modal,
+  ModalContent,
+  Row,
+  RowList,
+  Segmented,
+  Skeleton,
+  StatusDot,
+} from '@/components/kit'
+import { TopBar } from '@/components/shell/top-bar'
+import { ThemeToggle } from '@/components/shell/theme-toggle'
+import { AccountMenu } from '@/components/shell/account-menu'
+import { useConfirm } from '@/hooks/use-confirm'
+import { TARGETS, type BuildTarget } from '@/lib/targets'
 
+type Project = NonNullable<ReturnType<typeof useProjects>>[number]
+
+function useProjects() {
+  return useQuery(api.projects.getUserProjects, {})
+}
+
+type StatusFilter = 'all' | 'live' | 'draft'
+type TargetFilter = 'all' | BuildTarget
+
+/**
+ * The project list.
+ *
+ * A ruled list rather than a card grid. These rows are scanned, sorted, and
+ * compared, and a grid of equal cards makes every one of those harder. The
+ * columns that matter are fixed: state, name, target, where it is deployed,
+ * when it last changed.
+ */
 export default function DashboardPage() {
-  const user = useUser();
-  const router = useRouter();
-  const { confirm, confirmDialog } = useConfirm();
-  const projects = useQuery(api.projects.getUserProjects, {});
-  const deleteProject = useMutation(api.projects.deleteProject);
-  const remixPublishedProject = useMutation(api.projects.remixPublishedProject);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [remixSource, setRemixSource] = useState<NonNullable<typeof projects>[number] | null>(null);
-  const [remixName, setRemixName] = useState('');
-  const [isRemixing, setIsRemixing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft'>('all');
+  const user = useUser()
+  const router = useRouter()
+  const { confirm, confirmDialog } = useConfirm()
 
-  const liveCount = useMemo(() => {
-    if (!projects) return 0;
-    return projects.filter((p) => p.deploymentUrl || p.isPublished).length;
-  }, [projects]);
+  const projects = useProjects()
+  const deleteProject = useMutation(api.projects.deleteProject)
+  const remixProject = useMutation(api.projects.remixPublishedProject)
 
-  const filteredProjects = useMemo(() => {
-    if (!projects) return [];
-    const query = searchQuery.trim().toLowerCase();
+  const [query, setQuery] = React.useState('')
+  const [status, setStatus] = React.useState<StatusFilter>('all')
+  const [target, setTarget] = React.useState<TargetFilter>('all')
+  const [deleting, setDeleting] = React.useState<string | null>(null)
+  const [remixSource, setRemixSource] = React.useState<Project | null>(null)
+  const [remixName, setRemixName] = React.useState('')
+  const [remixing, setRemixing] = React.useState(false)
+
+  const filtered = React.useMemo(() => {
+    if (!projects) return []
+    const needle = query.trim().toLowerCase()
     return projects.filter((project) => {
-      const isLive = Boolean(project.deploymentUrl || project.isPublished);
-      if (statusFilter === 'live' && !isLive) return false;
-      if (statusFilter === 'draft' && isLive) return false;
-      if (!query) return true;
+      const live = Boolean(project.deploymentUrl || project.isPublished)
+      if (status === 'live' && !live) return false
+      if (status === 'draft' && live) return false
+      // Rows written before targets existed have none. Treat those as static
+      // rather than hiding them from both filters.
+      if (target !== 'all' && (project.target ?? 'static') !== target) return false
+      if (!needle) return true
       return (
-        project.projectName.toLowerCase().includes(query) ||
-        (project.deploymentUrl ?? '').toLowerCase().includes(query)
-      );
-    });
-  }, [projects, searchQuery, statusFilter]);
+        project.projectName.toLowerCase().includes(needle) ||
+        (project.deploymentUrl ?? '').toLowerCase().includes(needle)
+      )
+    })
+  }, [projects, query, status, target])
 
-  const handleDelete = async (projectName: string) => {
-    if (!user) return;
+  const liveCount = projects?.filter((p) => p.deploymentUrl || p.isPublished).length ?? 0
+  const filtersActive = query.trim() !== '' || status !== 'all' || target !== 'all'
+
+  const handleDelete = async (project: Project) => {
     const ok = await confirm({
-      title: `Delete ${projectName}?`,
+      title: `Delete ${project.projectName}?`,
       description:
-        'This removes the project and its files. Deployments already live are not taken down.',
+        'The project and its files are removed. Anything already deployed to Cloudflare stays online until you take it down there.',
       confirmLabel: 'Delete project',
       destructive: true,
-    });
-    if (!ok) return;
+    })
+    if (!ok) return
 
-    setIsDeleting(projectName);
+    setDeleting(project.projectName)
     try {
-      await deleteProject({ projectName });
-      toast.success('Project deleted', { description: projectName });
+      await deleteProject({ projectName: project.projectName })
+      toast.success('Project deleted', { description: project.projectName })
     } catch (error) {
-      console.error("Failed to delete project:", error);
-      toast.error('Could not delete project', {
+      toast.error('Could not delete the project', {
         description: error instanceof Error ? error.message : 'Try again in a moment.',
-      });
+      })
     } finally {
-      setIsDeleting(null);
+      setDeleting(null)
     }
-  };
-
-  const openRemix = (project: NonNullable<typeof projects>[number]) => {
-    setRemixSource(project);
-    setRemixName(`${project.projectName}-copy`);
-  };
+  }
 
   const handleRemix = async () => {
-    if (!remixSource || !remixName.trim()) return;
-    setIsRemixing(true);
+    if (!remixSource || !remixName.trim()) return
+    setRemixing(true)
     try {
-      const result = await remixPublishedProject({ sourceProjectName: remixSource.projectName, projectName: remixName });
-      toast.success('Remix created', { description: `${result.fileCount} files copied without deployment credentials.` });
-      router.push(`/edit/${result.projectName}`);
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not remix project'); }
-    finally { setIsRemixing(false); }
-  };
+      const result = await remixProject({
+        sourceProjectName: remixSource.projectName,
+        projectName: remixName,
+      })
+      toast.success('Remix created', {
+        description: `${result.fileCount} files copied. No deployment credentials were carried over.`,
+      })
+      router.push(`/edit/${result.projectName}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not remix the project')
+    } finally {
+      setRemixing(false)
+    }
+  }
+
+  const chrome = (
+    <>
+      <ThemeToggle className="mr-1 hidden sm:inline-flex" />
+      <AccountMenu />
+    </>
+  )
 
   if (projects === undefined) {
     return (
-      <div className="flex min-h-dvh flex-col bg-background">
-        <SiteHeader title="Projects">
-          <ThemeSwitcher className="mx-1" />
-          <AccountMenu />
-        </SiteHeader>
-        <main className="relative mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-          <WorkshopBackground />
-          <div className="relative mb-8 space-y-2">
-            <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
-            <div className="h-4 w-64 animate-pulse rounded bg-muted" />
-          </div>
-          {/* Skeletons mirror the row layout so nothing jumps on load. */}
-          <div className="relative divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
-                <div className="size-2 animate-pulse rounded-full bg-muted" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
-                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+      <div className="flex min-h-dvh flex-col">
+        <TopBar crumbs={[{ label: 'Projects' }]}>{chrome}</TopBar>
+        <main className="mx-auto w-full max-w-[84rem] flex-1 px-4 py-8 sm:px-6">
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="mt-2 h-4 w-64" />
+          <div className="mt-8 divide-y divide-[var(--rule)] overflow-hidden rounded-lg border border-[var(--rule)]">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3 px-4 py-3">
+                <Skeleton className="size-2 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
-                <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
+                <Skeleton className="h-7 w-16" />
               </div>
             ))}
           </div>
         </main>
-        <span className="sr-only" role="status">
+        <span role="status" className="sr-only">
           Loading your projects
         </span>
       </div>
-    );
+    )
   }
 
   if (!user) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background p-6">
-        <div className="max-w-sm text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in to continue</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Your projects are tied to your account.
-          </p>
-          <Button className="mt-5" onClick={() => router.push('/handler/sign-in')}>
-            Sign in
-          </Button>
-          <div className="mt-3">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
-              Back to home
-            </Link>
-          </div>
-        </div>
+      <div className="flex min-h-dvh flex-col">
+        <TopBar crumbs={[{ label: 'Projects' }]}>{chrome}</TopBar>
+        <main className="mx-auto flex w-full max-w-md flex-1 items-center px-6">
+          <EmptyState title="Sign in to see your projects" className="w-full">
+            <p>Projects are tied to your account, so there is nothing to show until you sign in.</p>
+            <div className="mt-5 flex justify-center gap-2">
+              <Button intent="primary" onClick={() => router.push('/handler/sign-in')}>
+                Sign in
+              </Button>
+              <Button asChild>
+                <Link href="/">Back to the composer</Link>
+              </Button>
+            </div>
+          </EmptyState>
+        </main>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <SiteHeader title="Projects">
-        <ThemeSwitcher className="mx-1" />
-        <AccountMenu />
-      </SiteHeader>
+    <div className="flex min-h-dvh flex-col">
+      <TopBar crumbs={[{ label: 'Projects' }]}>{chrome}</TopBar>
 
-      <main id="main" className="relative mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-        <WorkshopBackground />
-        <div className="relative mb-8 flex flex-wrap items-end justify-between gap-4">
+      <main id="main" className="mx-auto w-full max-w-[84rem] flex-1 px-4 py-8 sm:px-6">
+        <div className="ticked flex flex-wrap items-end justify-between gap-4 pb-3">
           <div>
-            <p className="font-mono text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Workspace
-            </p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Projects</h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
+            <h1 className="text-2xl font-medium tracking-[-0.024em]">Projects</h1>
+            <p className="tabular mt-1 text-sm text-[var(--muted-foreground)]">
               {projects.length === 0
                 ? 'Nothing here yet.'
-                : `${projects.length} project${projects.length === 1 ? '' : 's'}${liveCount > 0 ? ` · ${liveCount} live` : ''}`}
+                : `${projects.length} project${projects.length === 1 ? '' : 's'}${
+                    liveCount > 0 ? `, ${liveCount} deployed` : ''
+                  }`}
             </p>
           </div>
-          <Button onClick={() => router.push('/')}>
-            <Plus className="size-4" />
-            New project
+          <Button intent="primary" asChild>
+            <Link href="/">
+              <Plus className="size-4" />
+              New project
+            </Link>
           </Button>
         </div>
 
         {projects.length > 0 && (
-          <div className="relative mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative max-w-sm flex-1">
-              <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <label htmlFor="project-search" className="sr-only">Search projects</label>
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--muted-foreground)]"
+              />
+              <label htmlFor="project-search" className="sr-only">
+                Search projects by name or URL
+              </label>
               <Input
                 id="project-search"
                 type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search projects…"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name or URL"
                 autoComplete="off"
-                className="pl-9"
+                className="pl-8"
               />
             </div>
-            <div role="group" aria-label="Filter by status" className="flex self-start rounded-lg border border-border bg-card p-0.5 text-sm sm:self-auto">
-              {(['all', 'live', 'draft'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  aria-pressed={statusFilter === f}
-                  onClick={() => setStatusFilter(f)}
-                  className={cn(
-                    'rounded-md px-3 py-1.5 capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                    statusFilter === f
-                      ? 'bg-muted font-medium text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {f}
-                </button>
-              ))}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented
+                label="Filter by deployment state"
+                value={status}
+                onChange={setStatus}
+                size="sm"
+                options={[
+                  { value: 'all', label: 'All' },
+                  { value: 'live', label: 'Deployed' },
+                  { value: 'draft', label: 'Draft' },
+                ]}
+              />
+              <Segmented
+                label="Filter by build target"
+                value={target}
+                onChange={setTarget}
+                size="sm"
+                options={[
+                  { value: 'all', label: 'Any' },
+                  { value: 'static', label: 'Static' },
+                  { value: 'edge', label: 'Edge' },
+                ]}
+              />
             </div>
           </div>
         )}
 
-        {projects.length === 0 ? (
-          <div className="relative rounded-xl border border-dashed border-border px-6 py-20 text-center">
-            <span className="mx-auto grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground">
-              <Layers className="size-5" />
-            </span>
-            <h2 className="mt-5 text-lg font-semibold">Build your first app</h2>
-            <p className="mx-auto mt-2 max-w-sm text-pretty text-sm text-muted-foreground">
-              Describe what you want in plain language and you&apos;ll get the files, a
-              preview, and a deploy you can inspect.
-            </p>
-            <Button className="mt-6" onClick={() => router.push('/')}>
-              Start a project
-              <ArrowRight className="size-4" />
-            </Button>
-          </div>
-        ) : filteredProjects.length === 0 ? (
-          <div className="relative rounded-xl border border-dashed border-border px-6 py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No projects match{searchQuery.trim() ? ` “${searchQuery.trim()}”` : ''}{statusFilter !== 'all' ? ` in ${statusFilter}s` : ''}.
-            </p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}>
-              Clear search and filters
-            </Button>
-          </div>
-        ) : (
-          <ul className="relative divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-            {filteredProjects.map((project) => {
-              const isLive = Boolean(project.deploymentUrl || project.isPublished);
-              const deployLabel = project.deploymentUrl
-                ? (project.deployProvider ?? 'Deployed')
-                : project.isPublished
-                  ? 'Hosted'
-                  : 'Draft';
-              const updatedAt = project.updatedAt ?? project.createdAt;
-
-              return (
-                <li
-                  key={project._id}
-                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:gap-4 sm:px-5"
+        <div className="mt-5">
+          {projects.length === 0 ? (
+            <EmptyState
+              title="Build the first one"
+              icon={<Cloud className="size-5" />}
+              action={
+                <Button intent="primary" asChild>
+                  <Link href="/">
+                    Start a project
+                    <ArrowUpRight className="size-4" />
+                  </Link>
+                </Button>
+              }
+            >
+              <p>
+                Describe an app in a sentence. You get the files, a preview you can click through,
+                and a deploy to your own Cloudflare account when you are ready.
+              </p>
+            </EmptyState>
+          ) : filtered.length === 0 ? (
+            <EmptyState title="Nothing matches those filters">
+              <p>
+                {query.trim() ? `No project matches "${query.trim()}"` : 'No project matches'}
+                {status !== 'all' ? ` in ${status}` : ''}
+                {target !== 'all' ? ` on ${TARGETS[target].label.toLowerCase()}` : ''}.
+              </p>
+              <div className="mt-4 flex justify-center">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setQuery('')
+                    setStatus('all')
+                    setTarget('all')
+                  }}
                 >
-                  {/* Shape as well as colour, so status doesn't rely on hue alone. */}
-                  <span
-                    aria-hidden
-                    title={deployLabel}
-                    className={cn(
-                      'size-2 shrink-0 rounded-full',
-                      isLive ? 'bg-success' : 'border border-muted-foreground/50',
-                    )}
+                  Clear filters
+                </Button>
+              </div>
+            </EmptyState>
+          ) : (
+            <>
+              <RowList>
+                {filtered.map((project) => (
+                  <ProjectRow
+                    key={project._id}
+                    project={project}
+                    deleting={deleting === project.projectName}
+                    onDelete={() => void handleDelete(project)}
+                    onRemix={() => {
+                      setRemixSource(project)
+                      setRemixName(`${project.projectName}-copy`)
+                    }}
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={`/edit/${project.projectName}`}
-                        className="truncate rounded font-mono text-sm font-medium outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                      >
-                        {project.projectName}
-                      </Link>
-                      {project.accessRole !== 'owner' && (
-                        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-                          {project.accessRole}
-                        </span>
-                      )}
-                    </div>
-                    <p className="tabular mt-1 truncate text-xs text-muted-foreground">
-                      <span className={cn(isLive ? 'font-medium text-foreground' : undefined)}>{deployLabel}</span>
-                      {' · '}{project.pageCount || 1} page{(project.pageCount || 1) === 1 ? '' : 's'}
-                      {' · Updated '}
-                      <time dateTime={new Date(updatedAt).toISOString()}>
-                        {new Date(updatedAt).toLocaleDateString(undefined, {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </time>
-                      {project.deploymentUrl ? ` · ${project.deploymentUrl}` : ''}
-                    </p>
-                  </div>
-
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    <Button size="sm" onClick={() => router.push(`/edit/${project.projectName}`)}>
-                      Open
-                    </Button>
-                    {isLive && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          window.open(
-                            project.deploymentUrl || `/results/${project.projectName}`,
-                            '_blank',
-                            'noopener,noreferrer',
-                          )
-                        }
-                      >
-                        <Globe className="size-3.5" />
-                        View
-                      </Button>
-                    )}
-                    {project.repoUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(project.repoUrl, '_blank', 'noopener,noreferrer')}
-                      >
-                        Repo
-                      </Button>
-                    )}
-                    {/* Secondary actions. Always in the tree — never hover-only,
-                        which is unreachable by keyboard and touch. */}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Project settings"
-                      aria-label={`Settings for ${project.projectName}`}
-                      onClick={() => router.push(`/edit/${project.projectName}/settings`)}
-                    >
-                      <Settings2 className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Deploy"
-                      aria-label={`Deploy ${project.projectName}`}
-                      onClick={() => router.push(`/edit/${project.projectName}`)}
-                    >
-                      <Rocket className="size-3.5" />
-                    </Button>
-                    {project.isPublished && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Remix project"
-                        aria-label={`Remix ${project.projectName}`}
-                        onClick={() => openRemix(project)}
-                      >
-                        <Copy className="size-3.5" />
-                      </Button>
-                    )}
-                    {project.accessRole === 'owner' && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Delete project"
-                        aria-label={`Delete ${project.projectName}`}
-                        disabled={isDeleting === project.projectName}
-                        onClick={() => handleDelete(project.projectName)}
-                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        {isDeleting === project.projectName ? (
-                          <Spinner className="size-3.5" />
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                ))}
+              </RowList>
+              {filtersActive && (
+                <p className="tabular mt-2.5 text-xs text-[var(--muted-foreground)]">
+                  Showing {filtered.length} of {projects.length}
+                </p>
+              )}
+            </>
+          )}
+        </div>
       </main>
 
       {confirmDialog}
 
-      <Dialog open={remixSource !== null} onOpenChange={(open) => { if (!open) setRemixSource(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Remix {remixSource?.projectName}</DialogTitle><DialogDescription>Create an independent private copy. Cloudflare resources, domains, secrets, and deployment links are never copied.</DialogDescription></DialogHeader>
-          <div className="space-y-2 py-3"><label htmlFor="remix-name" className="text-xs font-medium">New project name</label><Input id="remix-name" value={remixName} onChange={(event) => setRemixName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} maxLength={63} onKeyDown={(event) => { if (event.key === 'Enter') void handleRemix(); }} /></div>
-          <DialogFooter><Button variant="outline" onClick={() => setRemixSource(null)}>Cancel</Button><Button onClick={() => void handleRemix()} disabled={isRemixing || !remixName.trim()}>{isRemixing ? <Spinner className="mr-2 size-4" /> : <Copy className="mr-2 size-4" />}{isRemixing ? 'Remixing…' : 'Create remix'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <Modal open={remixSource !== null} onOpenChange={(open) => !open && setRemixSource(null)}>
+        <ModalContent
+          size="sm"
+          title={`Remix ${remixSource?.projectName ?? ''}`}
+          description="Creates an independent private copy of the files. Cloudflare resources, custom domains, secrets, and deployment links are never carried over."
+          footer={
+            <>
+              <Button onClick={() => setRemixSource(null)}>Cancel</Button>
+              <Button
+                intent="primary"
+                busy={remixing}
+                disabled={!remixName.trim()}
+                onClick={() => void handleRemix()}
+              >
+                <Copy className="size-4" />
+                Create remix
+              </Button>
+            </>
+          }
+        >
+          <Field
+            label="Name for the copy"
+            hint="Lowercase letters, numbers, and dashes."
+          >
+            <Input
+              value={remixName}
+              maxLength={63}
+              onChange={(event) =>
+                setRemixName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleRemix()
+              }}
+            />
+          </Field>
+        </ModalContent>
+      </Modal>
     </div>
-  );
+  )
+}
+
+function ProjectRow({
+  project,
+  deleting,
+  onDelete,
+  onRemix,
+}: {
+  project: Project
+  deleting: boolean
+  onDelete: () => void
+  onRemix: () => void
+}) {
+  const live = Boolean(project.deploymentUrl || project.isPublished)
+  const target: BuildTarget = project.target === 'edge' ? 'edge' : 'static'
+  const provider = project.deployProvider ?? (project.isPublished ? 'factory' : null)
+  const updatedAt = project.updatedAt ?? project.createdAt
+  const pages = project.pageCount || 1
+
+  return (
+    <Row>
+      <StatusDot
+        tone={live ? 'live' : 'pending'}
+        label={live ? 'Deployed' : 'Not deployed'}
+      />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/edit/${project.projectName}`}
+            className="truncate rounded font-mono text-sm font-medium tracking-[-0.02em] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+          >
+            {project.projectName}
+          </Link>
+          <Badge tone={target === 'edge' ? 'signal' : 'neutral'} mono>
+            {target}
+          </Badge>
+          {project.accessRole !== 'owner' && <Badge tone="info">{project.accessRole}</Badge>}
+        </div>
+
+        <p className="tabular mt-1 truncate text-xs text-[var(--muted-foreground)]">
+          {provider ? (
+            <span className="text-[var(--foreground)]">{provider}</span>
+          ) : (
+            'Not deployed'
+          )}
+          {' · '}
+          {pages} page{pages === 1 ? '' : 's'}
+          {' · '}
+          <time dateTime={new Date(updatedAt).toISOString()}>
+            {new Date(updatedAt).toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })}
+          </time>
+          {project.deploymentUrl ? ` · ${project.deploymentUrl.replace(/^https?:\/\//, '')}` : ''}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button size="sm" asChild>
+          <Link href={`/edit/${project.projectName}`}>Open</Link>
+        </Button>
+
+        {live && project.deploymentUrl && (
+          <IconButton label={`Visit ${project.projectName}`} size="sm" asChild>
+            <a href={project.deploymentUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-3.5" />
+            </a>
+          </IconButton>
+        )}
+
+        <Menu>
+          <MenuTrigger asChild>
+            <IconButton label={`More actions for ${project.projectName}`} size="sm">
+              <MoreHorizontal className="size-4" />
+            </IconButton>
+          </MenuTrigger>
+          <MenuContent>
+            <MenuItem asChild>
+              <Link href={`/edit/${project.projectName}/settings`}>
+                <Settings2 />
+                Project settings
+              </Link>
+            </MenuItem>
+            {project.repoUrl && (
+              <MenuItem asChild>
+                <a href={project.repoUrl} target="_blank" rel="noopener noreferrer">
+                  <GitBranch />
+                  Open repo
+                </a>
+              </MenuItem>
+            )}
+            {project.isPublished && (
+              <MenuItem onSelect={onRemix}>
+                <Copy />
+                Remix a copy
+              </MenuItem>
+            )}
+            {project.accessRole === 'owner' && (
+              <>
+                <MenuSeparator />
+                <MenuItem danger disabled={deleting} onSelect={onDelete}>
+                  <Trash2 />
+                  {deleting ? 'Deleting' : 'Delete project'}
+                </MenuItem>
+              </>
+            )}
+          </MenuContent>
+        </Menu>
+      </div>
+    </Row>
+  )
 }
