@@ -79,8 +79,8 @@ export default function EditorHeader({
                 <button type="button" onClick={onBack} className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--muted-text)] transition-colors hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]" aria-label="Back to projects">
                     <ArrowLeft className="size-4" />
                 </button>
-                <div className="hidden min-w-0 sm:block">
-                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">{projectName}</p>
+                <div className="min-w-0">
+                    <p className="hidden truncate text-sm font-semibold text-[var(--foreground)] sm:block">{projectName}</p>
                     <p className={cn(
                         'flex items-center gap-1.5 text-[11px]',
                         saveStatus === 'conflict' ? 'font-medium text-red-500' : 'text-[var(--muted-text)]'

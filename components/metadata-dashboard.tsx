@@ -104,7 +104,7 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
   };
 
   return (
-    <div className="flex flex-col h-[70vh] bg-[var(--background)] font-mono text-xs">
+    <div className="relative flex flex-col bg-[var(--background)] font-mono text-xs">
       <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
         <Tabs defaultValue="global" className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-[var(--background-overlay)] border border-[var(--border)] h-12 p-1">
@@ -285,7 +285,7 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
             className="h-9 px-8 bg-[var(--primary)] text-black font-black uppercase text-[10px] shadow-[4px_4px_0px_rgba(var(--primary-rgb),0.2)] hover:translate-y-[-1px] transition-transform disabled:opacity-50"
           >
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Rocket className="w-4 h-4 mr-2" />}
-            Deploy Metadata
+            Save
           </Button>
         </div>
       </div>
@@ -327,9 +327,9 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-sm font-black uppercase text-green-500 tracking-tighter">Sync Successful</h3>
+                    <h3 className="text-sm font-black uppercase text-green-500 tracking-tighter">Saved</h3>
                     <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
-                      Metadata has been successfully deployed to the project edge.
+                      Metadata saved.
                     </p>
                   </div>
                   <Button 

@@ -76,7 +76,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
-  const [deployOption, setDeployOption] = useState<DeployOption>('github-netlify');
+  const [deployOption, setDeployOption] = useState<DeployOption>('maf-hosted');
   const [repoName, setRepoName] = useState(projectName);
   const [netlifySiteName, setNetlifySiteName] = useState('');
   const [cloudflareProjectName, setCloudflareProjectName] = useState('');

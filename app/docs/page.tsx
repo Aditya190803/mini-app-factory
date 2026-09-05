@@ -146,7 +146,7 @@ export default function DocsPage() {
   }, [sidebarSections]);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--docs-bg)', color: 'var(--foreground)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--docs-bg)', color: 'var(--foreground)' }}>
       {/* Header */}
       <nav className="fixed top-0 z-50 w-full border-b backdrop-blur-md" style={{ background: 'rgba(10, 10, 11, 0.8)', borderColor: 'var(--docs-border)' }}>
         <div className="px-6 py-3 lg:px-8">

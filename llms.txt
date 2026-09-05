@@ -23,7 +23,6 @@ Mini App Factory is an AI-driven platform that transforms natural language promp
 - `/admin` — Admin dashboard
 - `/admin/models` — AI model management
 - `/docs` — Documentation
-- `/documentation` — Detailed documentation
 - `/settings` — User settings
 - `/support` — Support page
 - `/privacy` — Privacy policy

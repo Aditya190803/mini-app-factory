@@ -22,6 +22,7 @@ import { Search } from 'lucide-react';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
 import { toast } from 'sonner';
+import { useConfirm } from '@/hooks/use-confirm';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 import { useProjectTransform } from '@/hooks/use-project-transform';
 import { useEditorDeploy } from '@/hooks/use-editor-deploy';
@@ -52,6 +53,7 @@ const newFileCopy: Record<ProjectFile['fileType'], { label: string; description:
 };
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
+  const { confirm, confirmDialog } = useConfirm();
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState('index.html');
@@ -92,7 +94,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
   const [polishDescription, setPolishDescription] = useState('typography, animations, mobile responsiveness');
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [isExplorerVisible, setIsExplorerVisible] = useState(true);
+  const [isExplorerVisible, setIsExplorerVisible] = useState(false);
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [quickOpenSearch, setQuickOpenSearch] = useState('');
@@ -299,6 +301,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  useEffect(() => {
+    if (saveStatus !== 'saving' && saveStatus !== 'conflict') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [saveStatus]);
+
   const persistFiles = useCallback(async (nextFiles: ProjectFile[]) => {
     if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
     setSaveStatus('saving');
@@ -410,7 +422,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       let response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
       let data = await response.json();
       if (!response.ok && data.needsConfirmation) {
-        if (!window.confirm('This preview needs isolated Cloudflare resources. Create them for 24 hours?')) return;
+        const approved = await confirm({
+          title: 'Create isolated preview resources?',
+          description: 'This preview needs its own Cloudflare resources. They live for 24 hours and are billable.',
+          confirmLabel: 'Create for 24 hours',
+        });
+        if (!approved) return;
         response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, confirmResources: true }) });
         data = await response.json();
       }
@@ -421,10 +438,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     } finally {
       setIsDeployingPreview(false);
     }
-  }, [projectName]);
+  }, [projectName, confirm]);
 
   const deleteLivePreview = useCallback(async () => {
-    if (!window.confirm('Delete this preview and its isolated Cloudflare resources?')) return;
+    const approved = await confirm({
+      title: 'Delete this preview?',
+      description: 'The preview and its isolated Cloudflare resources are removed. Your project files are untouched.',
+      confirmLabel: 'Delete preview',
+      destructive: true,
+    });
+    if (!approved) return;
     const response = await fetch('/api/cloudflare/preview', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
     const data = await response.json();
     if (!response.ok) {
@@ -432,7 +455,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       return;
     }
     toast.success('Live preview resources deleted');
-  }, [projectName]);
+  }, [projectName, confirm]);
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
@@ -489,19 +512,19 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
 
     if (newFileType === 'worker' && finalPath !== '_worker.js') {
-      alert('The Cloudflare Worker entrypoint must be named _worker.js at the project root');
+      toast.error('Rename blocked', { description: 'The Cloudflare Worker entrypoint must be named _worker.js at the project root.' });
       return;
     }
     if (newFileType === 'migration' && !finalPath.startsWith('migrations/')) {
       finalPath = `migrations/${finalPath.replace(/^\/+/, '')}`;
     }
     if (newFileType === 'config' && !['wrangler.jsonc', 'wrangler.json'].includes(finalPath)) {
-      alert('The Cloudflare configuration must be named wrangler.jsonc at the project root');
+      toast.error('Rename blocked', { description: 'The Cloudflare configuration must be named wrangler.jsonc at the project root.' });
       return;
     }
 
     if (files.some(f => f.path === finalPath)) {
-      alert('File already exists');
+      toast.error('File already exists');
       return;
     }
 
@@ -545,7 +568,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     // Check if folder or file with this name already exists
     const folderPath = newFolderName.endsWith('/') ? newFolderName : `${newFolderName}/`;
     if (files.some(f => f.path.startsWith(folderPath) || f.path === newFolderName)) {
-      alert('A file or folder with this name already exists');
+      toast.error('A file or folder with this name already exists');
       return;
     }
 
@@ -605,15 +628,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   // Global shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea (unless it's the Quick Open input itself)
+      // While typing in an input or textarea, only save stays active —
+      // sidebar toggles would swallow characters meant for the field.
       const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      
+
       // Ctrl + S: Save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         persistFiles(files);
       }
-      
+
+      if (isInput) return;
+
       // Ctrl + B: Toggle Explorer Sidebar
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
@@ -633,13 +659,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setIsQuickOpenOpen(true);
       }
 
-      // Del: Delete active file
-      if (e.key === 'Delete' && !isInput && !isQuickOpenOpen && !isNewFileDialogOpen && !isNewFolderDialogOpen && !isRenameDialogOpen && !isDeleteDialogOpen) {
-        // Only trigger if no dialog is open and we have an active file
-        if (activeFile) {
-          handleDeleteItem(activeFile.path, 'file');
-        }
-      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -669,7 +688,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     const newPath = parentPath ? `${parentPath}/${renameValue}` : renameValue;
 
     if (files.some(f => f.path === newPath)) {
-      alert('An item with this name already exists');
+      toast.error('An item with this name already exists');
       return;
     }
 
@@ -710,7 +729,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
     // Check for collisions
     if (files.some(f => f.path === newPathBase)) {
-        alert(`An item named "${sourceName}" already exists in "${destFolderPath}"`);
+        toast.error(`An item named “${sourceName}” already exists in “${destFolderPath}”`);
         return;
     }
 
@@ -863,10 +882,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   return (
-    <div
-      className="flex flex-col h-screen"
-      style={{ backgroundColor: 'var(--background)' }}
-    >
+    <div className="flex h-dvh flex-col bg-background">
+      {confirmDialog}
       <EditorHeader
         projectName={projectName}
         activeTab={activeTab}
@@ -910,7 +927,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           {isRightSidebarVisible && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 360, opacity: 1 }}
+              animate={{ width: 380, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="flex shrink-0 flex-col overflow-hidden max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:shadow-2xl"

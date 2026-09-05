@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Boxes, Database, Globe2, RotateCcw, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useConfirm } from '@/hooks/use-confirm';
 
 type Deployment = {
   _id: string;
@@ -33,6 +34,7 @@ export default function CloudflareProjectSettings({
   customDomain,
   deployments,
 }: Props) {
+  const { confirm, confirmDialog } = useConfirm();
   const [secretNames, setSecretNames] = useState<string[]>([]);
   const [secretName, setSecretName] = useState('');
   const [secretValue, setSecretValue] = useState('');
@@ -86,7 +88,12 @@ export default function CloudflareProjectSettings({
   };
 
   const deleteR2 = async (key: string) => {
-    if (!window.confirm(`Permanently delete ${key}?`)) return;
+    if (!(await confirm({
+      title: `Delete ${key}?`,
+      description: 'This permanently removes the object from the R2 bucket.',
+      confirmLabel: 'Delete object',
+      destructive: true,
+    }))) return;
     setBusy('r2');
     try { const response = await fetch('/api/cloudflare/r2', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, bucket: r2Bucket, key }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Delete failed'); setR2Objects((items) => items.filter((item) => item.key !== key)); setMessage(`Deleted ${key}.`); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Delete failed'); }
@@ -190,7 +197,12 @@ export default function CloudflareProjectSettings({
   };
 
   const removeDomain = async () => {
-    if (!window.confirm(`Remove ${domain} from this Pages project?`)) return;
+    if (!(await confirm({
+      title: `Remove ${domain}?`,
+      description: 'The custom domain is detached from this Pages project. DNS records are not changed.',
+      confirmLabel: 'Remove domain',
+      destructive: true,
+    }))) return;
     setBusy('domain');
     setMessage('');
     try {
@@ -208,7 +220,11 @@ export default function CloudflareProjectSettings({
   };
 
   const rollback = async (deploymentId: string) => {
-    if (!window.confirm('Promote this deployment back to production?')) return;
+    if (!(await confirm({
+      title: 'Promote this deployment?',
+      description: 'This deployment becomes the live production version.',
+      confirmLabel: 'Promote',
+    }))) return;
     setBusy(`rollback:${deploymentId}`);
     setMessage('');
     try {
@@ -232,7 +248,8 @@ export default function CloudflareProjectSettings({
   );
 
   return (
-    <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-5">
+    <section className="space-y-5 rounded-xl border border-border bg-card p-6">
+      {confirmDialog}
       <div className="flex items-center gap-2 text-[var(--secondary-text)]">
         <ShieldCheck className="w-4 h-4" />
         <h2 className="text-xs font-mono uppercase tracking-widest">Cloudflare</h2>

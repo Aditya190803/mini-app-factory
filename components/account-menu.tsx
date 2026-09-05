@@ -45,49 +45,62 @@ export default function AccountMenu({
       <button
         onClick={() => router.push('/handler/sign-in')}
         className={cn(
-          'px-5 py-2 text-[9px] font-mono border border-[var(--primary)]/30 bg-[var(--primary)]/5 uppercase hover:bg-[var(--primary)] hover:text-black transition-all text-[var(--primary)]',
+          'inline-flex h-8 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
           loginClassName
         )}
       >
-        Login
+        Sign in
       </button>
     );
   }
+
+  const email = user.primaryEmail ?? 'Account';
+  const initial = email.trim().charAt(0).toUpperCase() || '?';
 
   return (
     <div className={cn('relative', className)} ref={menuRef}>
       <button
         onClick={() => setIsOpen((prev) => !prev)}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-label={`Account menu for ${email}`}
         className={cn(
-          'flex items-center gap-2 px-3 py-1.5 text-[9px] font-mono border border-[var(--border)] uppercase hover:bg-white hover:text-black transition-all',
+          'grid size-8 place-items-center rounded-lg border border-border bg-muted text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
           buttonClassName
         )}
       >
-        <span className="text-[10px] font-mono text-white opacity-60 uppercase truncate max-w-[160px]">
-          {user.primaryEmail}
-        </span>
-        <span className="text-[10px]">▾</span>
+        {initial}
       </button>
       {isOpen && (
-        <div className={cn('absolute right-0 mt-2 w-40 border border-[var(--border)] bg-[var(--background-surface)] shadow-lg z-[999]', menuClassName)}>
+        <div
+          role="menu"
+          className={cn(
+            'absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-elev-lg animate-in fade-in zoom-in-95 duration-150',
+            menuClassName
+          )}
+        >
+          <p className="truncate px-2.5 py-1.5 text-xs text-muted-foreground">{email}</p>
+          <div className="my-1 h-px bg-border" />
           <button
+            role="menuitem"
             onClick={() => {
               setIsOpen(false);
               router.push(settingsPath);
             }}
-            className="w-full text-left px-3 py-2 text-[9px] font-mono uppercase hover:bg-[var(--background-overlay)]"
+            className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             Settings
           </button>
           <a
+            role="menuitem"
             href={`/handler/sign-out?returnTo=${encodeURIComponent(redirectAfterLogout)}`}
             onClick={() => {
               setIsOpen(false);
               setIsLoggingOut(true);
             }}
-            className="w-full text-left px-3 py-2 text-[9px] font-mono uppercase hover:bg-[var(--background-overlay)] block"
+            className="block w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            {isLoggingOut ? 'Logging out...' : 'Logout'}
+            {isLoggingOut ? 'Signing out…' : 'Sign out'}
           </a>
         </div>
       )}

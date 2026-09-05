@@ -4,139 +4,64 @@ import { useUser } from "@stackframe/stack";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { 
-  Trash2, 
-  Settings2, 
-  Calendar, 
-  Layers, 
+import Link from "next/link";
+import { useState } from "react";
+import {
+  Trash2,
+  Settings2,
+  Layers,
   Globe,
   ArrowRight,
   Rocket,
-  Copy
+  Copy,
+  Plus
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { FactoryIcon } from "@/components/ui/factory-icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
-import { extractRepoFullNameFromUrl, extractRepoNameFromFullName, normalizeNetlifySiteName, normalizeRepoName, validateRepoName } from "@/lib/deploy-shared";
-import { normalizeDeployError, performDeploy } from "@/lib/deploy-client";
 import AccountMenu from "@/components/account-menu";
-import CloudflareConnect from "@/components/cloudflare-connect";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { useConfirm } from "@/hooks/use-confirm";
 
 export default function DashboardPage() {
   const user = useUser();
   const router = useRouter();
+  const { confirm, confirmDialog } = useConfirm();
   const projects = useQuery(api.projects.getUserProjects, {});
   const deleteProject = useMutation(api.projects.deleteProject);
-  const saveProject = useMutation(api.projects.saveProject);
-  const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const remixPublishedProject = useMutation(api.projects.remixPublishedProject);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [isRedeployDialogOpen, setIsRedeployDialogOpen] = useState(false);
   const [remixSource, setRemixSource] = useState<NonNullable<typeof projects>[number] | null>(null);
   const [remixName, setRemixName] = useState('');
   const [isRemixing, setIsRemixing] = useState(false);
-  const [redeployProject, setRedeployProject] = useState<NonNullable<typeof projects>[number] | null>(null);
-  const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only' | 'cloudflare'>('github-netlify');
-  const [redeployRepoName, setRedeployRepoName] = useState('');
-  const [redeployCloudflareProjectName, setRedeployCloudflareProjectName] = useState('');
-  const [redeployNetlifySiteName, setRedeployNetlifySiteName] = useState('');
-  const [redeployResult, setRedeployResult] = useState<{ repoUrl?: string; deploymentUrl?: string; netlifySiteName?: string } | null>(null);
-  const [redeployError, setRedeployError] = useState<string | null>(null);
-  const [isRedeploying, setIsRedeploying] = useState(false);
-  const [redeployStatus, setRedeployStatus] = useState<string | null>(null);
-  const [isIntegrationLoading, setIsIntegrationLoading] = useState(false);
-  const [integrationStatus, setIntegrationStatus] = useState<{
-    githubConnected: boolean;
-    netlifyConnected: boolean;
-    cloudflareConnected: boolean;
-    cloudflareAccountName?: string;
-  }>({
-    githubConnected: false,
-    netlifyConnected: false,
-    cloudflareConnected: false,
-  });
-
-  const redeployFiles = useQuery(
-    api.files.getFilesByProject,
-    redeployProject?._id ? { projectId: redeployProject._id } : "skip"
-  );
 
   const handleDelete = async (projectName: string) => {
     if (!user) return;
-    if (confirm(`Are you sure you want to delete "${projectName}"?`)) {
-      setIsDeleting(projectName);
-      try {
-        await deleteProject({ projectName });
-      } catch (error) {
-        console.error("Failed to delete project:", error);
-        alert("Failed to delete project. Please try again.");
-      } finally {
-        setIsDeleting(null);
-      }
+    const ok = await confirm({
+      title: `Delete ${projectName}?`,
+      description:
+        'This removes the project and its files. Deployments already live are not taken down.',
+      confirmLabel: 'Delete project',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setIsDeleting(projectName);
+    try {
+      await deleteProject({ projectName });
+      toast.success('Project deleted', { description: projectName });
+    } catch (error) {
+      console.error("Failed to delete project:", error);
+      toast.error('Could not delete project', {
+        description: error instanceof Error ? error.message : 'Try again in a moment.',
+      });
+    } finally {
+      setIsDeleting(null);
     }
-  };
-
-  const linkedRepoFullName = useMemo(
-    () => extractRepoFullNameFromUrl(redeployProject?.repoUrl),
-    [redeployProject?.repoUrl]
-  );
-  const linkedRepoName = useMemo(
-    () => extractRepoNameFromFullName(linkedRepoFullName),
-    [linkedRepoFullName]
-  );
-  const repoValidation = useMemo(() => validateRepoName(redeployRepoName), [redeployRepoName]);
-  const normalizedRepoName = repoValidation.normalized || normalizeRepoName(redeployProject?.projectName ?? "");
-  const normalizedNetlifySiteName = useMemo(
-    () => normalizeNetlifySiteName(redeployNetlifySiteName || normalizedRepoName),
-    [redeployNetlifySiteName, normalizedRepoName]
-  );
-  const isGithubRedeploy = redeployOption === 'github-netlify' || redeployOption === 'github-only';
-
-  useEffect(() => {
-    if (!redeployProject) return;
-    const provider = redeployProject.deployProvider === 'cloudflare'
-      ? 'cloudflare'
-      : redeployProject.deployProvider === 'github'
-        ? 'github-only'
-        : 'github-netlify';
-    setRedeployOption(provider);
-    setRedeployRepoName(linkedRepoName || redeployProject.projectName);
-    setRedeployCloudflareProjectName(redeployProject.cloudflareProjectName || redeployProject.projectName);
-    setRedeployNetlifySiteName(redeployProject.netlifySiteName || '');
-    setRedeployResult(null);
-    setRedeployError(null);
-  }, [redeployProject, linkedRepoName]);
-
-  useEffect(() => {
-    if (!isRedeployDialogOpen) return;
-    const loadStatus = async () => {
-      setIsIntegrationLoading(true);
-      try {
-        const resp = await fetch('/api/integrations/status');
-        if (!resp.ok) {
-          setIntegrationStatus({ githubConnected: false, netlifyConnected: false, cloudflareConnected: false });
-          return;
-        }
-        const data = await resp.json();
-        setIntegrationStatus({
-          githubConnected: !!data.githubConnected,
-          netlifyConnected: !!data.netlifyConnected,
-          cloudflareConnected: !!data.cloudflareConnected,
-          cloudflareAccountName: data.cloudflareAccountName,
-        });
-      } finally {
-        setIsIntegrationLoading(false);
-      }
-    };
-    loadStatus();
-  }, [isRedeployDialogOpen]);
-
-  const openRedeploy = (project: NonNullable<typeof projects>[number]) => {
-    setRedeployProject(project);
-    setIsRedeployDialogOpen(true);
   };
 
   const openRemix = (project: NonNullable<typeof projects>[number]) => {
@@ -155,281 +80,202 @@ export default function DashboardPage() {
     finally { setIsRemixing(false); }
   };
 
-  const startGithubConnect = () => {
-    window.location.href = `/api/integrations/github/start?returnTo=${encodeURIComponent('/dashboard')}`;
-  };
-
-  const startNetlifyConnect = () => {
-    window.location.href = `/api/integrations/netlify/start?returnTo=${encodeURIComponent('/dashboard')}`;
-  };
-
-  const handleRedeploy = async () => {
-    if (!user || !redeployProject) {
-      window.location.href = '/handler/sign-in';
-      return;
-    }
-    if (!redeployFiles || redeployFiles.length === 0) {
-      const message = 'Project files are still loading. Please try again in a moment.';
-      setRedeployError(message);
-      toast.error('Redeploy blocked', { description: message });
-      return;
-    }
-
-    setIsRedeploying(true);
-    setRedeployStatus('Starting redeployment...');
-    setRedeployError(null);
-    setRedeployResult(null);
-    try {
-      let confirmCloudflareResources = false;
-      if (redeployOption === 'cloudflare') {
-        setRedeployStatus('Planning Cloudflare resources...');
-        const response = await fetch('/api/cloudflare/plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectName: redeployProject.projectName,
-            cloudflareProjectName: redeployCloudflareProjectName,
-          }),
-        });
-        const plan = await response.json();
-        if (!response.ok) throw new Error(plan.error || 'Unable to plan Cloudflare resources');
-        if (plan.needsConfirmation) {
-          const creates = plan.actions
-            .filter((item: { action: string }) => item.action === 'create')
-            .map((item: { binding: string; name: string }) => `${item.binding}: ${item.name}`)
-            .join('\n');
-          if (!window.confirm(`Create these Cloudflare resources?\n\n${creates}`)) return;
-          confirmCloudflareResources = true;
-        }
-      }
-
-      const data = await performDeploy({
-        projectName: redeployProject.projectName,
-        prompt: redeployProject.prompt,
-        repoVisibility: 'private',
-        githubOrg: null,
-        deployMode: redeployOption,
-        repoName: normalizedRepoName || redeployProject.projectName,
-        repoFullName: linkedRepoFullName,
-        netlifySiteName: redeployOption === 'github-netlify' ? normalizedNetlifySiteName : undefined,
-        cloudflareProjectName: redeployOption === 'cloudflare' ? redeployCloudflareProjectName : undefined,
-        confirmCloudflareResources: redeployOption === 'cloudflare' ? confirmCloudflareResources : undefined,
-      }, (status) => {
-        setRedeployStatus(status);
-      });
-
-      setRedeployResult({
-        repoUrl: data.repoUrl,
-        deploymentUrl: data.deploymentUrl,
-        netlifySiteName: data.netlifySiteName,
-      });
-
-      await saveProject({
-        projectName: redeployProject.projectName,
-        prompt: redeployProject.prompt,
-        html: redeployProject.html,
-        status: redeployProject.status,
-        isPublished: redeployProject.isPublished,
-        isMultiPage: redeployProject.isMultiPage,
-        pageCount: redeployProject.pageCount,
-        description: redeployProject.description,
-        selectedModel: redeployProject.selectedModel,
-        providerId: redeployProject.providerId,
-        deploymentUrl: data.deploymentUrl ?? undefined,
-        repoUrl: data.repoUrl ?? undefined,
-        deployProvider: redeployOption === 'github-only' ? 'github' : redeployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
-        deployedAt: Date.now(),
-        netlifySiteName: data.netlifySiteName ?? undefined,
-      });
-
-      await addDeploymentHistory({
-        projectId: redeployProject._id,
-        provider: redeployOption === 'github-only' ? 'github' : redeployOption === 'cloudflare' ? 'cloudflare' : 'netlify',
-        deploymentUrl: data.deploymentUrl ?? undefined,
-        repoUrl: data.repoUrl ?? undefined,
-        netlifySiteName: data.netlifySiteName ?? undefined,
-        cloudflareProjectName: data.cloudflareProjectName ?? undefined,
-        cloudflareDeploymentId: data.deploymentId ?? undefined,
-      });
-
-      toast.success('Redeploy complete', { description: data.deploymentUrl || 'Deployment finished.' });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Deploy failed';
-      const normalized = normalizeDeployError(message);
-      setRedeployError(normalized);
-      toast.error('Redeploy failed', { description: normalized });
-    } finally {
-      setIsRedeploying(false);
-    }
-  };
-
   if (projects === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-6 h-6 border-2 border-[var(--primary)] border-t-transparent animate-spin" />
-          <div className="text-[10px] font-mono uppercase tracking-[0.2em] animate-pulse" style={{ color: 'var(--muted-text)' }}>
-            Retrieving Fabrication Units...
+      <div className="min-h-dvh bg-background">
+        <div className="mx-auto w-full max-w-6xl px-6 py-10">
+          <div className="mb-8 space-y-2">
+            <div className="h-8 w-40 animate-pulse rounded-md bg-muted" />
+            <div className="h-4 w-64 animate-pulse rounded bg-muted" />
+          </div>
+          {/* Skeletons mirror the card layout so nothing jumps on load. */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="space-y-4 rounded-xl border border-border p-5"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
+                <div className="h-16 animate-pulse rounded-lg bg-muted" />
+                <div className="h-9 animate-pulse rounded-lg bg-muted" />
+              </div>
+            ))}
           </div>
         </div>
+        <span className="sr-only" role="status">
+          Loading your projects
+        </span>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="max-w-md text-center">
-          <h1 className="text-2xl font-bold">Unauthorized</h1>
-          <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>
-            Please sign in to view your dashboard.
+      <div className="flex min-h-dvh items-center justify-center bg-background p-6">
+        <div className="max-w-sm text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in to continue</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your projects are tied to your account.
           </p>
-          <button
-            onClick={() => router.push('/handler/sign-in')}
-            className="mt-4 px-4 py-2 text-[10px] font-mono uppercase border border-[var(--border)] text-[var(--primary)] hover:border-[var(--primary)]"
-          >
-            Sign In
-          </button>
+          <Button className="mt-5" onClick={() => router.push('/handler/sign-in')}>
+            Sign in
+          </Button>
+          <div className="mt-3">
+            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">
+              Back to home
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--background)' }}>
-      {/* Ambient background accent */}
-      <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-[var(--primary)] opacity-[0.03] blur-[120px] pointer-events-none" />
-
-      <div className="relative z-10 max-w-6xl mx-auto w-full px-6 py-8 flex-1">
-        <div className="flex items-center justify-between mb-8 relative z-50">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/')}
-              className="w-10 h-10 flex items-center justify-center border border-[var(--border)] hover:border-[var(--primary)] text-[var(--secondary-text)] hover:text-[var(--primary)] transition-all"
-            >
-              ←
-            </button>
-            <div>
-              <h1 className="text-sm font-mono uppercase font-black tracking-[0.4em]" style={{ color: 'var(--foreground)' }}>
-                System Dashboard
-              </h1>
-              <p className="text-[9px] font-mono uppercase tracking-widest mt-1 opacity-50" style={{ color: 'var(--muted-text)' }}>
-                Active Production Archive
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 text-[10px] font-mono uppercase bg-[var(--primary)] text-black font-black hover:opacity-90 transition-all"
-            >
-              + Create New
-            </button>
+    <div className="flex min-h-dvh flex-col bg-background">
+      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
+          <Link href="/" className="flex items-center gap-2.5 rounded-md">
+            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+              <FactoryIcon size={18} />
+            </span>
+            <span className="text-[15px] font-semibold tracking-tight">Projects</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher className="mx-1" />
             <AccountMenu />
           </div>
         </div>
+      </header>
+
+      <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">Your projects</h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {projects.length === 0
+                ? 'Nothing here yet.'
+                : `${projects.length} project${projects.length === 1 ? '' : 's'}`}
+            </p>
+          </div>
+          <Button onClick={() => router.push('/')}>
+            <Plus className="size-4" />
+            New project
+          </Button>
+        </div>
 
         {projects.length === 0 ? (
-          <div className="h-[400px] border border-dashed flex flex-col items-center justify-center gap-6 rounded-lg" style={{ borderColor: 'var(--border)' }}>
-            <div className="w-16 h-16 border flex items-center justify-center text-3xl opacity-20 rounded-full" style={{ borderColor: 'var(--border)' }}>
-              ∅
-            </div>
-            <div className="text-center space-y-2">
-              <h3 className="text-xs font-mono uppercase font-bold tracking-widest text-[var(--foreground)]">
-                No Active Fabrications
-              </h3>
-              <p className="text-[10px] font-mono max-w-xs leading-relaxed text-[var(--muted-text)]">
-                Your production queue is currently empty. Initialize a new project from the workshop.
-              </p>
-            </div>
-            <Button
-              onClick={() => router.push('/')}
-              className="px-6 h-9 font-mono uppercase border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-all font-bold"
-              variant="outline"
-            >
-              Enter Workshop <ArrowRight className="ml-2 w-3 h-3" />
+          <div className="rounded-xl border border-dashed border-border px-6 py-20 text-center">
+            <span className="mx-auto grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground">
+              <Layers className="size-5" />
+            </span>
+            <h2 className="mt-5 text-lg font-semibold">Build your first app</h2>
+            <p className="mx-auto mt-2 max-w-sm text-pretty text-sm text-muted-foreground">
+              Describe what you want in plain language and you&apos;ll get the files, a
+              preview, and a deploy you can inspect.
+            </p>
+            <Button className="mt-6" onClick={() => router.push('/')}>
+              Start a project
+              <ArrowRight className="size-4" />
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <div
-                key={project._id}
-                className="group relative flex flex-col bg-[var(--background-surface)] border border-[var(--border)] rounded-sm hover:border-[var(--primary)] transition-all duration-300"
-              >
-                <div className="p-5 flex-1">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="space-y-1">
-                      <h2 className="text-sm font-mono font-black text-[var(--foreground)] tracking-tight group-hover:text-[var(--primary)] transition-colors">
-                        {project.projectName.toUpperCase()}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map((project) => {
+              const deployLabel = project.deploymentUrl
+                ? (project.deployProvider ?? 'Deployed')
+                : project.isPublished
+                  ? 'Hosted'
+                  : 'Not deployed';
+
+              return (
+                <article
+                  key={project._id}
+                  className="group flex flex-col rounded-xl border border-border bg-card transition-colors hover:border-foreground/20"
+                >
+                  <div className="flex flex-1 flex-col p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="min-w-0 font-mono text-sm font-medium">
+                        <Link
+                          href={`/edit/${project.projectName}`}
+                          className="block truncate rounded outline-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        >
+                          {project.projectName}
+                        </Link>
                       </h2>
-                    </div>
-                  </div>
-
-                  {/* Metrics Grid */}
-                  <div className="grid grid-cols-2 gap-px bg-[var(--border)]/30 border border-[var(--border)]/30 mb-6 overflow-hidden rounded-sm">
-                    <div className="bg-[var(--background-surface)] p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 opacity-50">
-                        <Layers className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">No of Pages</span>
-                      </div>
-                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
-                        {project.pageCount || 1} Pages
-                      </div>
-                    </div>
-                    <div className="bg-[var(--background-surface)] p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 opacity-50">
-                        <Calendar className="w-2.5 h-2.5" />
-                        <span className="text-[8px] font-mono uppercase">Last Sync</span>
-                      </div>
-                      <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
-                        {new Date(project.createdAt).toLocaleDateString(undefined, { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-1.5 opacity-50">
-                      <Globe className="w-2.5 h-2.5" />
-                      <span className="text-[8px] font-mono uppercase">Deployment</span>
-                    </div>
-                    <div className="text-[9px] font-mono font-bold text-[var(--secondary-text)]">
-                      {project.deploymentUrl ? (
-                        <>
-                          {project.deployProvider ? project.deployProvider.toUpperCase() : 'DEPLOYED'}
-                        </>
-                      ) : project.isPublished ? (
-                        <>HOSTED</>
-                      ) : (
-                        <>NOT DEPLOYED</>
+                      {project.accessRole !== 'owner' && (
+                        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {project.accessRole}
+                        </span>
                       )}
                     </div>
-                    {project.deploymentUrl && (
-                      <div className="text-[9px] font-mono text-[var(--muted-text)] break-all">
-                        {project.deploymentUrl}
+
+                    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Pages</dt>
+                        <dd className="tabular mt-0.5">{project.pageCount || 1}</dd>
                       </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      {project.deploymentUrl && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Created</dt>
+                        <dd className="tabular mt-0.5">
+                          <time dateTime={new Date(project.createdAt).toISOString()}>
+                            {new Date(project.createdAt).toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </time>
+                        </dd>
+                      </div>
+                      <div className="col-span-2">
+                        <dt className="text-xs text-muted-foreground">Deployment</dt>
+                        <dd className="mt-1 flex items-center gap-1.5">
+                          {/* Shape as well as colour, so status doesn't rely on hue alone. */}
+                          <span
+                            aria-hidden
+                            className={cn(
+                              'size-1.5 rounded-full',
+                              project.deploymentUrl || project.isPublished
+                                ? 'bg-success'
+                                : 'bg-muted-foreground/40',
+                            )}
+                          />
+                          <span className="capitalize">{deployLabel}</span>
+                        </dd>
+                        {project.deploymentUrl && (
+                          <dd className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {project.deploymentUrl}
+                          </dd>
+                        )}
+                      </div>
+                    </dl>
+
+                    {/* Buttons pinned to the bottom so they line up across cards. */}
+                    <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
+                      <Button size="sm" onClick={() => router.push(`/edit/${project.projectName}`)}>
+                        Open
+                      </Button>
+                      {(project.deploymentUrl || project.isPublished) && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(project.deploymentUrl, '_blank')}
-                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                          onClick={() =>
+                            window.open(
+                              project.deploymentUrl || `/results/${project.projectName}`,
+                              '_blank',
+                              'noopener,noreferrer',
+                            )
+                          }
                         >
-                          Open Live
+                          <Globe className="size-3.5" />
+                          View
                         </Button>
                       )}
                       {project.repoUrl && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(project.repoUrl, '_blank')}
-                          className="h-7 px-3 text-[9px] font-mono uppercase border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                          onClick={() => window.open(project.repoUrl, '_blank', 'noopener,noreferrer')}
                         >
                           Repo
                         </Button>
@@ -437,294 +283,73 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {project.accessRole === 'owner' ? <Button
+                  {/* Secondary actions. Always in the tree — never hover-only,
+                      which is unreachable by keyboard and touch. */}
+                  <div className="flex items-center gap-1 border-t border-border px-3 py-2">
+                    <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(project.projectName)}
-                      disabled={isDeleting === project.projectName}
-                      className="h-8 flex-1 text-red-500/60 hover:text-red-500 hover:bg-red-500/5 text-[9px] font-mono uppercase px-0"
+                      size="icon-sm"
+                      title="Project settings"
+                      aria-label={`Settings for ${project.projectName}`}
+                      onClick={() => router.push(`/edit/${project.projectName}/settings`)}
                     >
-                      <Trash2 className="w-3 h-3 mr-2" />
-                      Decom
-                    </Button> : <span className="text-[9px] font-mono uppercase text-[var(--muted-text)]">Shared · {project.accessRole}</span>}
+                      <Settings2 className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Deploy"
+                      aria-label={`Deploy ${project.projectName}`}
+                      onClick={() => router.push(`/edit/${project.projectName}`)}
+                    >
+                      <Rocket className="size-3.5" />
+                    </Button>
+                    {project.isPublished && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Remix project"
+                        aria-label={`Remix ${project.projectName}`}
+                        onClick={() => openRemix(project)}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
+                    )}
+                    {project.accessRole === 'owner' && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete project"
+                        aria-label={`Delete ${project.projectName}`}
+                        disabled={isDeleting === project.projectName}
+                        onClick={() => handleDelete(project.projectName)}
+                        className="ml-auto text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        {isDeleting === project.projectName ? (
+                          <Spinner className="size-3.5" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
+                    )}
                   </div>
-                </div>
-
-                {/* Footer Actions */}
-                <div className="p-3 border-t border-[var(--border)] bg-[var(--background)]/50 grid grid-cols-5 gap-2">
-                  <Button
-                    onClick={() => router.push(`/edit/${project.projectName}`)}
-                    className="col-span-2 h-9 bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 font-mono uppercase text-[10px] font-black rounded-none shadow-[2px_2px_0px_rgba(var(--primary-rgb),0.1)]"
-                  >
-                    Launch
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/edit/${project.projectName}/settings`)}
-                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none"
-                    title="Project Settings"
-                  >
-                    <Settings2 className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => openRedeploy(project)}
-                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none"
-                    title="Redeploy"
-                    disabled={!project.repoUrl}
-                  >
-                    <Rocket className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={!project.deploymentUrl && !project.isPublished}
-                    onClick={() => {
-                      if (project.deploymentUrl) {
-                        window.open(project.deploymentUrl, '_blank');
-                      } else {
-                        window.open(`/results/${project.projectName}`, '_blank');
-                      }
-                    }}
-                    className="h-9 border-[var(--border)] text-[var(--secondary-text)] hover:border-[var(--primary)] hover:text-[var(--primary)] font-mono uppercase text-[10px] font-bold rounded-none disabled:opacity-20"
-                    title="View Live Site"
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                  </Button>
-                  {project.isPublished ? <Button variant="outline" onClick={() => openRemix(project)} className="absolute right-3 top-3 h-8 w-8 border-[var(--border)] p-0 text-[var(--muted-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]" title="Remix project"><Copy className="size-3.5" /></Button> : null}
-                </div>
-              </div>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
-      </div>
+      </main>
+
+      {confirmDialog}
 
       <Dialog open={remixSource !== null} onOpenChange={(open) => { if (!open) setRemixSource(null); }}>
-        <DialogContent className="border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Remix {remixSource?.projectName}</DialogTitle><DialogDescription>Create an independent private copy. Cloudflare resources, domains, secrets, and deployment links are never copied.</DialogDescription></DialogHeader>
           <div className="space-y-2 py-3"><label htmlFor="remix-name" className="text-xs font-medium">New project name</label><Input id="remix-name" value={remixName} onChange={(event) => setRemixName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} maxLength={63} onKeyDown={(event) => { if (event.key === 'Enter') void handleRemix(); }} /></div>
           <DialogFooter><Button variant="outline" onClick={() => setRemixSource(null)}>Cancel</Button><Button onClick={() => void handleRemix()} disabled={isRemixing || !remixName.trim()}>{isRemixing ? <Spinner className="mr-2 size-4" /> : <Copy className="mr-2 size-4" />}{isRemixing ? 'Remixing…' : 'Create remix'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={isRedeployDialogOpen}
-        onOpenChange={(open) => {
-          setIsRedeployDialogOpen(open);
-          if (!open) {
-            setRedeployProject(null);
-            setRedeployResult(null);
-            setRedeployError(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[520px] bg-[var(--background)] border-[var(--border)] text-[var(--foreground)]">
-          <DialogHeader>
-            <DialogTitle className="font-mono uppercase text-sm tracking-tight">
-              Redeploy {redeployProject?.projectName}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[var(--muted-text)] font-mono">
-              Trigger a fresh deploy directly from the dashboard.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
-              <button
-                type="button"
-                onClick={() => setRedeployOption('github-netlify')}
-                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-netlify'
-                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
-                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
-                  }`}
-              >
-                GitHub + Netlify
-              </button>
-              <button
-                type="button"
-                onClick={() => setRedeployOption('github-only')}
-                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'github-only'
-                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
-                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
-                  }`}
-              >
-                GitHub Repo Only
-              </button>
-              <button
-                type="button"
-                onClick={() => setRedeployOption('cloudflare')}
-                className={`w-full text-left border rounded-md px-3 py-2 font-mono text-xs transition-all ${redeployOption === 'cloudflare'
-                  ? 'border-[var(--primary)] text-[var(--foreground)] bg-[var(--background-overlay)]'
-                  : 'border-[var(--border)] text-[var(--muted-text)] hover:border-[var(--primary)]'
-                  }`}
-              >
-                Cloudflare Pages
-              </button>
-            </div>
-
-            {isGithubRedeploy && (
-            <div className="grid gap-2">
-              <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Repo Name</label>
-              <Input
-                value={redeployRepoName}
-                onChange={(e) => setRedeployRepoName(e.target.value)}
-                placeholder={redeployProject?.projectName}
-                className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                disabled={!!linkedRepoFullName}
-              />
-              <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                {linkedRepoFullName && `Linked repo: ${linkedRepoFullName}. Repo name locked. `}
-                {normalizedRepoName && `Slug: ${normalizedRepoName}. `}
-                {!repoValidation.valid && repoValidation.message}
-              </div>
-            </div>
-            )}
-
-            {redeployOption === 'cloudflare' && (
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Pages Project Name</label>
-                <Input
-                  value={redeployCloudflareProjectName}
-                  onChange={(event) => setRedeployCloudflareProjectName(event.target.value)}
-                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)]"
-                />
-              </div>
-            )}
-
-            {redeployOption === 'github-netlify' && (
-              <div className="grid gap-2">
-                <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Netlify Site Name</label>
-                <Input
-                  value={redeployNetlifySiteName}
-                  onChange={(e) => setRedeployNetlifySiteName(e.target.value)}
-                  placeholder={normalizedRepoName || redeployProject?.projectName}
-                  className="text-xs font-mono bg-[var(--background)] border-[var(--border)] focus-visible:ring-[var(--primary)]"
-                />
-                <div className="text-[10px] font-mono text-[var(--muted-text)]">
-                  Subdomain slug: {normalizedNetlifySiteName || '—'}.
-                </div>
-              </div>
-            )}
-
-            {isGithubRedeploy && (
-            <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-              <div>
-                <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">GitHub</div>
-                <div className="text-[11px] text-[var(--muted-text)]">
-                  {isIntegrationLoading ? 'Checking...' : integrationStatus.githubConnected ? 'Connected' : 'Not connected'}
-                </div>
-              </div>
-              <Button
-                onClick={startGithubConnect}
-                variant="outline"
-                className="font-mono uppercase text-[10px] border-[var(--border)]"
-              >
-                {integrationStatus.githubConnected ? 'Reconnect' : 'Connect'}
-              </Button>
-            </div>
-            )}
-
-            {redeployOption === 'cloudflare' && (
-              <div className="border border-[var(--border)] rounded-md px-3 py-3">
-                <CloudflareConnect
-                  connected={integrationStatus.cloudflareConnected}
-                  accountName={integrationStatus.cloudflareAccountName}
-                  onConnected={(account) => setIntegrationStatus((current) => ({
-                    ...current,
-                    cloudflareConnected: true,
-                    cloudflareAccountName: account.name,
-                  }))}
-                />
-              </div>
-            )}
-
-            {redeployOption === 'github-netlify' && (
-              <div className="flex items-center justify-between border border-[var(--border)] rounded-md px-3 py-2">
-                <div>
-                  <div className="text-[11px] font-mono uppercase text-[var(--secondary-text)]">Netlify</div>
-                  <div className="text-[11px] text-[var(--muted-text)]">
-                    {isIntegrationLoading ? 'Checking...' : integrationStatus.netlifyConnected ? 'Connected' : 'Not connected'}
-                  </div>
-                </div>
-                <Button
-                  onClick={startNetlifyConnect}
-                  variant="outline"
-                  className="font-mono uppercase text-[10px] border-[var(--border)]"
-                >
-                  {integrationStatus.netlifyConnected ? 'Reconnect' : 'Connect'}
-                </Button>
-              </div>
-            )}
-
-            {redeployResult?.repoUrl && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Repo: <span className="text-[var(--primary)]">{redeployResult.repoUrl}</span>
-                </div>
-              </div>
-            )}
-            {redeployResult?.deploymentUrl && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Live URL: <span className="text-[var(--primary)]">{redeployResult.deploymentUrl}</span>
-                </div>
-              </div>
-            )}
-            {redeployResult?.netlifySiteName && (
-              <div className="flex items-center justify-between gap-2 border border-[var(--border)] rounded-md px-3 py-2">
-                <div className="text-[11px] text-[var(--secondary-text)] font-mono">
-                  Netlify Site: <span className="text-[var(--primary)]">{redeployResult.netlifySiteName}</span>
-                </div>
-              </div>
-            )}
-            {redeployFiles === undefined && (
-              <div className="text-[11px] text-[var(--muted-text)] font-mono flex items-center gap-2">
-                <Spinner className="text-[var(--primary)]" />
-                Loading project files...
-              </div>
-            )}
-            {redeployError && (
-              <div className="text-[11px] text-red-500 font-mono whitespace-pre-wrap">
-                {redeployError}
-              </div>
-            )}
-            {isRedeploying && redeployStatus && (
-              <div className="p-3 border border-[var(--border)] rounded-md bg-[var(--background-overlay)]/30 space-y-2 animate-in fade-in slide-in-from-bottom-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 bg-[var(--primary)] rounded-full animate-pulse" />
-                  <span className="text-[10px] font-mono uppercase font-bold text-[var(--secondary-text)] tracking-wider">Redeployment Status</span>
-                </div>
-                <div className="text-[12px] font-mono text-[var(--foreground)] pl-4 border-l-2 border-[var(--primary)]/30 py-1">
-                  {redeployStatus}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsRedeployDialogOpen(false)}
-              className="flex-1 font-mono uppercase text-[10px] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--background-overlay)]"
-            >
-              Close
-            </Button>
-            <Button
-              onClick={handleRedeploy}
-              disabled={
-                isRedeploying ||
-                (isGithubRedeploy && !repoValidation.valid) ||
-                (redeployOption === 'github-netlify' && !integrationStatus.netlifyConnected) ||
-                (isGithubRedeploy && !integrationStatus.githubConnected) ||
-                (redeployOption === 'cloudflare' && !integrationStatus.cloudflareConnected) ||
-                redeployFiles === undefined
-              }
-              className="flex-1 bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-[var(--primary-foreground)] font-mono uppercase text-[10px] font-black"
-            >
-              {isRedeploying ? 'Deploying...' : 'Redeploy Now'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

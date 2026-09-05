@@ -78,10 +78,10 @@ export default function EditorDeployDialog({ projectName, deploy }: Props) {
             <label className="text-[10px] font-mono uppercase text-[var(--muted-text)]">Deploy Options</label>
             {(
               [
-                ['github-netlify', 'GitHub + Netlify (Recommended)'],
+                ['maf-hosted', 'Deploy with us (Recommended — no setup)'],
+                ['github-netlify', 'GitHub + Netlify'],
                 ['github-only', 'GitHub Repo Only'],
                 ['cloudflare', 'Cloudflare Pages + Worker + D1'],
-                ['maf-hosted', 'Deploy with us (Easiest and fastest)'],
               ] as const
             ).map(([value, label]) => (
               <button
