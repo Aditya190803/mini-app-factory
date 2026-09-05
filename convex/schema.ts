@@ -24,6 +24,14 @@ export default defineSchema({
     isPublished: v.boolean(),
     isMultiPage: v.optional(v.boolean()),
     pageCount: v.optional(v.number()),
+    /**
+     * Bumped on every write to this project's files. Callers that hold a snapshot pass the version
+     * they read back to `saveFiles`, which rejects the write if it has moved on. Without it, a
+     * client whose in-memory file list is stale silently deletes whatever it has not heard about —
+     * `saveFiles` removes any path missing from its input. Optional because rows predating it have
+     * no version; those are treated as version 0.
+     */
+    filesVersion: v.optional(v.number()),
     description: v.optional(v.string()),
     referenceUrl: v.optional(v.string()),
     projectInstructions: v.optional(v.string()),

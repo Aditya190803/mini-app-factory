@@ -63,7 +63,18 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isDeployingPreview, setIsDeployingPreview] = useState(false);
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const [isExporting, setIsExporting] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'conflict'>('idle');
+  /**
+   * The filesVersion the in-memory `files` snapshot was built from.
+   *
+   * Sent with every save so a write built on stale state is rejected rather than applied —
+   * saveFiles deletes any path missing from its input, so an overwrite is destructive, and now
+   * that projects can have collaborators the other writer may be another person.
+   *
+   * Deliberately a ref, not derived from projectData: projectData.filesVersion is live and would
+   * always match, which would make the check pass in exactly the case it exists to catch.
+   */
+  const filesVersionRef = useRef<number | null>(null);
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -93,6 +104,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
   const saveFilesAction = useMutation(api.files.saveFiles);
+  const migrateLegacyFilesAction = useMutation(api.files.migrateLegacyFiles);
   const publishProject = useMutation(api.projects.publishProject);
   const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const projectData = useQuery(api.projects.getProject, { projectName });
@@ -164,16 +176,26 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           language: f.language as ProjectFile['language'],
           fileType: f.fileType as ProjectFile['fileType']
         }));
+        // Anchor optimistic concurrency to the version these files came from.
+        filesVersionRef.current = projectData?.filesVersion ?? 0;
       } else if (initialHTML) {
         loadedFiles = migrateProject(initialHTML);
-        
-        // Save migrated files back to database if project exists
+
+        // Hand the migration to Convex rather than writing it through saveFiles. An empty
+        // projectFiles read is indistinguishable from one that has not propagated yet, and
+        // saveFiles deletes any path missing from its input — so racing a just-finished
+        // generation used to replace every generated page with the legacy blob's few files.
+        // migrateLegacyFiles re-checks emptiness inside the transaction and only ever inserts.
         if (projectData?._id) {
-          saveFilesAction({
+          migrateLegacyFilesAction({
             projectId: projectData._id,
             files: loadedFiles
+          }).then((result) => {
+            filesVersionRef.current = result.filesVersion;
+          }).catch((err) => {
+            console.error('Legacy migration failed', err);
           });
-          
+
           saveProject({
             projectName,
             prompt: initialPrompt,
@@ -195,7 +217,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setHasLoaded(true);
       }
     }
-  }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+    // The `hasLoaded` guard makes this run once; the extra deps are listed for correctness rather
+    // than because a re-run is expected.
+  }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, projectData?.filesVersion, hasLoaded, migrateLegacyFilesAction, saveProject, projectName, initialPrompt, user?.id]);
 
   // Handle message from preview iframe
   useEffect(() => {
@@ -249,12 +273,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     projectName,
     initialPrompt,
     files,
-    previewHtml,
     userId: user?.id,
     projectData,
-    saveProject: saveProject as (args: object) => Promise<unknown>,
+    // Passed unwidened: the `as (args: object)` casts that used to be here defeated argument
+    // checking, which is how a stale `userId` kept being sent to mutations that had stopped
+    // accepting one.
+    saveProject,
     publishProject,
-    addDeploymentHistory: addDeploymentHistory as (args: object) => Promise<unknown>,
+    addDeploymentHistory,
   });
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -277,15 +303,20 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
     setSaveStatus('saving');
     try {
-      await saveFilesAction({
+      const result = await saveFilesAction({
         projectId: projectData._id,
-        files: nextFiles
+        files: nextFiles,
+        expectedVersion: filesVersionRef.current ?? undefined,
       });
+      filesVersionRef.current = result.filesVersion;
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
+      // A rejected save means someone else wrote to this project since we loaded it. Surfacing it
+      // is the point — the previous behaviour logged to console and reset to idle, so the user was
+      // told their work was saved when it was not.
       console.error('Save failed', err);
-      setSaveStatus('idle');
+      setSaveStatus('conflict');
     }
   }, [user, projectData?._id, projectData?.accessRole, saveFilesAction]);
 
@@ -772,21 +803,29 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       let readmeContent = `# ${projectName}\n\n${initialPrompt}\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)`;
       
       try {
+        // No `files` key: the route's schema is .strict() and does not accept one, so sending it
+        // made every request 400 and silently fall back to the stub README below — the AI README
+        // has never actually shipped in an export. The route reads the project's files itself.
         const response = await fetch('/api/generate/readme', {
           method: 'POST',
           headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             projectName,
             prompt: initialPrompt,
-            files: files.map(f => f.path)
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.content) {
             readmeContent = data.content;
           }
+        } else {
+          // Keep the fallback, but do not swallow the reason — this failing quietly is what hid
+          // the bug in the first place.
+          console.warn(
+            `README generation failed (${response.status}), using fallback README`
+          );
         }
       } catch (err) {
         console.error('Failed to generate AI README, using fallback', err);

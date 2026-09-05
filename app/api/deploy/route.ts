@@ -29,6 +29,14 @@ type DeployRequest = {
   netlifySiteName?: string;
 };
 
+/**
+ * Deploy uploads files to GitHub one at a time (a GET for the sha, then a PUT, per file) before
+ * triggering the host, so its wall time scales with project size. Without this it inherits the
+ * platform default and can be killed mid-upload, leaving a partially written repo and no rollback.
+ * Matches the generate and transform routes, which already set it.
+ */
+export const maxDuration = 300;
+
 const deploySchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, "Invalid project name"),
   prompt: z.string().trim().min(1).max(8_000).optional(),

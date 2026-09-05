@@ -21,7 +21,7 @@ interface EditorHeaderProps {
     activeTab: 'preview' | 'code' | 'split';
     setActiveTab: (tab: 'preview' | 'code' | 'split') => void;
     onBack: () => void;
-    saveStatus: 'idle' | 'saving' | 'saved';
+    saveStatus: 'idle' | 'saving' | 'saved' | 'conflict';
     onExport: () => void;
     onDeploy: () => void;
     isDeploying: boolean;
@@ -65,7 +65,13 @@ export default function EditorHeader({
     isChatVisible,
     onToggleChat,
 }: EditorHeaderProps) {
-    const saveLabel = saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Ready';
+    const saveLabel =
+        saveStatus === 'saving' ? 'Saving…'
+        : saveStatus === 'saved' ? 'Saved'
+        // Not saved, and the copy has to say so — the danger is a user carrying on editing while
+        // believing their work is stored.
+        : saveStatus === 'conflict' ? 'Not saved — reload to get the latest changes'
+        : 'Ready';
 
     return (
         <header className="relative z-40 flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 sm:px-4">
@@ -75,8 +81,16 @@ export default function EditorHeader({
                 </button>
                 <div className="hidden min-w-0 sm:block">
                     <p className="truncate text-sm font-semibold text-[var(--foreground)]">{projectName}</p>
-                    <p className="flex items-center gap-1.5 text-[11px] text-[var(--muted-text)]">
-                        <span className={cn('size-1.5 rounded-full', saveStatus === 'saving' ? 'animate-pulse bg-amber-400' : 'bg-emerald-400')} />
+                    <p className={cn(
+                        'flex items-center gap-1.5 text-[11px]',
+                        saveStatus === 'conflict' ? 'font-medium text-red-500' : 'text-[var(--muted-text)]'
+                    )}>
+                        <span className={cn(
+                            'size-1.5 rounded-full',
+                            saveStatus === 'saving' ? 'animate-pulse bg-amber-400'
+                            : saveStatus === 'conflict' ? 'bg-red-500'
+                            : 'bg-emerald-400'
+                        )} />
                         {saveLabel}
                     </p>
                 </div>

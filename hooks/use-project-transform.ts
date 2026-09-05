@@ -94,6 +94,16 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         });
 
         applyTransformComplete(result, filesRef.current, setFiles, addToHistory, persistFiles);
+
+        // The edit succeeded, but some operations could not be applied even after retries. Say so
+        // — otherwise the user sees a clean success for a change that was only partly made.
+        if (result.warnings?.length) {
+          toast.warning(
+            `Applied with ${result.warnings.length} issue${result.warnings.length === 1 ? '' : 's'}`,
+            { description: result.warnings.join('\n') }
+          );
+        }
+
         return result;
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {

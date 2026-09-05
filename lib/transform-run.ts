@@ -18,6 +18,19 @@ import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-pr
 
 export const MAX_TRANSFORM_CONTEXT_CHARS = 120_000;
 
+/**
+ * How many times the model is given its own tool failures and asked to correct them.
+ *
+ * Two is a deliberate ceiling: the common causes (a selector that does not match, a path that does
+ * not exist) are fixed on the first retry once the model can see the real error, and further
+ * rounds mostly burn tokens on a model that has misunderstood the project.
+ */
+const MAX_TOOL_REPAIR_ROUNDS = 2;
+
+type ToolFailure = { tool: string; args: Record<string, unknown>; error: string };
+
+type ToolCall = { tool: string; args: Record<string, unknown> };
+
 export type TransformWorkInput = {
   requestId: string;
   projectName?: string;
@@ -80,6 +93,85 @@ async function extractToolCallsWithRepair(
     const repairedContent = repaired?.data?.content || '';
     return extractToolCalls(repairedContent);
   }
+}
+
+/**
+ * Run a batch of tool calls, applying everything that works and recording what does not.
+ *
+ * Deliberately does not throw on a failed tool. The previous behaviour rethrew on the first
+ * failure, which discarded every operation that had already been applied — so one selector that
+ * did not match lost the user an entire successful edit. Failures are returned instead so the
+ * caller can hand them back to the model, which is the only party able to correct them.
+ *
+ * Abort still throws: cancellation is not a tool failure and must not be retried.
+ */
+async function applyToolCalls(
+  calls: ToolCall[],
+  files: ProjectFile[],
+  onEvent: (event: TransformStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<{ files: ProjectFile[]; failures: ToolFailure[] }> {
+  let working = files;
+  const failures: ToolFailure[] = [];
+
+  for (let i = 0; i < calls.length; i++) {
+    throwIfAborted(signal);
+    const call = calls[i];
+    onEvent({
+      status: 'applying',
+      index: i + 1,
+      total: calls.length,
+      tool: call.tool,
+      path: toolTargetPath(call.args),
+    });
+
+    let result;
+    try {
+      result = await executeTool(call.tool, call.args, working);
+    } catch (err) {
+      // executeTool throws for a disallowed tool name or a rejected path. The tool still did not
+      // run, so this is safe to collect — and "you asked for a tool that does not exist" is
+      // exactly the kind of mistake a repair round fixes.
+      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'ABORTED') throw err;
+      failures.push({
+        tool: call.tool,
+        args: call.args,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+
+    if (!result.success) {
+      failures.push({ tool: call.tool, args: call.args, error: result.message || 'Tool reported failure' });
+      continue;
+    }
+
+    for (const updated of result.updatedFiles || []) {
+      const idx = working.findIndex((f) => f.path === updated.path);
+      if (idx >= 0) working[idx] = updated;
+      else working.push(updated);
+    }
+    if (result.deletedPaths?.length) {
+      working = working.filter((f) => !result.deletedPaths?.includes(f.path));
+    }
+  }
+
+  return { files: working, failures };
+}
+
+function describeFailures(failures: ToolFailure[]): string {
+  return failures
+    .map((f, i) => `${i + 1}. ${f.tool}(${JSON.stringify(f.args)})\n   failed with: ${f.error}`)
+    .join('\n');
+}
+
+/** User-facing wording for failures that survived the repair rounds. Undefined when there are none. */
+function describeUnresolved(failures: ToolFailure[]): string[] | undefined {
+  if (failures.length === 0) return undefined;
+  return failures.map((f) => {
+    const target = toolTargetPath(f.args);
+    return `Could not apply ${f.tool}${target ? ` to ${target}` : ''}: ${f.error}`;
+  });
 }
 
 export async function runTransformWork(input: TransformWorkInput) {
@@ -205,6 +297,8 @@ Only return changes. No explanations.`;
 
   let content = '';
   const originalFiles = finalFiles.map((file) => ({ ...file }));
+  /** Tool calls that never applied, even after the repair rounds. Surfaced, not fatal. */
+  let unresolvedFailures: ToolFailure[] = [];
 
   try {
     throwIfAborted(signal);
@@ -217,32 +311,70 @@ Only return changes. No explanations.`;
     throwIfAborted(signal);
 
     const toolCalls = await extractToolCallsWithRepair(content, session, signal);
-    const total = toolCalls.length;
-    for (let i = 0; i < toolCalls.length; i++) {
+
+    let applied = await applyToolCalls(toolCalls as ToolCall[], finalFiles, onEvent, signal);
+    finalFiles = applied.files;
+
+    // Hand failures back to the model rather than abandoning the work already applied. It can see
+    // the actual error and the current file state, which is what it needs to emit a corrected call.
+    for (let round = 0; applied.failures.length > 0 && round < MAX_TOOL_REPAIR_ROUNDS; round++) {
       throwIfAborted(signal);
-      const call = toolCalls[i];
+      const count = applied.failures.length;
       onEvent({
-        status: 'applying',
-        index: i + 1,
-        total,
-        tool: call.tool,
-        path: toolTargetPath(call.args as Record<string, unknown>),
+        status: 'generating',
+        message: `Retrying ${count} operation${count === 1 ? '' : 's'} that could not be applied…`,
       });
-      const result = await executeTool(call.tool, call.args, finalFiles as ProjectFile[]);
-      if (result.success && result.updatedFiles) {
-        result.updatedFiles.forEach((uf) => {
-          const idx = finalFiles.findIndex((f) => f.path === uf.path);
-          if (idx >= 0) finalFiles[idx] = uf;
-          else finalFiles.push(uf);
-        });
+
+      const repairPrompt = [
+        'Some of your tool calls could not be applied to the project.',
+        '',
+        describeFailures(applied.failures),
+        '',
+        'Emit corrected tool calls that achieve the same intent against the CURRENT project state',
+        'shown below. Selectors must match content that actually exists; paths must refer to files',
+        'that actually exist. Do not repeat calls that already succeeded — only fix the failures.',
+        'If a failed operation is no longer necessary, omit it and return the remaining calls.',
+        'Return ONLY the JSON array of tool calls.',
+        '',
+        'Project Context:',
+        buildProjectContextWithIntent(
+          finalFiles,
+          selectFilesForHtmlEdit(
+            applied.failures.map((f) => toolTargetPath(f.args) || '').join(' '),
+            finalFiles,
+            { activeFile }
+          ),
+          MAX_TRANSFORM_CONTEXT_CHARS
+        ),
+      ].join('\n');
+
+      const repairResponse = await withRetry(
+        () => session.sendAndWait({ prompt: repairPrompt }, 90_000),
+        { maxAttempts: 2, baseDelayMs: 500, signal }
+      );
+
+      // The repair round is best-effort: if the model answers with an empty array, prose, or
+      // anything else unparseable, keep what has been applied and stop. Letting the parse error
+      // escape would abort the whole transform, which is the failure mode this loop exists to
+      // remove — and "no further changes" is a legitimate answer that extractToolCalls rejects.
+      let repairCalls: ToolCall[];
+      try {
+        repairCalls = (await extractToolCallsWithRepair(
+          repairResponse?.data?.content || '',
+          session,
+          signal
+        )) as ToolCall[];
+      } catch (err) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'ABORTED') throw err;
+        break;
       }
-      if (result.success && result.deletedPaths) {
-        finalFiles = finalFiles.filter((f) => !result.deletedPaths?.includes(f.path));
-      }
-      if (!result.success) {
-        throw new Error(result.message);
-      }
+      if (repairCalls.length === 0) break;
+
+      applied = await applyToolCalls(repairCalls, finalFiles, onEvent, signal);
+      finalFiles = applied.files;
     }
+
+    unresolvedFailures = applied.failures;
   } catch (err) {
     const code =
       err && typeof err === 'object' && 'code' in err ? String((err as { code?: string }).code) : undefined;
@@ -289,18 +421,12 @@ Only return changes. No explanations.`;
         prompt: `${intentBlock}\n\nThe proposed project failed validation:\n- ${validation.errors.join('\n- ')}\n\nUse the available file tools to fix every issue. Return only the JSON array of tool calls.\n\nProject Context:\n${buildProjectContextWithIntent(finalFiles, selectFilesForHtmlEdit(validation.errors.join(' '), finalFiles), MAX_TRANSFORM_CONTEXT_CHARS)}`,
       }, 90_000);
       const repairs = await extractToolCallsWithRepair(repairResponse?.data?.content || '', repairSession, signal);
-      for (let index = 0; index < repairs.length; index++) {
-        const repair = repairs[index];
-        onEvent({ status: 'applying', index: index + 1, total: repairs.length, tool: repair.tool, path: toolTargetPath(repair.args) });
-        const result = await executeTool(repair.tool, repair.args, finalFiles);
-        if (!result.success) throw new Error(result.message);
-        for (const updated of result.updatedFiles || []) {
-          const fileIndex = finalFiles.findIndex((file) => file.path === updated.path);
-          if (fileIndex >= 0) finalFiles[fileIndex] = updated;
-          else finalFiles.push(updated);
-        }
-        if (result.deletedPaths?.length) finalFiles = finalFiles.filter((file) => !result.deletedPaths?.includes(file.path));
-      }
+      // Same reasoning as the main loop: a repair call that fails should not discard the repairs
+      // that worked. Whether the project is actually fixed is decided by re-running validation
+      // below, which is a better signal than any individual tool's success.
+      const repairApplied = await applyToolCalls(repairs as ToolCall[], finalFiles, onEvent, signal);
+      finalFiles = repairApplied.files;
+      unresolvedFailures = [...unresolvedFailures, ...repairApplied.failures];
     } finally {
       await repairSession.destroy().catch(() => {});
     }
@@ -341,6 +467,7 @@ Only return changes. No explanations.`;
       full: false,
       files: updatedFiles,
       deletedPaths,
+      warnings: describeUnresolved(unresolvedFailures),
     });
     return;
   }
@@ -353,6 +480,7 @@ Only return changes. No explanations.`;
     full: true,
     html: activeHtml,
     files: finalFiles,
+    warnings: describeUnresolved(unresolvedFailures),
   });
 }
 
