@@ -1,5 +1,7 @@
 'use client';
 
+import { toast } from 'sonner';
+
 import { useEffect, useState } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
@@ -258,11 +260,15 @@ export default function SettingsPage() {
   const disconnect = async (provider: 'github' | 'netlify' | 'cloudflare' | 'all') => {
     setIsDisconnecting(provider);
     try {
-      await fetch('/api/integrations/disconnect', {
+      const resp = await fetch('/api/integrations/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider }),
       });
+      if (!resp.ok) {
+        toast.error('Could not disconnect. Try again.');
+        return;
+      }
       setStatus((prev) => ({
         githubConnected: provider === 'github' || provider === 'all' ? false : prev.githubConnected,
         netlifyConnected: provider === 'netlify' || provider === 'all' ? false : prev.netlifyConnected,
@@ -279,7 +285,7 @@ export default function SettingsPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
+      <div className="min-h-dvh flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
         <div className="text-center">
           <h1 className="text-lg font-mono uppercase tracking-widest" style={{ color: 'var(--foreground)' }}>Sign in required</h1>
           <p className="text-xs mt-2" style={{ color: 'var(--secondary-text)' }}>Please sign in to manage your settings.</p>
@@ -295,7 +301,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-10">
         <div className="flex items-center gap-4">
           <button

@@ -2,8 +2,8 @@ import type { ProjectFile } from '@/lib/page-builder';
 
 export function fileTypeFromPath(path: string): ProjectFile['fileType'] {
   const lowerPath = path.toLowerCase();
-  if (lowerPath === 'cloudflare.json') return 'config';
-  if (lowerPath === '_worker.js') return 'worker';
+  if (['cloudflare.json', 'wrangler.jsonc', 'wrangler.json', 'package.json', 'tsconfig.json', 'readme.md', '.dev.vars.example', '.gitignore'].includes(lowerPath)) return 'config';
+  if (lowerPath === '_worker.js' || lowerPath.startsWith('src/') || lowerPath.startsWith('workers/')) return 'worker';
   if (lowerPath.startsWith('migrations/') && lowerPath.endsWith('.sql')) return 'migration';
   if (lowerPath.endsWith('.css')) return 'style';
   if (lowerPath.endsWith('.js')) return 'script';

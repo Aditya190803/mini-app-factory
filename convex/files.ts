@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { canAccessProject, getUserId, requireProjectAccessById, requireUserId } from "./auth";
+import { canReadProject, getUserId, requireProjectAccessById, requireUserId } from "./auth";
 
 /**
  * Project file contents.
@@ -19,7 +19,7 @@ export const getFilesByProject = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     const userId = await getUserId(ctx);
-    if (!canAccessProject(project, userId)) return [];
+    if (!(await canReadProject(ctx, project, userId))) return [];
 
     return await ctx.db
       .query("projectFiles")
@@ -33,7 +33,7 @@ export const getFileByPath = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     const userId = await getUserId(ctx);
-    if (!canAccessProject(project, userId)) return null;
+    if (!(await canReadProject(ctx, project, userId))) return null;
 
     return await ctx.db
       .query("projectFiles")
@@ -186,9 +186,24 @@ export const saveFiles = mutation({
         ),
       })
     ),
+    /**
+     * The filesVersion the caller last read. When supplied and stale, the write is rejected
+     * instead of applied. Optional so existing server-side callers keep working, but any caller
+     * that holds a snapshot across time (the editor's autosave, the transform delta apply) should
+     * pass it — this mutation deletes every path missing from `files`, so a stale write is a
+     * silent data loss rather than a merge conflict.
+     */
+    expectedVersion: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    const project = await requireProjectAccessById(ctx, args.projectId);
+
+    const currentVersion = project.filesVersion ?? 0;
+    if (args.expectedVersion !== undefined && args.expectedVersion !== currentVersion) {
+      throw new Error(
+        `Project files changed since they were loaded (expected v${args.expectedVersion}, now v${currentVersion}). Reload before saving.`
+      );
+    }
 
     const now = Date.now();
     let pageCount = 0;
@@ -238,7 +253,90 @@ export const saveFiles = mutation({
     await ctx.db.patch(args.projectId, {
       updatedAt: now,
       pageCount: pageCount,
+      filesVersion: currentVersion + 1,
     });
+
+    return { filesVersion: currentVersion + 1 };
+  },
+});
+
+/**
+ * Move a legacy `project.html` blob into the projectFiles table, once.
+ *
+ * The editor used to do this client-side: if the reactive projectFiles query came back empty it
+ * ran the migration and called `saveFiles`. But "empty" is indistinguishable from "the query has
+ * not propagated yet", and `saveFiles` deletes every path missing from its input — so immediately
+ * after generation, a briefly-empty read would replace all the generated pages and partials with
+ * the one-to-three files derived from the legacy blob.
+ *
+ * Doing it here fixes that by construction: the emptiness check and the insert happen in one
+ * transaction, and this mutation only ever inserts. If files already exist it is a no-op, so a
+ * late or duplicated call is harmless.
+ */
+export const migrateLegacyFiles = mutation({
+  args: {
+    projectId: v.id("projects"),
+    files: v.array(
+      v.object({
+        path: v.string(),
+        content: v.string(),
+        language: v.union(
+          v.literal("html"),
+          v.literal("css"),
+          v.literal("javascript"),
+          v.literal("sql"),
+          v.literal("json")
+        ),
+        fileType: v.union(
+          v.literal("page"),
+          v.literal("html"),
+          v.literal("partial"),
+          v.literal("style"),
+          v.literal("script"),
+          v.literal("worker"),
+          v.literal("migration"),
+          v.literal("config")
+        ),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const project = await requireProjectAccessById(ctx, args.projectId);
+
+    const existing = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    if (existing) {
+      // Already migrated, or the caller raced a real write. Either way, do not touch anything.
+      return { migrated: false, filesVersion: project.filesVersion ?? 0 };
+    }
+
+    const now = Date.now();
+    let pageCount = 0;
+    for (const file of args.files) {
+      const normalizedFileType = file.fileType === "html" ? "page" : file.fileType;
+      await ctx.db.insert("projectFiles", {
+        projectId: args.projectId,
+        path: file.path,
+        content: file.content,
+        language: file.language,
+        fileType: normalizedFileType,
+        createdAt: now,
+        updatedAt: now,
+      });
+      if (normalizedFileType === "page") pageCount++;
+    }
+
+    const nextVersion = (project.filesVersion ?? 0) + 1;
+    await ctx.db.patch(args.projectId, {
+      updatedAt: now,
+      pageCount,
+      filesVersion: nextVersion,
+    });
+
+    return { migrated: true, filesVersion: nextVersion };
   },
 });
 

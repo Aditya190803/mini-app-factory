@@ -1,6 +1,13 @@
+// Stack uses React Suspense, which renders this while user data is fetched.
+// See: https://nextjs.org/docs/app/api-reference/file-conventions/loading
 export default function Loading() {
-
-  // Stack uses React Suspense, which will render this page while user data is being fetched.
-  // See: https://nextjs.org/docs/app/api-reference/file-conventions/loading
-  return <></>;
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="flex min-h-dvh items-center justify-center bg-background"
+    >
+      <div className="size-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+    </div>
+  )
 }

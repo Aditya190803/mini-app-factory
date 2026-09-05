@@ -9,11 +9,15 @@ interface PreviewPanelProps {
     onOpenInEditor?: (path: string, elementHtml?: string, selector?: string) => void;
     onAttachToChat?: (path: string, html: string, selector?: string) => void;
     onOpenInNewTab?: () => void;
+    livePreviewUrl?: string;
+    isDeployingPreview?: boolean;
+    onDeployLivePreview?: () => void | Promise<void>;
+    onDeleteLivePreview?: () => void | Promise<void>;
 }
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
-export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat, onOpenInNewTab }: PreviewPanelProps) {
+export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAttachToChat, onOpenInNewTab, livePreviewUrl, isDeployingPreview, onDeployLivePreview, onDeleteLivePreview }: PreviewPanelProps) {
     const [mode, setMode] = useState<ViewportMode>('desktop');
     const [refreshKey, setRefreshKey] = useState(0);
     const [isSelectorActive, setIsSelectorActive] = useState(false);
@@ -137,27 +141,29 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
     };
 
     return (
-        <div className="w-full h-full bg-[#1a1a1a] flex flex-col overflow-hidden">
-            {/* Mini-toolbar for preview */}
-            <div className="flex items-center justify-between px-4 py-2 bg-[var(--background-surface)] border-b border-[var(--border)]">
-                <div className="flex items-center gap-1 bg-[var(--background)] p-0.5 border border-[var(--border)]">
+        <div className="flex h-full w-full flex-col overflow-hidden bg-[var(--background-surface)]">
+            <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-3 sm:px-4">
+                <div className="flex items-center rounded-lg bg-[var(--background-surface)] p-1" role="group" aria-label="Preview viewport">
                     <button
                         onClick={() => setMode('desktop')}
-                        className={`p-1.5 transition-colors ${mode === 'desktop' ? 'text-[var(--primary)] bg-[var(--background-surface)]' : 'text-[var(--muted-text)] hover:text-white'}`}
+                        aria-pressed={mode === 'desktop'}
+                        className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'desktop' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Desktop view"
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
                     </button>
                     <button
                         onClick={() => setMode('tablet')}
-                        className={`p-1.5 transition-colors ${mode === 'tablet' ? 'text-[var(--primary)] bg-[var(--background-surface)]' : 'text-[var(--muted-text)] hover:text-white'}`}
+                        aria-pressed={mode === 'tablet'}
+                        className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'tablet' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Tablet view"
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2" /><line x1="12" x2="12.01" y1="18" y2="18" /></svg>
                     </button>
                     <button
                         onClick={() => setMode('mobile')}
-                        className={`p-1.5 transition-colors ${mode === 'mobile' ? 'text-[var(--primary)] bg-[var(--background-surface)]' : 'text-[var(--muted-text)] hover:text-white'}`}
+                        aria-pressed={mode === 'mobile'}
+                        className={`grid size-8 place-items-center rounded-md transition-colors ${mode === 'mobile' ? 'bg-[var(--background)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted-text)] hover:text-[var(--foreground)]'}`}
                         title="Mobile view"
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="10" height="18" x="7" y="3" rx="2" ry="2" /><line x1="12" x2="12.01" y1="17" y2="17" /></svg>
@@ -165,9 +171,21 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {files.some((file) => file.fileType === 'worker') ? (
+                        livePreviewUrl ? (
+                            <>
+                                <span className="flex items-center gap-1.5 text-xs text-emerald-400"><span className="size-1.5 rounded-full bg-emerald-400" />Live backend</span>
+                                <button type="button" onClick={() => void onDeleteLivePreview?.()} className="rounded-md px-2 py-1.5 text-xs text-[var(--muted-text)] hover:bg-red-400/10 hover:text-red-300">Delete</button>
+                            </>
+                        ) : (
+                            <button type="button" disabled={isDeployingPreview} onClick={() => void onDeployLivePreview?.()} className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--primary)] hover:bg-[var(--primary)]/10 disabled:opacity-50">
+                                {isDeployingPreview ? 'Starting preview…' : 'Test backend'}
+                            </button>
+                        )
+                    ) : null}
                     <button
                         onClick={onOpenInNewTab}
-                        className="p-1 text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors"
+                        className="grid size-8 place-items-center rounded-md text-[var(--muted-text)] transition-colors hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)]"
                         title="Open preview in new tab"
                     >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -178,7 +196,8 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     </button>
                     <button
                         onClick={() => setIsSelectorActive(!isSelectorActive)}
-                        className={`p-1.5 transition-colors ${isSelectorActive ? 'text-[var(--primary)] bg-[var(--background-surface)]' : 'text-[var(--muted-text)] hover:text-white'}`}
+                        disabled={Boolean(livePreviewUrl)}
+                        className={`grid size-8 place-items-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${isSelectorActive ? 'bg-[var(--primary)]/10 text-[var(--primary)]' : 'text-[var(--muted-text)] hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)]'}`}
                         title="Visual Selector"
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -189,7 +208,7 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                     </button>
                     <button
                         onClick={() => setRefreshKey(k => k + 1)}
-                        className="p-1 text-[var(--muted-text)] hover:text-[var(--primary)] transition-colors"
+                        className="grid size-8 place-items-center rounded-md text-[var(--muted-text)] transition-colors hover:bg-[var(--background-overlay)] hover:text-[var(--foreground)]"
                         title="Refresh preview"
                     >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></svg>
@@ -197,15 +216,15 @@ export default function PreviewPanel({ previewHtml, files, onOpenInEditor, onAtt
                 </div>
             </div>
 
-            <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+            <div className="flex flex-1 items-center justify-center overflow-auto p-3 sm:p-5">
                 <div
-                    className="h-full bg-white shadow-2xl transition-all duration-300 ease-in-out"
+                    className="h-full overflow-hidden rounded-lg bg-[oklch(0.99_0.004_75)] shadow-[0_18px_60px_oklch(0_0_0/0.28)] transition-[width] duration-200 ease-out"
                     style={{ width: getWidth(), minHeight: mode !== 'desktop' ? '600px' : 'auto' }}
                 >
                     <iframe
                         key={refreshKey}
                         ref={iframeRef}
-                        srcDoc={previewHtml}
+                        {...(livePreviewUrl ? { src: livePreviewUrl } : { srcDoc: previewHtml })}
                         className="w-full h-full border-0"
                         sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
                         title="Website Preview"

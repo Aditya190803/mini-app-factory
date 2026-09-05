@@ -285,7 +285,9 @@ export default function FileTree({
                             <span className={cn("flex-1 truncate", item.type === 'folder' && "font-medium")}>
                               {item.name}
                             </span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+                            {/* Also revealed on keyboard focus — hover alone
+                                strands keyboard and touch users. */}
+                            <div className="flex items-center gap-1 pr-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                               {item.path !== 'index.html' && (
                                 <button
                                   className="p-1 hover:text-primary transition-colors"

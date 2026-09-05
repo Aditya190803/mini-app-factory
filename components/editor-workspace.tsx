@@ -1,10 +1,13 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from "@stackframe/stack";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from '@/convex/_generated/dataModel';
 import {
   Dialog,
   DialogContent,
@@ -17,11 +20,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { migrateProject } from '@/lib/migration';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useConfirm } from '@/hooks/use-confirm';
 import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
 import { useProjectTransform } from '@/hooks/use-project-transform';
 import { useEditorDeploy } from '@/hooks/use-editor-deploy';
@@ -32,6 +35,7 @@ import EditorSidebar from './editor/editor-sidebar';
 import PreviewPanel from './editor/preview-panel';
 import CodePanel from './editor/code-panel';
 import FileTree from './editor/file-tree';
+import ComponentLibraryDialog from './editor/component-library-dialog';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -45,24 +49,41 @@ const newFileCopy: Record<ProjectFile['fileType'], { label: string; description:
   partial: { label: 'Partial', description: 'Create reusable HTML included with <!-- include:filename.html -->.', placeholder: 'navbar.html' },
   style: { label: 'Stylesheet', description: 'Create a CSS file.', placeholder: 'components.css' },
   script: { label: 'Script', description: 'Create a browser JavaScript file.', placeholder: 'analytics.js' },
-  worker: { label: 'Cloudflare Worker', description: 'Create the import-free Pages backend entrypoint.', placeholder: '_worker.js' },
+  worker: { label: 'Cloudflare Worker', description: 'Create the generated application backend entrypoint.', placeholder: '_worker.js' },
   migration: { label: 'D1 Migration', description: 'Create an ordered SQL migration under migrations/.', placeholder: 'migrations/0001_init.sql' },
-  config: { label: 'Cloudflare Config', description: 'Declare resource bindings for this project.', placeholder: 'cloudflare.json' },
+  config: { label: 'Wrangler Config', description: 'Declare the generated app runtime and resource bindings.', placeholder: 'wrangler.jsonc' },
 };
 
 export default function EditorWorkspace({ initialHTML, initialPrompt, projectName, onBack }: EditorWorkspaceProps) {
+  const { confirm, confirmDialog } = useConfirm();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'split'>('preview');
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [activeFilePath, setActiveFilePath] = useState('index.html');
   const [selectedElement, setSelectedElement] = useState<{ path: string, html: string, selector?: string } | null>(null);
   const [editorSearchText, setEditorSearchText] = useState<string>('');
   const [transformPrompt, setTransformPrompt] = useState('');
+  const [chatMode, setChatMode] = useState<'build' | 'discuss'>('build');
+  const [isDiscussing, setIsDiscussing] = useState(false);
+  const [isDeployingPreview, setIsDeployingPreview] = useState(false);
   const [selectedModel, setSelectedModel] = useState<{ id: string, providerId: string }>({ id: '', providerId: '' });
   const modelHydratedRef = useRef(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'conflict'>('idle');
+  /**
+   * The filesVersion the in-memory `files` snapshot was built from.
+   *
+   * Sent with every save so a write built on stale state is rejected rather than applied —
+   * saveFiles deletes any path missing from its input, so an overwrite is destructive, and now
+   * that projects can have collaborators the other writer may be another person.
+   *
+   * Deliberately a ref, not derived from projectData: projectData.filesVersion is live and would
+   * always match, which would make the check pass in exactly the case it exists to catch.
+   */
+  const filesVersionRef = useRef<number | null>(null);
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
   const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -77,30 +98,57 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
   const [polishDescription, setPolishDescription] = useState('typography, animations, mobile responsiveness');
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [isExplorerVisible, setIsExplorerVisible] = useState(true);
+  const [isExplorerVisible, setIsExplorerVisible] = useState(false);
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
   const [quickOpenSearch, setQuickOpenSearch] = useState('');
+  const [quickOpenIndex, setQuickOpenIndex] = useState(0);
+  const quickOpenListRef = useRef<HTMLDivElement>(null);
 
-  // Global history for files
   const [history, setHistory] = useState<ProjectFile[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   const user = useUser();
   const saveProject = useMutation(api.projects.saveProject);
   const saveFilesAction = useMutation(api.files.saveFiles);
+  const migrateLegacyFilesAction = useMutation(api.files.migrateLegacyFiles);
   const publishProject = useMutation(api.projects.publishProject);
   const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
   const projectData = useQuery(api.projects.getProject, { projectName });
   const projectFiles = useQuery(api.files.getFilesByProject, 
     projectData?._id ? { projectId: projectData._id } : "skip"
   );
+  const projectMessages = useQuery(api.conversations.listMessages,
+    projectData?._id ? { projectId: projectData._id } : 'skip'
+  );
+  const appendMessage = useMutation(api.conversations.appendMessage);
+  const createVersion = useMutation(api.conversations.createVersion);
+  const createRun = useMutation(api.conversations.createRun);
+  const appendRunEvent = useMutation(api.conversations.appendRunEvent);
+  const finishRun = useMutation(api.conversations.finishRun);
+  const restoreVersion = useMutation(api.conversations.restoreVersion);
+  const projectVersions = useQuery(api.conversations.listVersions,
+    projectData?._id ? { projectId: projectData._id } : 'skip'
+  );
+  const activeTransformRun = useRef<Id<'generationRuns'> | null>(null);
+  const previewCleanupStarted = useRef(false);
+
+  useEffect(() => {
+    if (previewCleanupStarted.current || !projectData?.cloudflarePreviewProjectName || (projectData.cloudflarePreviewExpiresAt || 0) > Date.now()) return;
+    previewCleanupStarted.current = true;
+    void fetch('/api/cloudflare/preview', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName }),
+    }).then((response) => {
+      if (!response.ok) previewCleanupStarted.current = false;
+    }).catch(() => { previewCleanupStarted.current = false; });
+  }, [projectData?.cloudflarePreviewExpiresAt, projectData?.cloudflarePreviewProjectName, projectName]);
 
   const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
       const next = prev.slice(0, historyIndex + 1);
       next.push([...currentFiles]);
-      // Limit history size
       if (next.length > 50) next.shift();
       return next;
     });
@@ -123,7 +171,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
-  // Load files from Convex or migrate
   useEffect(() => {
     if (projectFiles && !hasLoaded) {
       let loadedFiles: ProjectFile[] = [];
@@ -134,16 +181,26 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           language: f.language as ProjectFile['language'],
           fileType: f.fileType as ProjectFile['fileType']
         }));
+        // Anchor optimistic concurrency to the version these files came from.
+        filesVersionRef.current = projectData?.filesVersion ?? 0;
       } else if (initialHTML) {
         loadedFiles = migrateProject(initialHTML);
-        
-        // Save migrated files back to database if project exists
+
+        // Hand the migration to Convex rather than writing it through saveFiles. An empty
+        // projectFiles read is indistinguishable from one that has not propagated yet, and
+        // saveFiles deletes any path missing from its input — so racing a just-finished
+        // generation used to replace every generated page with the legacy blob's few files.
+        // migrateLegacyFiles re-checks emptiness inside the transaction and only ever inserts.
         if (projectData?._id) {
-          saveFilesAction({
+          migrateLegacyFilesAction({
             projectId: projectData._id,
             files: loadedFiles
+          }).then((result) => {
+            filesVersionRef.current = result.filesVersion;
+          }).catch((err) => {
+            console.error('Legacy migration failed', err);
           });
-          
+
           saveProject({
             projectName,
             prompt: initialPrompt,
@@ -161,11 +218,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         setHistoryIndex(0);
         setHasLoaded(true);
       } else if (projectFiles.length === 0 && initialHTML === '') {
-        // Handle empty project case where we might be creating from scratch or something
         setHasLoaded(true);
       }
     }
-  }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, hasLoaded, saveFilesAction, saveProject, projectName, initialPrompt, user?.id]);
+    // The `hasLoaded` guard makes this run once; the extra deps are listed for correctness rather
+    // than because a re-run is expected.
+  }, [projectFiles, initialHTML, projectData?._id, projectData?.isPublished, projectData?.filesVersion, hasLoaded, migrateLegacyFilesAction, saveProject, projectName, initialPrompt, user?.id]);
 
   useEffect(() => {
     if (modelHydratedRef.current) return;
@@ -193,7 +251,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }).catch(() => { });
   }, [projectData, projectName, initialPrompt, saveProject]);
 
-  // Handle message from preview iframe
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data.type === 'navigate') {
@@ -245,12 +302,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     projectName,
     initialPrompt,
     files,
-    previewHtml,
     userId: user?.id,
     projectData,
-    saveProject: saveProject as (args: object) => Promise<unknown>,
+    // Passed unwidened: the `as (args: object)` casts that used to be here defeated argument
+    // checking, which is how a stale `userId` kept being sent to mutations that had stopped
+    // accepting one.
+    saveProject,
     publishProject,
-    addDeploymentHistory: addDeploymentHistory as (args: object) => Promise<unknown>,
+    addDeploymentHistory,
   });
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -269,23 +328,37 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
   };
 
+  useEffect(() => {
+    if (saveStatus !== 'saving' && saveStatus !== 'conflict') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [saveStatus]);
+
   const persistFiles = useCallback(async (nextFiles: ProjectFile[]) => {
-    if (!user || !projectData?._id) return;
+    if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
     setSaveStatus('saving');
     try {
-      await saveFilesAction({
+      const result = await saveFilesAction({
         projectId: projectData._id,
-        files: nextFiles
+        files: nextFiles,
+        expectedVersion: filesVersionRef.current ?? undefined,
       });
+      filesVersionRef.current = result.filesVersion;
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
+      // A rejected save means someone else wrote to this project since we loaded it. Surfacing it
+      // is the point — the previous behaviour logged to console and reset to idle, so the user was
+      // told their work was saved when it was not.
       console.error('Save failed', err);
-      setSaveStatus('idle');
+      setSaveStatus('conflict');
     }
-  }, [user, projectData?._id, saveFilesAction]);
+  }, [user, projectData?._id, projectData?.accessRole, saveFilesAction]);
 
-  // Auto-save to Convex
   useEffect(() => {
     if (!user || !files.length || !projectData?._id) return;
 
@@ -308,11 +381,111 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     setTransformPrompt,
     selectedElement,
     setSelectedElement,
+    onRunStarted: async (prompt) => {
+      if (!projectData?._id) return;
+      activeTransformRun.current = await createRun({ projectId: projectData._id, kind: 'build', prompt });
+      await appendMessage({ projectId: projectData._id, role: 'user', content: prompt, status: 'completed' });
+    },
+    onRunEvent: async (event) => {
+      if (!projectData?._id || !activeTransformRun.current || event.status === 'complete' || event.status === 'error') return;
+      const message = 'message' in event && event.message ? event.message : event.status === 'applying' ? `${event.tool}${event.path ? ` → ${event.path}` : ''}` : event.status;
+      await appendRunEvent({ projectId: projectData._id, runId: activeTransformRun.current, type: event.status, message, path: 'path' in event ? event.path : undefined });
+    },
+    onRunCompleted: async (prompt, nextFiles) => {
+      if (!projectData?._id) return;
+      const messageId = await appendMessage({
+        projectId: projectData._id,
+        role: 'assistant',
+        content: `Implemented: ${prompt}`,
+        status: 'completed',
+        detailsJson: JSON.stringify({ files: nextFiles.map((file) => file.path) }),
+      });
+      await createVersion({ projectId: projectData._id, messageId, summary: prompt, filesJson: JSON.stringify(nextFiles) });
+      if (activeTransformRun.current) await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'completed' });
+      activeTransformRun.current = null;
+    },
+    onRunFailed: async (prompt, message) => {
+      if (!projectData?._id) return;
+      await appendMessage({ projectId: projectData._id, role: 'system', content: `Build failed: ${message}`, status: 'failed', detailsJson: JSON.stringify({ prompt }) });
+      if (activeTransformRun.current) await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'failed', errorCode: 'TRANSFORM_ERROR', errorMessage: message });
+      activeTransformRun.current = null;
+    },
+    onRunCancelled: async () => {
+      if (!projectData?._id || !activeTransformRun.current) return;
+      await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'cancelled' });
+      activeTransformRun.current = null;
+    },
   });
+
+  const runDiscussion = useCallback(async (promptOverride?: string) => {
+    const prompt = promptOverride?.trim() || transformPrompt.trim();
+    if (!prompt || isDiscussing) return;
+    setIsDiscussing(true);
+    try {
+      const response = await fetch('/api/discuss', {
+        method: 'POST',
+        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          projectName,
+          prompt,
+          modelId: selectedModel.id || undefined,
+          providerId: selectedModel.providerId || undefined,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Discussion failed');
+      setTransformPrompt('');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Discussion failed');
+    } finally {
+      setIsDiscussing(false);
+    }
+  }, [isDiscussing, projectName, selectedModel, transformPrompt]);
+
+  const deployLivePreview = useCallback(async () => {
+    setIsDeployingPreview(true);
+    try {
+      let response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
+      let data = await response.json();
+      if (!response.ok && data.needsConfirmation) {
+        const approved = await confirm({
+          title: 'Create isolated preview resources?',
+          description: 'This preview needs its own Cloudflare resources. They live for 24 hours and are billable.',
+          confirmLabel: 'Create for 24 hours',
+        });
+        if (!approved) return;
+        response = await fetch('/api/cloudflare/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, confirmResources: true }) });
+        data = await response.json();
+      }
+      if (!response.ok) throw new Error(data.error || 'Preview deployment failed');
+      toast.success('Live backend preview deployed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Preview deployment failed');
+    } finally {
+      setIsDeployingPreview(false);
+    }
+  }, [projectName, confirm]);
+
+  const deleteLivePreview = useCallback(async () => {
+    const approved = await confirm({
+      title: 'Delete this preview?',
+      description: 'The preview and its isolated Cloudflare resources are removed. Your project files are untouched.',
+      confirmLabel: 'Delete preview',
+      destructive: true,
+    });
+    if (!approved) return;
+    const response = await fetch('/api/cloudflare/preview', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error(data.error || 'Preview cleanup failed');
+      return;
+    }
+    toast.success('Live preview resources deleted');
+  }, [projectName, confirm]);
 
   const handleNewFile = (type: ProjectFile['fileType']) => {
     setNewFileType(type);
-    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : type === 'config' ? 'cloudflare.json' : '');
+    setNewFileName(type === 'worker' ? '_worker.js' : type === 'migration' ? 'migrations/0001_init.sql' : type === 'config' ? 'wrangler.jsonc' : '');
     setNewFileInFolderPath(null);
     setIsNewFileDialogOpen(true);
   };
@@ -365,19 +538,19 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }
 
     if (newFileType === 'worker' && finalPath !== '_worker.js') {
-      alert('The Cloudflare Worker entrypoint must be named _worker.js at the project root');
+      toast.error('Rename blocked', { description: 'The Cloudflare Worker entrypoint must be named _worker.js at the project root.' });
       return;
     }
     if (newFileType === 'migration' && !finalPath.startsWith('migrations/')) {
       finalPath = `migrations/${finalPath.replace(/^\/+/, '')}`;
     }
-    if (newFileType === 'config' && finalPath !== 'cloudflare.json') {
-      alert('The Cloudflare resource manifest must be named cloudflare.json at the project root');
+    if (newFileType === 'config' && !['wrangler.jsonc', 'wrangler.json'].includes(finalPath)) {
+      toast.error('Rename blocked', { description: 'The Cloudflare configuration must be named wrangler.jsonc at the project root.' });
       return;
     }
 
     if (files.some(f => f.path === finalPath)) {
-      alert('File already exists');
+      toast.error('File already exists');
       return;
     }
 
@@ -385,7 +558,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       ? 'css'
       : finalPath.endsWith('.sql')
         ? 'sql'
-        : finalPath.endsWith('.json')
+        : finalPath.endsWith('.json') || finalPath.endsWith('.jsonc')
           ? 'json'
           : finalPath.endsWith('.js')
           ? 'javascript'
@@ -395,7 +568,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       content: newFileType === 'worker'
         ? "export default {\n  async fetch(request, env) {\n    return env.ASSETS.fetch(request);\n  },\n};"
         : newFileType === 'config'
-          ? '{\n  "version": 1,\n  "bindings": {}\n}'
+          ? `{\n  "$schema": "node_modules/wrangler/config-schema.json",\n  "name": "${projectName}",\n  "main": "_worker.js",\n  "compatibility_date": "2026-08-09",\n  "assets": { "directory": ".", "binding": "ASSETS" },\n  "observability": { "enabled": true }\n}`
           : '',
       language: lang,
       fileType: newFileType as ProjectFile['fileType']
@@ -418,10 +591,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const confirmNewFolder = () => {
     if (!newFolderName) return;
     
-    // Check if folder or file with this name already exists
     const folderPath = newFolderName.endsWith('/') ? newFolderName : `${newFolderName}/`;
     if (files.some(f => f.path.startsWith(folderPath) || f.path === newFolderName)) {
-      alert('A file or folder with this name already exists');
+      toast.error('A file or folder with this name already exists');
       return;
     }
 
@@ -453,7 +625,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     if (type === 'file') {
       nextFiles = files.filter(f => f.path !== path);
     } else {
-      // Folder deletion: remove all files starting with "path/"
       const prefix = path.endsWith('/') ? path : `${path}/`;
       nextFiles = files.filter(f => !f.path.startsWith(prefix));
     }
@@ -478,44 +649,35 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return files.filter(f => f.path.toLowerCase().includes(search));
   }, [files, quickOpenSearch]);
 
-  // Global shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input or textarea (unless it's the Quick Open input itself)
+      // While typing in an input or textarea, only save stays active —
+      // sidebar toggles would swallow characters meant for the field.
       const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      
-      // Ctrl + S: Save
+
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         persistFiles(files);
       }
-      
-      // Ctrl + B: Toggle Explorer Sidebar
+
+      if (isInput) return;
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         setIsExplorerVisible(prev => !prev);
       }
 
-      // Ctrl + I (or Ctrl + Shift + B): Toggle Right Sidebar
-      // We'll use Ctrl + I as 'Instructions' or 'Insights'
       if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
         e.preventDefault();
         setIsRightSidebarVisible(prev => !prev);
       }
       
-      // Ctrl + P: Quick Open
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
         e.preventDefault();
         setIsQuickOpenOpen(true);
+        setQuickOpenIndex(0);
       }
 
-      // Del: Delete active file
-      if (e.key === 'Delete' && !isInput && !isQuickOpenOpen && !isNewFileDialogOpen && !isNewFolderDialogOpen && !isRenameDialogOpen && !isDeleteDialogOpen) {
-        // Only trigger if no dialog is open and we have an active file
-        if (activeFile) {
-          handleDeleteItem(activeFile.path, 'file');
-        }
-      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -525,12 +687,17 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   useEffect(() => {
     if (!isQuickOpenOpen) {
       setQuickOpenSearch('');
+      setQuickOpenIndex(0);
     }
   }, [isQuickOpenOpen]);
 
+  // Keep the highlighted Quick Open result in view as the user arrows through it.
+  useEffect(() => {
+    quickOpenListRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [quickOpenIndex, isQuickOpenOpen]);
+
   const handleRenameItem = (path: string) => {
     setItemToRename(path);
-    // Extract the name part for initial value
     const name = path.endsWith('/') ? path.slice(0, -1).split('/').pop()! : path.split('/').pop()!;
     setRenameValue(name);
     setIsRenameDialogOpen(true);
@@ -545,18 +712,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     const newPath = parentPath ? `${parentPath}/${renameValue}` : renameValue;
 
     if (files.some(f => f.path === newPath)) {
-      alert('An item with this name already exists');
+      toast.error('An item with this name already exists');
       return;
     }
 
     const nextFiles = files.map(f => {
-      // Exact match (file or the .keep file of a folder)
       if (f.path === oldPath) {
         if (activeFilePath === oldPath) setActiveFilePath(newPath);
         return { ...f, path: newPath };
       }
       
-      // Nested items
       const folderPrefix = `${oldPath}/`;
       if (f.path.startsWith(folderPrefix)) {
         const newFolderPrefix = `${newPath}/`;
@@ -577,27 +742,23 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   const handleMoveItem = (sourcePath: string, destFolderPath: string) => {
-    // If destination is same as source, skip
     if (sourcePath === destFolderPath) return;
 
     const sourceName = sourcePath.split('/').pop()!;
     const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
     const newPathBase = `${targetDir}${sourceName}`;
 
-    // Check for collisions
     if (files.some(f => f.path === newPathBase)) {
-        alert(`An item named "${sourceName}" already exists in "${destFolderPath}"`);
+        toast.error(`An item named “${sourceName}” already exists in “${destFolderPath}”`);
         return;
     }
 
     const nextFiles = files.map(f => {
-      // If it's the exact file
       if (f.path === sourcePath) {
         if (activeFilePath === f.path) setActiveFilePath(newPathBase);
         return { ...f, path: newPathBase };
       }
       
-      // If it's a file inside a folder being moved
       if (f.path.startsWith(`${sourcePath}/`)) {
         const newPath = f.path.replace(sourcePath, newPathBase);
         if (activeFilePath === f.path) setActiveFilePath(newPath);
@@ -617,7 +778,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     const targetDir = destFolderPath.endsWith('/') ? destFolderPath : `${destFolderPath}/`;
     const newPathBase = `${targetDir}${sourceName}`;
 
-    // 1. Move/Rename
     const movedFiles = files.map(f => {
       if (f.path === sourcePath) {
         if (activeFilePath === f.path) setActiveFilePath(newPathBase);
@@ -631,7 +791,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       return f;
     });
 
-    // 2. Reorder
     const result = [...movedFiles];
     const sourceIndex = result.findIndex(f => f.path === newPathBase);
     const destIndex = result.findIndex(f => f.path === targetPath);
@@ -675,25 +834,32 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         zip.file(f.path, f.content);
       });
       
-      // Generate README using AI
       let readmeContent = `# ${projectName}\n\n${initialPrompt}\n\n---\nMade by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)`;
       
       try {
+        // No `files` key: the route's schema is .strict() and does not accept one, so sending it
+        // made every request 400 and silently fall back to the stub README below — the AI README
+        // has never actually shipped in an export. The route reads the project's files itself.
         const response = await fetch('/api/generate/readme', {
           method: 'POST',
           headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             projectName,
             prompt: initialPrompt,
-            files: files.map(f => f.path)
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.content) {
             readmeContent = data.content;
           }
+        } else {
+          // Keep the fallback, but do not swallow the reason — this failing quietly is what hid
+          // the bug in the first place.
+          console.warn(
+            `README generation failed (${response.status}), using fallback README`
+          );
         }
       } catch (err) {
         console.error('Failed to generate AI README, using fallback', err);
@@ -712,6 +878,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Zip failed', err);
+      toast.error('Export failed', {
+        description: err instanceof Error ? err.message : 'The ZIP could not be generated.',
+      });
     } finally {
       setIsExporting(false);
     }
@@ -731,13 +900,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   };
 
   return (
-    <motion.div
-      className="flex flex-col h-screen"
-      style={{ backgroundColor: 'var(--background)' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-    >
+    <div className="flex h-dvh flex-col bg-background">
+      {confirmDialog}
       <EditorHeader
         projectName={projectName}
         activeTab={activeTab}
@@ -745,41 +909,97 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         onBack={onBack}
         saveStatus={saveStatus}
         onExport={downloadZip}
-        onDeploy={() => deploy.setIsDeployDialogOpen(true)}
+        onDeploy={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : deploy.setIsDeployDialogOpen(true)}
         isDeploying={deploy.isDeploying}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={undo}
         onRedo={redo}
         onHelp={() => setIsHelpDialogOpen(true)}
-        onSettings={() => window.location.href = `/edit/${projectName}/settings`}
+        onLibrary={() => projectData?.accessRole === 'viewer' ? toast.info('Viewer access is read-only') : setIsLibraryOpen(true)}
+        onSettings={() => router.push(`/edit/${projectName}/settings`)}
+        isExplorerVisible={isExplorerVisible}
+        onToggleExplorer={() => setIsExplorerVisible((visible) => !visible)}
+        isChatVisible={isRightSidebarVisible}
+        onToggleChat={() => setIsRightSidebarVisible((visible) => !visible)}
       />
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Toggle Explorer Button (Always visible) */}
-        <button
-          onClick={() => setIsExplorerVisible(!isExplorerVisible)}
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-l-0 rounded-r flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
-            isExplorerVisible ? "left-[280px]" : "left-0"
-          )}
-          title={isExplorerVisible ? "Hide Explorer (Ctrl+B)" : "Show Explorer (Ctrl+B)"}
-        >
-          {isExplorerVisible ? (
-            <ChevronLeft className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
-          )}
-        </button>
+      {projectData?.accessRole === 'viewer' ? <div className="border-b border-amber-400/20 bg-amber-400/5 px-4 py-2 text-center text-xs text-amber-200">Read-only access · Ask the project owner for editor access to make changes or deploy.</div> : null}
 
-        <AnimatePresence>
+      <ComponentLibraryDialog
+        open={isLibraryOpen}
+        onOpenChange={setIsLibraryOpen}
+        activeFile={activeFile}
+        files={files}
+        onInsert={(file) => {
+          const nextFiles = [...files, file];
+          setFiles(nextFiles);
+          setActiveFilePath(file.path);
+          addToHistory(nextFiles);
+          void persistFiles(nextFiles);
+        }}
+      />
+
+      <div className="relative flex flex-1 overflow-hidden">
+        <AnimatePresence initial={false}>
+          {isRightSidebarVisible && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 380, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="flex shrink-0 flex-col overflow-hidden max-xl:absolute max-xl:inset-y-0 max-xl:left-0 max-xl:z-30 max-xl:shadow-2xl"
+            >
+              <EditorSidebar
+                transformPrompt={transformPrompt}
+                setTransformPrompt={setTransformPrompt}
+                selectedModel={selectedModel}
+                setSelectedModel={handleSelectedModelChange}
+                selectedElement={selectedElement}
+                setSelectedElement={setSelectedElement}
+                runTransform={chatMode === 'build' ? runTransform : runDiscussion}
+                runPolish={() => setIsPolishDialogOpen(true)}
+                isTransforming={isTransforming || isDiscussing}
+                transformProgress={transformProgress}
+                onCancelTransform={cancelTransform}
+                mode={chatMode}
+                onModeChange={setChatMode}
+                filePaths={files.map((file) => file.path)}
+                messages={[
+                  ...((projectMessages?.length || 0) === 0 ? [{ id: 'initial-prompt', role: 'user' as const, content: initialPrompt, status: 'completed' }] : []),
+                  ...(projectMessages || []).map((message) => ({
+                    id: message._id,
+                    role: message.role,
+                    content: message.content,
+                    status: message.status,
+                    files: (() => {
+                      try { return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || []; }
+                      catch { return []; }
+                    })(),
+                  })),
+                ]}
+                versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary }))}
+                onRestoreVersion={async (versionId) => {
+                  if (!projectData?._id) return;
+                  const restored = await restoreVersion({ projectId: projectData._id, versionId: versionId as Id<'projectVersions'> });
+                  const restoredFiles = restored as ProjectFile[];
+                  setFiles(restoredFiles);
+                  addToHistory(restoredFiles);
+                  toast.success('Project version restored');
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
           {isExplorerVisible && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
+              animate={{ width: 260, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--border)] max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-20 max-lg:shadow-2xl"
             >
               <FileTree 
                 files={files} 
@@ -799,12 +1019,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </AnimatePresence>
         
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex min-w-0 flex-1 overflow-hidden bg-[var(--background-surface)]">
           {activeTab === 'preview' && (
             <PreviewPanel 
               previewHtml={previewHtml} 
               files={files}
               onOpenInNewTab={handleOpenPreviewInNewTab}
+              livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+              isDeployingPreview={isDeployingPreview}
+              onDeployLivePreview={deployLivePreview}
+              onDeleteLivePreview={deleteLivePreview}
               onOpenInEditor={(path, html) => {
                 setActiveFilePath(path);
                 setActiveTab('code');
@@ -841,6 +1065,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                   previewHtml={previewHtml} 
                   files={files}
                   onOpenInNewTab={handleOpenPreviewInNewTab}
+                  livePreviewUrl={(projectData?.cloudflarePreviewExpiresAt || 0) > Date.now() ? projectData?.cloudflarePreviewUrl : undefined}
+                  isDeployingPreview={isDeployingPreview}
+                  onDeployLivePreview={deployLivePreview}
+                  onDeleteLivePreview={deleteLivePreview}
                   onOpenInEditor={(path, html) => {
                     setActiveFilePath(path);
                     if (html) setEditorSearchText(html);
@@ -854,47 +1082,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </main>
 
-        <AnimatePresence>
-          {isRightSidebarVisible && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 320, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden flex flex-col shrink-0"
-            >
-              <EditorSidebar
-                transformPrompt={transformPrompt}
-                setTransformPrompt={setTransformPrompt}
-                selectedModel={selectedModel}
-                setSelectedModel={handleSelectedModelChange}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-                runTransform={runTransform}
-                runPolish={() => setIsPolishDialogOpen(true)}
-                isTransforming={isTransforming}
-                transformProgress={transformProgress}
-                onCancelTransform={cancelTransform}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Toggle Right Sidebar Button (Always visible) */}
-        <button
-          onClick={() => setIsRightSidebarVisible(!isRightSidebarVisible)}
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 z-50 w-5 h-16 bg-[var(--background)] border border-[var(--border)] border-r-0 rounded-l flex items-center justify-center hover:bg-[var(--background-overlay)] transition-all shadow-md group",
-            isRightSidebarVisible ? "right-[320px]" : "right-0"
-          )}
-          title={isRightSidebarVisible ? "Hide AI Sidebar (Ctrl+I)" : "Show AI Sidebar (Ctrl+I)"}
-        >
-          {isRightSidebarVisible ? (
-            <ChevronRight className="w-4 h-4 text-[var(--muted-text)] group-hover:text-[var(--primary)] transition-colors" />
-          ) : (
-            <ChevronLeft className="w-4 h-4 text-[var(--primary)] group-hover:scale-110 transition-transform" />
-          )}
-        </button>
       </div>
 
       <Dialog open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
@@ -959,6 +1146,15 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                 <br />
                 <span className="text-[var(--secondary-text)]">4. POLISH:</span> Use the Polish tool for finishing touches like animations and responsiveness.
               </p>
+            </div>
+            <div className="space-y-2">
+              <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Keyboard Shortcuts</h4>
+              <ul className="text-[11px] space-y-1 list-disc pl-4 text-[var(--muted-text)]">
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + P</span> — Quick Open: jump to any file (arrow keys to navigate)</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + S</span> — Save all files now</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + B</span> — Toggle the file explorer</li>
+                <li><span className="text-[var(--secondary-text)]">Ctrl/⌘ + I</span> — Toggle the chat sidebar</li>
+              </ul>
             </div>
             <div className="space-y-2">
               <h4 className="text-[10px] text-[var(--primary)] uppercase font-black tracking-widest">Prompting Tips</h4>
@@ -1225,19 +1421,31 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               value={quickOpenSearch}
               onChange={(e) => setQuickOpenSearch(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
-                  setActiveFilePath(filteredQuickOpenFiles[0].path);
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setQuickOpenIndex((i) => Math.min(i + 1, filteredQuickOpenFiles.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setQuickOpenIndex((i) => Math.max(i - 1, 0));
+                } else if (e.key === 'Enter' && filteredQuickOpenFiles.length > 0) {
+                  e.preventDefault();
+                  setActiveFilePath(filteredQuickOpenFiles[quickOpenIndex]?.path ?? filteredQuickOpenFiles[0].path);
                   setIsQuickOpenOpen(false);
                 }
               }}
             />
           </div>
-          <div className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
+          <div ref={quickOpenListRef} className="max-h-[300px] overflow-y-auto scrollbar-hide py-2">
             {filteredQuickOpenFiles.length > 0 ? (
-              filteredQuickOpenFiles.map((file) => (
+              filteredQuickOpenFiles.map((file, index) => (
                 <button
                   key={file.path}
-                  className="w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group"
+                  data-active={index === quickOpenIndex}
+                  className={cn(
+                    'w-full text-left px-4 py-3 hover:bg-[var(--background-overlay)] flex items-center gap-3 transition-colors group',
+                    index === quickOpenIndex && 'bg-[var(--background-overlay)]',
+                  )}
+                  onMouseMove={() => setQuickOpenIndex(index)}
                   onClick={() => {
                     setActiveFilePath(file.path);
                     setIsQuickOpenOpen(false);
@@ -1267,6 +1475,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </div>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   );
 }

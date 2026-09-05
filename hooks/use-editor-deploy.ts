@@ -13,11 +13,16 @@ import {
   validateRepoName,
 } from '@/lib/deploy-shared';
 import { normalizeDeployError, performDeploy } from '@/lib/deploy-client';
+import type { FunctionArgs } from 'convex/server';
+import { api } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
 
 export type DeployOption = 'github-netlify' | 'github-only' | 'cloudflare' | 'maf-hosted';
 
 type ProjectDeployMeta = {
-  _id?: string;
+  // Convex's branded id, not a bare string — addDeploymentHistory takes an Id<"projects">, and
+  // widening it here is what let the mismatch through.
+  _id?: Id<'projects'>;
   repoUrl?: string | null;
   deploymentUrl?: string | null;
   netlifySiteName?: string | null;
@@ -25,17 +30,26 @@ type ProjectDeployMeta = {
   isPublished?: boolean;
 };
 
+/**
+ * Mutation props are typed against the real Convex argument types rather than `object`.
+ *
+ * They used to be widened, which silently hid two live bugs: this hook passed a `userId` to
+ * `saveProject` and `publishProject` long after those mutations stopped accepting one (they derive
+ * the owner from the verified identity now). Convex rejects unknown arguments at runtime, so every
+ * post-deploy metadata write was throwing and no deployment URL was ever persisted. Keeping these
+ * types honest is what makes that a compile error instead of a silent failure in production.
+ */
 type UseEditorDeployArgs = {
   projectName: string;
   initialPrompt: string;
   files: ProjectFile[];
-  previewHtml: string;
   userId: string | undefined;
   projectData: ProjectDeployMeta | null | undefined;
-  // ponytail: Convex useMutation types are wide; workspace passes real mutations
-  saveProject: (args: object) => Promise<unknown>;
-  publishProject: (args: { projectName: string; userId: string }) => Promise<unknown>;
-  addDeploymentHistory: (args: object) => Promise<unknown>;
+  saveProject: (args: FunctionArgs<typeof api.projects.saveProject>) => Promise<unknown>;
+  publishProject: (args: FunctionArgs<typeof api.projects.publishProject>) => Promise<unknown>;
+  addDeploymentHistory: (
+    args: FunctionArgs<typeof api.deployments.addDeploymentHistory>
+  ) => Promise<unknown>;
 };
 
 export function useEditorDeploy(args: UseEditorDeployArgs) {
@@ -43,7 +57,6 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     projectName,
     initialPrompt,
     files,
-    previewHtml,
     userId,
     projectData,
     saveProject,
@@ -63,7 +76,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
-  const [deployOption, setDeployOption] = useState<DeployOption>('github-netlify');
+  const [deployOption, setDeployOption] = useState<DeployOption>('maf-hosted');
   const [repoName, setRepoName] = useState(projectName);
   const [netlifySiteName, setNetlifySiteName] = useState('');
   const [cloudflareProjectName, setCloudflareProjectName] = useState('');
@@ -300,9 +313,13 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       await saveProject({
         projectName,
         prompt: initialPrompt,
-        html: previewHtml,
+        // Deliberately no `html`. This used to write the editor's preview build, which is
+        // assembled with isEditorPreview=true — it carries the ~190-line VFS/element-selector
+        // bridge script and inlines every stylesheet. project.html is the legacy fallback that
+        // /results serves when a project has no files, so a published site could end up shipping
+        // the editor's internal tooling. projectFiles are the source of truth; saveProject
+        // preserves the existing value when html is omitted.
         status: 'completed',
-        userId,
         isPublished: meta.isPublished ?? projectData?.isPublished ?? false,
         isMultiPage: files.length > 1,
         pageCount: files.filter((f) => f.fileType === 'page').length,
@@ -313,7 +330,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         netlifySiteName: meta.netlifySiteName,
       });
     },
-    [userId, saveProject, projectName, initialPrompt, previewHtml, projectData?.isPublished, files]
+    [userId, saveProject, projectName, initialPrompt, projectData?.isPublished, files]
   );
 
   const handleHostedDeploy = useCallback(async () => {
@@ -329,7 +346,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       const resultsPath = `/results/${projectName}`;
       const resultsUrl = `${window.location.origin}${resultsPath}`;
       await persistDeployMeta({ deploymentUrl: resultsUrl, deployProvider: 'maf-hosted', isPublished: true });
-      await publishProject({ projectName, userId });
+      await publishProject({ projectName });
       setDeployResult({ deploymentUrl: resultsUrl });
       if (projectData?._id) {
         await addDeploymentHistory({

@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
   canAccessProject,
+  canReadProject,
   getUserId,
   requireProjectAccess,
   requireUserId,
@@ -58,8 +59,10 @@ export const getProject = query({
 
     // Null rather than throw: client `useQuery` call sites treat this as "not found", and
     // throwing would surface a console error on every render for a project the user can't see.
-    if (!canAccessProject(project, userId)) return null;
-    return project;
+    if (!(await canReadProject(ctx, project, userId))) return null;
+    if (!project || !userId) return null;
+    const member = project.userId === userId ? null : await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first();
+    return { ...project, accessRole: project.userId === userId ? 'owner' as const : member?.role ?? 'viewer' as const };
   },
 });
 
@@ -221,6 +224,11 @@ export const updateCloudflareConfig = mutation({
     cloudflareEnvVarsEncrypted: v.optional(v.union(v.string(), v.null())),
     cloudflareResourcesJson: v.optional(v.union(v.string(), v.null())),
     deploymentUrl: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewProjectName: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewDeploymentId: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewUrl: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewResourcesJson: v.optional(v.union(v.string(), v.null())),
+    cloudflarePreviewExpiresAt: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const project = await requireProjectAccess(ctx, args.projectName);
@@ -234,10 +242,70 @@ export const updateCloudflareConfig = mutation({
       "cloudflareEnvVarsEncrypted",
       "cloudflareResourcesJson",
       "deploymentUrl",
+      "cloudflarePreviewProjectName",
+      "cloudflarePreviewDeploymentId",
+      "cloudflarePreviewUrl",
+      "cloudflarePreviewResourcesJson",
+      "cloudflarePreviewExpiresAt",
     ] as const) {
       if (args[key] !== undefined) patch[key] = args[key] ?? undefined;
     }
     await ctx.db.patch(project._id, patch);
+    return project._id;
+  },
+});
+
+/** Clone a public project without exposing its owner or internal deployment credentials. */
+export const remixPublishedProject = mutation({
+  args: { sourceProjectName: v.string(), projectName: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const projectName = args.projectName.trim().toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(projectName)) throw new Error("Use 1–63 lowercase letters, numbers, or hyphens");
+    const [source, target] = await Promise.all([
+      ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", args.sourceProjectName)).first(),
+      ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", projectName)).first(),
+    ]);
+    if (!source?.isPublished) throw new Error("Published project not found");
+    if (target) throw new Error("That project name is already taken");
+    const files = await ctx.db.query("projectFiles").withIndex("by_project", (q) => q.eq("projectId", source._id)).take(201);
+    if (files.length > 200) throw new Error("This project is too large to remix");
+    const totalBytes = files.reduce((sum, file) => sum + file.content.length, 0);
+    if (totalBytes > 2_000_000) throw new Error("This project is too large to remix");
+    const now = Date.now();
+    const projectId = await ctx.db.insert("projects", {
+      projectName,
+      prompt: `Remix of ${source.projectName}`,
+      html: source.html,
+      status: "completed",
+      userId,
+      isPublished: false,
+      isMultiPage: source.isMultiPage,
+      pageCount: source.pageCount,
+      description: source.description,
+      globalCss: source.globalCss,
+      globalJs: source.globalJs,
+      globalHeader: source.globalHeader,
+      globalFooter: source.globalFooter,
+      favicon: source.favicon,
+      globalSeo: source.globalSeo,
+      seoData: source.seoData,
+      createdAt: now,
+      updatedAt: now,
+    });
+    for (const file of files) {
+      await ctx.db.insert("projectFiles", { projectId, path: file.path, content: file.content, language: file.language, fileType: file.fileType, createdAt: now, updatedAt: now });
+    }
+    return { projectName, fileCount: files.length };
+  },
+});
+
+export const updateProjectInstructions = mutation({
+  args: { projectName: v.string(), instructions: v.string() },
+  handler: async (ctx, args) => {
+    const project = await requireProjectAccess(ctx, args.projectName);
+    const instructions = args.instructions.trim().slice(0, 20_000);
+    await ctx.db.patch(project._id, { projectInstructions: instructions || undefined, updatedAt: Date.now() });
     return project._id;
   },
 });
@@ -293,11 +361,17 @@ export const getUserProjects = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    return await ctx.db
+    const owned = await ctx.db
       .query("projects")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .order("desc")
       .collect();
+    const memberships = await ctx.db.query('projectMembers').withIndex('by_user', (q) => q.eq('userId', userId)).collect();
+    const shared = (await Promise.all(memberships.map(async (membership) => {
+      const project = await ctx.db.get(membership.projectId);
+      return project ? { ...project, accessRole: membership.role } : null;
+    }))).filter((project): project is NonNullable<typeof project> => project !== null);
+    return [...owned.map((project) => ({ ...project, accessRole: 'owner' as const })), ...shared].sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 
@@ -318,15 +392,29 @@ export const deleteProjectData = internalMutation({
       .query("deploymentHistory")
       .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
       .take(DELETE_BATCH_SIZE);
+    const messages = await ctx.db.query("projectMessages").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const versions = await ctx.db.query("projectVersions").withIndex("by_project_time", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const runs = await ctx.db.query("generationRuns").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
+    const runEventBatches = await Promise.all(runs.map((run) => ctx.db.query("runEvents").withIndex("by_run", (q) => q.eq("runId", run._id)).take(DELETE_BATCH_SIZE + 1)));
+    const runEvents = runEventBatches.flatMap((events) => events.slice(0, DELETE_BATCH_SIZE));
+    const completedRuns = runs.filter((_, index) => runEventBatches[index].length <= DELETE_BATCH_SIZE);
+    const members = await ctx.db.query('projectMembers').withIndex('by_project', (q) => q.eq('projectId', args.projectId)).take(DELETE_BATCH_SIZE);
+    const invites = await ctx.db.query('projectInvites').withIndex('by_project', (q) => q.eq('projectId', args.projectId)).take(DELETE_BATCH_SIZE);
 
-    for (const row of [...files, ...history, ...deployments]) {
+    for (const row of [...files, ...history, ...deployments, ...messages, ...versions, ...runEvents, ...completedRuns, ...members, ...invites]) {
       await ctx.db.delete(row._id);
     }
 
     if (
       files.length === DELETE_BATCH_SIZE ||
       history.length === DELETE_BATCH_SIZE ||
-      deployments.length === DELETE_BATCH_SIZE
+      deployments.length === DELETE_BATCH_SIZE ||
+      messages.length === DELETE_BATCH_SIZE ||
+      versions.length === DELETE_BATCH_SIZE ||
+      runs.length === DELETE_BATCH_SIZE ||
+      runEvents.length >= DELETE_BATCH_SIZE ||
+      members.length === DELETE_BATCH_SIZE ||
+      invites.length === DELETE_BATCH_SIZE
     ) {
       await ctx.scheduler.runAfter(0, internal.projects.deleteProjectData, args);
     }
@@ -337,6 +425,8 @@ export const deleteProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {
     const project = await requireProjectAccess(ctx, args.projectName);
+    const userId = await requireUserId(ctx);
+    if (project.userId !== userId) throw new Error('Only the project owner can delete it');
 
     // Remove the parent first so no new child rows can be written while cleanup runs in batches.
     await ctx.db.delete(project._id);

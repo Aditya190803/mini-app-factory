@@ -30,6 +30,9 @@ export const upsertIntegration = mutation({
     vercelAccessToken: v.optional(v.string()),
     netlifyAccessToken: v.optional(v.string()),
     cloudflareApiToken: v.optional(v.string()),
+    cloudflareRefreshToken: v.optional(v.string()),
+    cloudflareTokenExpiresAt: v.optional(v.number()),
+    cloudflareOAuthScope: v.optional(v.string()),
     cloudflareTokenId: v.optional(v.string()),
     cloudflareAccountId: v.optional(v.string()),
     cloudflareAccountName: v.optional(v.string()),
@@ -49,6 +52,9 @@ export const upsertIntegration = mutation({
         vercelAccessToken?: string;
         netlifyAccessToken?: string;
         cloudflareApiToken?: string;
+        cloudflareRefreshToken?: string;
+        cloudflareTokenExpiresAt?: number;
+        cloudflareOAuthScope?: string;
         cloudflareTokenId?: string;
         cloudflareAccountId?: string;
         cloudflareAccountName?: string;
@@ -73,6 +79,9 @@ export const upsertIntegration = mutation({
       }
       if (args.cloudflareApiToken !== undefined) {
         updates.cloudflareApiToken = args.cloudflareApiToken;
+        updates.cloudflareRefreshToken = args.cloudflareRefreshToken;
+        updates.cloudflareTokenExpiresAt = args.cloudflareTokenExpiresAt;
+        updates.cloudflareOAuthScope = args.cloudflareOAuthScope;
         updates.cloudflareTokenId = args.cloudflareTokenId;
         updates.cloudflareAccountId = args.cloudflareAccountId;
         updates.cloudflareAccountName = args.cloudflareAccountName;
@@ -84,6 +93,9 @@ export const upsertIntegration = mutation({
         vercelAccessToken: updates.vercelAccessToken ?? existing.vercelAccessToken,
         netlifyAccessToken: updates.netlifyAccessToken ?? existing.netlifyAccessToken,
         cloudflareApiToken: updates.cloudflareApiToken ?? existing.cloudflareApiToken,
+        cloudflareRefreshToken: updates.cloudflareRefreshToken ?? existing.cloudflareRefreshToken,
+        cloudflareTokenExpiresAt: updates.cloudflareTokenExpiresAt ?? existing.cloudflareTokenExpiresAt,
+        cloudflareOAuthScope: updates.cloudflareOAuthScope ?? existing.cloudflareOAuthScope,
         cloudflareTokenId: updates.cloudflareTokenId ?? existing.cloudflareTokenId,
         cloudflareAccountId: updates.cloudflareAccountId ?? existing.cloudflareAccountId,
         cloudflareAccountName: updates.cloudflareAccountName ?? existing.cloudflareAccountName,
@@ -102,6 +114,9 @@ export const upsertIntegration = mutation({
       vercelAccessToken: args.vercelAccessToken,
       netlifyAccessToken: args.netlifyAccessToken,
       cloudflareApiToken: args.cloudflareApiToken,
+      cloudflareRefreshToken: args.cloudflareRefreshToken,
+      cloudflareTokenExpiresAt: args.cloudflareTokenExpiresAt,
+      cloudflareOAuthScope: args.cloudflareOAuthScope,
       cloudflareTokenId: args.cloudflareTokenId,
       cloudflareAccountId: args.cloudflareAccountId,
       cloudflareAccountName: args.cloudflareAccountName,
@@ -112,6 +127,24 @@ export const upsertIntegration = mutation({
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const updateCloudflareOAuthToken = mutation({
+  args: {
+    cloudflareApiToken: v.string(),
+    cloudflareRefreshToken: v.optional(v.string()),
+    cloudflareTokenExpiresAt: v.number(),
+    cloudflareOAuthScope: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const existing = await ctx.db
+      .query("userIntegrations")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (!existing) throw new Error("Cloudflare integration not found");
+    await ctx.db.patch(existing._id, { ...args, updatedAt: Date.now() });
   },
 });
 
@@ -157,6 +190,9 @@ export const clearIntegration = mutation({
     }
     if (targets("cloudflare") && existing.cloudflareApiToken === args.expectedCloudflareApiToken) {
       updates.cloudflareApiToken = undefined;
+      updates.cloudflareRefreshToken = undefined;
+      updates.cloudflareTokenExpiresAt = undefined;
+      updates.cloudflareOAuthScope = undefined;
       updates.cloudflareTokenId = undefined;
       updates.cloudflareAccountId = undefined;
       updates.cloudflareAccountName = undefined;

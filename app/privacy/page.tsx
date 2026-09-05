@@ -2,7 +2,7 @@
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-5xl mx-auto px-6 py-12 space-y-10">
         <div className="space-y-3">
           <h1 className="text-2xl font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>

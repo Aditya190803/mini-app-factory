@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { decryptSecret, encryptSecret } from "@/lib/secret-box";
 import { getAuthedConvexClient } from "@/lib/convex-server";
+import { refreshCloudflareAccessToken } from '@/lib/cloudflare-oauth';
 
 export interface IntegrationStatus {
   githubConnected: boolean;
@@ -28,6 +29,25 @@ export async function getIntegrationTokens() {
   const integration = await convex.query(api.integrations.getIntegration, {});
   if (!integration) return null;
 
+  let cloudflareApiToken = decryptSecret(integration.cloudflareApiToken) ?? undefined;
+  let cloudflareRefreshToken = decryptSecret(integration.cloudflareRefreshToken) ?? undefined;
+  let cloudflareTokenExpiresAt = integration.cloudflareTokenExpiresAt;
+  let cloudflareOAuthScope = integration.cloudflareOAuthScope;
+
+  if (cloudflareApiToken && cloudflareRefreshToken && cloudflareTokenExpiresAt && cloudflareTokenExpiresAt <= Date.now() + 60_000) {
+    const refreshed = await refreshCloudflareAccessToken(cloudflareRefreshToken);
+    cloudflareApiToken = refreshed.accessToken;
+    cloudflareRefreshToken = refreshed.refreshToken || cloudflareRefreshToken;
+    cloudflareTokenExpiresAt = refreshed.expiresAt;
+    cloudflareOAuthScope = refreshed.scope || cloudflareOAuthScope;
+    await convex.mutation(api.integrations.updateCloudflareOAuthToken, {
+      cloudflareApiToken: encryptSecret(cloudflareApiToken),
+      cloudflareRefreshToken: encryptSecret(cloudflareRefreshToken),
+      cloudflareTokenExpiresAt,
+      cloudflareOAuthScope,
+    });
+  }
+
   return {
     ...integration,
     tokenVersions: {
@@ -39,7 +59,10 @@ export async function getIntegrationTokens() {
     githubAccessToken: decryptSecret(integration.githubAccessToken) ?? undefined,
     vercelAccessToken: decryptSecret(integration.vercelAccessToken) ?? undefined,
     netlifyAccessToken: decryptSecret(integration.netlifyAccessToken) ?? undefined,
-    cloudflareApiToken: decryptSecret(integration.cloudflareApiToken) ?? undefined,
+    cloudflareApiToken,
+    cloudflareRefreshToken,
+    cloudflareTokenExpiresAt,
+    cloudflareOAuthScope,
   };
 }
 
@@ -48,6 +71,9 @@ export async function upsertIntegrationTokens(params: {
   vercelAccessToken?: string;
   netlifyAccessToken?: string;
   cloudflareApiToken?: string;
+  cloudflareRefreshToken?: string;
+  cloudflareTokenExpiresAt?: number;
+  cloudflareOAuthScope?: string;
   cloudflareTokenId?: string;
   cloudflareAccountId?: string;
   cloudflareAccountName?: string;
@@ -62,6 +88,10 @@ export async function upsertIntegrationTokens(params: {
       params.netlifyAccessToken === undefined ? undefined : encryptSecret(params.netlifyAccessToken),
     cloudflareApiToken:
       params.cloudflareApiToken === undefined ? undefined : encryptSecret(params.cloudflareApiToken),
+    cloudflareRefreshToken:
+      params.cloudflareRefreshToken === undefined ? undefined : encryptSecret(params.cloudflareRefreshToken),
+    cloudflareTokenExpiresAt: params.cloudflareTokenExpiresAt,
+    cloudflareOAuthScope: params.cloudflareOAuthScope,
     cloudflareTokenId: params.cloudflareTokenId,
     cloudflareAccountId: params.cloudflareAccountId,
     cloudflareAccountName: params.cloudflareAccountName,

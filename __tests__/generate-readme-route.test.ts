@@ -106,3 +106,51 @@ describe('POST /api/generate/readme', () => {
     });
   });
 });
+
+/**
+ * The export path used to send a `files` key that the strict schema rejects, so every request
+ * 400'd and the ZIP silently shipped the stub README instead. These pin both halves of the
+ * contract so a caller and the schema cannot drift apart again without a test failing.
+ */
+describe('POST /api/generate/readme — request contract', () => {
+  async function post(body: unknown) {
+    const { POST } = await import('@/app/api/generate/readme/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFiles } = await import('@/lib/projects');
+    const { generateReadmeContent } = await import('@/lib/repo-content');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user_1' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      name: 'demo-project',
+      userId: 'user_1',
+      prompt: 'a demo',
+    });
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { path: 'index.html', content: '<h1>hi</h1>', language: 'html', fileType: 'page' },
+    ]);
+    (generateReadmeContent as ReturnType<typeof vi.fn>).mockResolvedValue('# Generated');
+
+    return POST(
+      new Request('http://localhost/api/generate/readme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }) as never
+    );
+  }
+
+  test('accepts the payload the export actually sends', async () => {
+    const res = await post({ projectName: 'demo-project', prompt: 'a demo' });
+    expect(res.status).toBe(200);
+    expect((await res.json()).content).toBe('# Generated');
+  });
+
+  test('rejects a stray files key — the shape that broke the export', async () => {
+    const res = await post({
+      projectName: 'demo-project',
+      prompt: 'a demo',
+      files: ['index.html'],
+    });
+    expect(res.status).toBe(400);
+  });
+});

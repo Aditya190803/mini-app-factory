@@ -39,9 +39,38 @@ export default function TransformProgress({ state }: { state: TransformProgressS
           ? state.message || 'Generating changes…'
           : state.message || 'Saving…';
 
+  const applying = state.stage === 'applying' ? state.applying : undefined;
+  const pct =
+    applying && applying.total > 0
+      ? Math.round((applying.index / applying.total) * 100)
+      : null;
+
   return (
-    <p className="text-[10px] font-mono text-[var(--primary)] leading-snug animate-pulse" role="status">
-      {label}
-    </p>
+    <div className="mt-2 space-y-1.5" role="status" aria-live="polite">
+      <p className="truncate text-xs leading-snug text-muted-foreground" title={label}>
+        {label}
+      </p>
+      {/* Determinate only when the stream actually reports index/total;
+          otherwise an indeterminate track, never a fake percentage. */}
+      {pct !== null ? (
+        <div
+          className="h-1 overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Applying changes"
+        >
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : (
+        <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/60" />
+        </div>
+      )}
+    </div>
   );
 }

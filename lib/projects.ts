@@ -28,6 +28,7 @@ export interface ProjectMetadata {
   pageCount?: number;
   description?: string;
   referenceUrl?: string;
+  projectInstructions?: string;
   selectedModel?: string;
   providerId?: string;
   favicon?: string;
@@ -43,6 +44,11 @@ export interface ProjectMetadata {
   cloudflareCustomDomain?: string;
   cloudflareEnvVarsEncrypted?: string;
   cloudflareResourcesJson?: string;
+  cloudflarePreviewProjectName?: string;
+  cloudflarePreviewDeploymentId?: string;
+  cloudflarePreviewUrl?: string;
+  cloudflarePreviewResourcesJson?: string;
+  cloudflarePreviewExpiresAt?: number;
   globalSeo?: {
     siteName?: string;
     description?: string;
@@ -121,6 +127,11 @@ export async function updateCloudflareProjectConfig(params: {
   cloudflareEnvVarsEncrypted?: string | null;
   cloudflareResourcesJson?: string | null;
   deploymentUrl?: string | null;
+  cloudflarePreviewProjectName?: string | null;
+  cloudflarePreviewDeploymentId?: string | null;
+  cloudflarePreviewUrl?: string | null;
+  cloudflarePreviewResourcesJson?: string | null;
+  cloudflarePreviewExpiresAt?: number | null;
 }) {
   const convex = await getConvex();
   await convex.mutation(api.projects.updateCloudflareConfig, params);
@@ -132,6 +143,12 @@ export async function getProject(name: string): Promise<ProjectMetadata | null> 
   if (!project) return null;
 
   return toProjectMetadata(project);
+}
+
+export async function getUserProjects(): Promise<ProjectMetadata[]> {
+  const convex = await getConvex();
+  const projects = await convex.query(api.projects.getUserProjects, {});
+  return projects.map((project) => toProjectMetadata(project));
 }
 
 export async function getFiles(projectName: string) {
@@ -161,6 +178,17 @@ export async function saveFiles(projectName: string, files: ProjectFile[]) {
   await convex.mutation(api.files.saveFiles, {
     projectId: project._id,
     files
+  });
+}
+
+export async function createProjectVersion(projectName: string, summary: string, files: ProjectFile[]) {
+  const convex = await getConvex();
+  const project = await convex.query(api.projects.getProject, { projectName });
+  if (!project) throw new Error('Project not found');
+  await convex.mutation(api.conversations.createVersion, {
+    projectId: project._id,
+    summary: summary.slice(0, 240),
+    filesJson: JSON.stringify(files),
   });
 }
 
