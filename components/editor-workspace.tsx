@@ -70,6 +70,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const modelHydratedRef = useRef(false);
   const [isExporting, setIsExporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'conflict'>('idle');
+  const [conflictKind, setConflictKind] = useState<'version' | 'error' | null>(null);
   /**
    * The filesVersion the in-memory `files` snapshot was built from.
    *
@@ -81,6 +82,8 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
    * always match, which would make the check pass in exactly the case it exists to catch.
    */
   const filesVersionRef = useRef<number | null>(null);
+  const savingRef = useRef(false);
+  const pendingSaveRef = useRef<ProjectFile[] | null>(null);
   const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -338,36 +341,99 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return () => window.removeEventListener('beforeunload', warn);
   }, [saveStatus]);
 
-  const persistFiles = useCallback(async (nextFiles: ProjectFile[]) => {
+  const persistFiles = useCallback(async (
+    nextFiles: ProjectFile[],
+    opts?: { forceVersion?: number },
+  ) => {
     if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
+    // Single-flight: a second writer (autosave racing a transform apply, two quick
+    // edits) queues behind the in-flight save instead of racing it with the same
+    // expectedVersion — the loser would always trip the version guard.
+    if (savingRef.current) {
+      pendingSaveRef.current = nextFiles;
+      return;
+    }
+    savingRef.current = true;
     setSaveStatus('saving');
     try {
-      const result = await saveFilesAction({
-        projectId: projectData._id,
-        files: nextFiles,
-        expectedVersion: filesVersionRef.current ?? undefined,
-      });
-      filesVersionRef.current = result.filesVersion;
+      let current = nextFiles;
+      let override = opts?.forceVersion;
+      for (;;) {
+        const result = await saveFilesAction({
+          projectId: projectData._id,
+          files: current,
+          expectedVersion: override ?? filesVersionRef.current ?? undefined,
+        });
+        filesVersionRef.current = result.filesVersion;
+        override = undefined;
+        const queued = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        if (!queued) break;
+        current = queued;
+      }
+      setConflictKind(null);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
-      // A rejected save means someone else wrote to this project since we loaded it. Surfacing it
-      // is the point — the previous behaviour logged to console and reset to idle, so the user was
-      // told their work was saved when it was not.
+      pendingSaveRef.current = null;
+      const message = err instanceof Error ? err.message : '';
+      // A version mismatch means another writer (transform apply, migration,
+      // second tab) landed first. Park in conflict and let the user choose —
+      // retrying the same stale snapshot would fail forever and spam the console.
+      // (Previously the autosave kept retrying the stale write on every render.)
       console.error('Save failed', err);
+      setConflictKind(message.includes('changed since they were loaded') ? 'version' : 'error');
       setSaveStatus('conflict');
+    } finally {
+      savingRef.current = false;
     }
   }, [user, projectData?._id, projectData?.accessRole, saveFilesAction]);
 
   useEffect(() => {
     if (!user || !files.length || !projectData?._id) return;
+    // Never auto-retry while a save is in flight or parked in conflict — the
+    // parked snapshot is stale by definition and would fail forever.
+    if (saveStatus === 'saving' || saveStatus === 'conflict') return;
 
-    const timer = setTimeout(async () => {
-      persistFiles(files);
+    const timer = setTimeout(() => {
+      void persistFiles(files);
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [files, user, projectData?._id, persistFiles]);
+  }, [files, user, projectData?._id, saveStatus, persistFiles]);
+
+  const handleConflictReload = async () => {
+    const ok = await confirm({
+      title: 'Load latest version?',
+      description:
+        'Someone else saved changes to this project. Loading the latest discards your unsaved edits.',
+      confirmLabel: 'Load latest',
+    });
+    if (!ok || !projectFiles) return;
+    const serverFiles = (projectFiles as Array<{ path: string; content: string; language: string; fileType: string }>).map((f) => ({
+      path: f.path,
+      content: f.content,
+      language: f.language as ProjectFile['language'],
+      fileType: f.fileType as ProjectFile['fileType'],
+    }));
+    filesVersionRef.current = projectData?.filesVersion ?? filesVersionRef.current;
+    setConflictKind(null);
+    setSaveStatus('idle');
+    setFiles(serverFiles);
+  };
+
+  const handleConflictOverwrite = async () => {
+    const ok = await confirm({
+      title: 'Save your version anyway?',
+      description:
+        'This replaces the latest saved files with what you see in the editor. Changes saved by others will be lost.',
+      confirmLabel: 'Save anyway',
+    });
+    if (!ok) return;
+    await persistFiles(files, {
+      forceVersion: projectData?.filesVersion ?? filesVersionRef.current ?? undefined,
+    });
+  };
 
   const { isTransforming, transformProgress, runTransform, runPolish, cancelTransform } = useProjectTransform({
     projectName,
@@ -925,6 +991,23 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       />
 
       {projectData?.accessRole === 'viewer' ? <div className="border-b border-amber-400/20 bg-amber-400/5 px-4 py-2 text-center text-xs text-amber-200">Read-only access · Ask the project owner for editor access to make changes or deploy.</div> : null}
+
+      {saveStatus === 'conflict' && conflictKind === 'version' ? (
+        <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-center text-xs">
+          <span className="text-red-600 dark:text-red-400">Someone else saved this project — your edits are held locally, not lost.</span>
+          <span className="flex gap-3">
+            <button type="button" onClick={() => void handleConflictReload()} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Load latest</button>
+            <button type="button" onClick={() => void handleConflictOverwrite()} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Save mine anyway</button>
+          </span>
+        </div>
+      ) : null}
+
+      {saveStatus === 'conflict' && conflictKind === 'error' ? (
+        <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-center text-xs">
+          <span className="text-red-600 dark:text-red-400">Couldn&apos;t save your changes.</span>
+          <button type="button" onClick={() => void persistFiles(files)} className="font-medium text-red-600 underline underline-offset-2 hover:no-underline dark:text-red-400">Try again</button>
+        </div>
+      ) : null}
 
       <ComponentLibraryDialog
         open={isLibraryOpen}
