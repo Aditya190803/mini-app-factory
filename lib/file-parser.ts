@@ -10,7 +10,7 @@ import { ProjectFile } from './page-builder';
 export function parseMultiFileOutput(output: string): ProjectFile[] {
   const files: ProjectFile[] = [];
   // More flexible regex that handles missing filenames or different casing
-  const regex = /```(html|css|javascript|js|sql|json)(?::([^\n]+))?\n([\s\S]*?)```/gi;
+  const regex = /```(html|css|javascript|js|typescript|ts|sql|json|jsonc|markdown|md|text|txt)(?::([^\n]+))?\n([\s\S]*?)```/gi;
   let match;
 
   while ((match = regex.exec(output)) !== null) {
@@ -24,7 +24,9 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
       else if (lang === 'css') path = 'styles.css';
       else if (lang === 'javascript' || lang === 'js') path = 'script.js';
       else if (lang === 'sql') path = `migrations/${String(files.length + 1).padStart(4, '0')}_migration.sql`;
-      else if (lang === 'json') path = 'cloudflare.json';
+      else if (lang === 'json' || lang === 'jsonc') path = 'wrangler.jsonc';
+      else if (lang === 'typescript' || lang === 'ts') path = 'src/index.ts';
+      else if (lang === 'markdown' || lang === 'md') path = 'README.md';
       else path = `file-${files.length + 1}.${lang}`;
     }
 
@@ -33,10 +35,12 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
     if (lang === 'javascript' || lang === 'js') language = 'javascript';
     if (lang === 'sql') language = 'sql';
     if (lang === 'json') language = 'json';
+    if (lang === 'jsonc') language = 'json';
+    if (lang === 'typescript' || lang === 'ts') language = 'javascript';
 
     let fileType: ProjectFile['fileType'] = 'page';
-    if (path === 'cloudflare.json') fileType = 'config';
-    else if (path === '_worker.js') fileType = 'worker';
+    if (['cloudflare.json', 'wrangler.jsonc', 'wrangler.json', 'package.json', 'tsconfig.json', 'README.md', '.dev.vars.example', '.gitignore'].includes(path)) fileType = 'config';
+    else if (path === '_worker.js' || path.startsWith('src/') || path.startsWith('workers/')) fileType = 'worker';
     else if (path.startsWith('migrations/') && path.endsWith('.sql')) fileType = 'migration';
     else if (path.endsWith('.css')) fileType = 'style';
     else if (path.endsWith('.js')) fileType = 'script';

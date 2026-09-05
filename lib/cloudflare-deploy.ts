@@ -13,6 +13,22 @@ import { buildCloudflarePagesConfig, provisionCloudflareResources } from '@/lib/
 import { deployCloudflareWorkers } from '@/lib/cloudflare-workers';
 import { decryptSecret } from '@/lib/secret-box';
 import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
+import { blake3 } from '@noble/hashes/blake3';
+
+function migrationHash(content: string) {
+  return Buffer.from(blake3(new TextEncoder().encode(content))).toString('hex');
+}
+
+function assertSafeMigrations(files: CloudflareDeployFile[], applied: Record<string, string>) {
+  const destructive = /\b(?:DROP\s+(?:TABLE|INDEX)|TRUNCATE|DELETE\s+FROM\s+\w+\s*;|ALTER\s+TABLE\s+\w+\s+DROP)\b/i;
+  for (const file of files.filter((candidate) => candidate.path.endsWith('.sql'))) {
+    if (destructive.test(file.content)) throw new Error(`Destructive migration requires manual review: ${file.path}`);
+    const previousHash = applied[file.path];
+    if (previousHash && previousHash !== migrationHash(file.content)) {
+      throw new Error(`Applied migration was modified: ${file.path}. Add a new migration instead.`);
+    }
+  }
+}
 
 export function readCloudflareEnvVars(encrypted?: string): Record<string, string> {
   const plaintext = decryptSecret(encrypted);
@@ -35,18 +51,40 @@ export async function deployProjectToCloudflare(params: {
   project: ProjectMetadata;
   files: CloudflareDeployFile[];
   allowResourceCreation?: boolean;
+  target?: 'production' | 'preview';
   onProgress?: (message: string) => void;
 }) {
+  const target = params.target ?? 'production';
   const projectName = normalizeCloudflareProjectName(
-    params.project.cloudflareProjectName || params.requestedProjectName || params.project.name
+    params.requestedProjectName || (target === 'preview' ? params.project.cloudflarePreviewProjectName : params.project.cloudflareProjectName) || params.project.name
   );
   if (!projectName) throw new Error('Cloudflare project name is invalid');
 
   params.onProgress?.('Cloudflare: Preparing Pages project');
   await ensureCloudflarePagesProject({ token: params.token, accountId: params.accountId, projectName });
 
-  const manifest = parseCloudflareManifest(params.files, projectName);
-  let state = parseCloudflareResourceState(params.project.cloudflareResourcesJson);
+  const parsedManifest = parseCloudflareManifest(params.files, projectName);
+  const manifest = parsedManifest && target === 'preview' ? {
+    ...parsedManifest,
+    bindings: {
+      ...parsedManifest.bindings,
+      d1: parsedManifest.bindings.d1.map((item) => ({ ...item, name: `${item.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
+      kv: parsedManifest.bindings.kv.map((item) => ({ ...item, name: `${item.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
+      r2: parsedManifest.bindings.r2.map((item) => ({ ...item, name: `${item.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
+      queues: parsedManifest.bindings.queues.map((item) => ({ ...item, name: `${item.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
+    },
+    workers: parsedManifest.workers.map((worker) => ({ ...worker, name: `${worker.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
+  } : parsedManifest;
+  let state = parseCloudflareResourceState(target === 'preview' ? params.project.cloudflarePreviewResourcesJson : params.project.cloudflareResourcesJson);
+  assertSafeMigrations(params.files, state.migrationHashes ?? {});
+
+  const persistState = async (nextState: typeof state) => updateCloudflareProjectConfig(target === 'preview' ? {
+    projectName: params.project.name,
+    cloudflarePreviewResourcesJson: JSON.stringify(nextState),
+  } : {
+    projectName: params.project.name,
+    cloudflareResourcesJson: JSON.stringify(nextState),
+  });
 
   if (manifest) {
     state = await provisionCloudflareResources({
@@ -56,14 +94,11 @@ export async function deployProjectToCloudflare(params: {
       state,
       allowCreate: params.allowResourceCreation === true,
       onProgress: params.onProgress,
-      onStateChange: async (nextState) => updateCloudflareProjectConfig({
-        projectName: params.project.name,
-        cloudflareResourcesJson: JSON.stringify(nextState),
-      }),
+      onStateChange: persistState,
     });
   }
 
-  const envVars = readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
+  const envVars = target === 'preview' ? {} : readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
   if (manifest?.workers.length) {
     state = await deployCloudflareWorkers({
       token: params.token,
@@ -74,15 +109,16 @@ export async function deployProjectToCloudflare(params: {
       secrets: envVars,
       allowCreate: params.allowResourceCreation === true,
       onProgress: params.onProgress,
-      onStateChange: async (nextState) => updateCloudflareProjectConfig({
-        projectName: params.project.name,
-        cloudflareResourcesJson: JSON.stringify(nextState),
-      }),
+      onStateChange: persistState,
     });
   }
 
   const legacyD1 = state.d1?.DB;
-  await updateCloudflareProjectConfig({
+  await updateCloudflareProjectConfig(target === 'preview' ? {
+    projectName: params.project.name,
+    cloudflarePreviewProjectName: projectName,
+    cloudflarePreviewResourcesJson: JSON.stringify(state),
+  } : {
     projectName: params.project.name,
     cloudflareProjectName: projectName,
     cloudflareResourcesJson: JSON.stringify(state),
@@ -116,6 +152,11 @@ export async function deployProjectToCloudflare(params: {
           migrationDir: database.migrations,
           onProgress: params.onProgress,
         });
+        state.migrationHashes = {
+          ...state.migrationHashes,
+          ...Object.fromEntries(migrations.map((migration) => [migration.path, migrationHash(migration.content)])),
+        };
+        await persistState(state);
       }
     }
   }
@@ -129,7 +170,13 @@ export async function deployProjectToCloudflare(params: {
   });
   const deploymentUrl = `https://${projectName}.pages.dev`;
 
-  await updateCloudflareProjectConfig({
+  await updateCloudflareProjectConfig(target === 'preview' ? {
+    projectName: params.project.name,
+    cloudflarePreviewProjectName: projectName,
+    cloudflarePreviewDeploymentId: deployment.id,
+    cloudflarePreviewUrl: deploymentUrl,
+    cloudflarePreviewExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
+  } : {
     projectName: params.project.name,
     cloudflareProjectName: projectName,
     cloudflareDeploymentId: deployment.id,

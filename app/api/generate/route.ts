@@ -5,7 +5,7 @@ import { getProject, saveProject, saveFiles } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { getAIClient, SessionEvent } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
-import { ProjectFile, validateFileStructure } from '@/lib/page-builder';
+import { ProjectFile } from '@/lib/page-builder';
 import { getServerEnv } from '@/lib/env';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
@@ -13,6 +13,8 @@ import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
+import { validateGeneratedProject } from '@/lib/generated-project-validation';
+import { appendProjectMessage, appendProjectRunEvent, createProjectRun, createProjectVersion, finishProjectRun, isProjectRunCancelled } from '@/lib/project-runs';
 
 const MODEL = process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
 
@@ -78,7 +80,9 @@ export async function runGeneration(
   signal: AbortSignal,
   onEvent?: (event: SessionEvent) => void,
   requestId?: string,
-  runtimeConfig?: AIRuntimeConfig
+  runtimeConfig?: AIRuntimeConfig,
+  onProgress?: (event: { status: string; message: string; path?: string }) => void,
+  shouldCancel?: () => Promise<boolean>
 ): Promise<{ html: string; files: ProjectFile[] } | { error: string }> {
   const project = await getProject(projectName);
   if (!project) return { error: 'Project not found during generation' };
@@ -90,13 +94,14 @@ export async function runGeneration(
     project.providerId = 'opencode';
     await saveProject(project).catch(() => { });
 
-    if (signal.aborted) return { error: 'Aborted' };
+    if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
 
     const client = await getAIClient(runtimeConfig);
     const selectedOpenCodeModel = MODEL;
 
-    if (signal.aborted) return { error: 'Aborted' };
+    if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
 
+    onProgress?.({ status: 'planning', message: 'Planning pages, API routes, data, and Cloudflare resources' });
     // Design phase
     const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
 
@@ -140,15 +145,16 @@ export async function runGeneration(
       await designSession.destroy().catch(() => { });
     }
 
-    if (signal.aborted) return { error: 'Aborted' };
+    if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
 
+    onProgress?.({ status: 'generating', message: 'Generating the project files' });
     // HTML generation phase
     const developerSystemMsg = `You are an expert developer. Generate a complete multi-file website project. 
 Return files using code blocks with the format:
 \`\`\`html:filename.html
 Code here...
 \`\`\`
-Use \`javascript:_worker.js\` for a Cloudflare backend, \`json:cloudflare.json\` for resource bindings, and \`sql:migrations/0001_init.sql\` for D1 migrations.
+Use \`javascript:_worker.js\` for a Cloudflare backend, \`jsonc:wrangler.jsonc\` for Cloudflare configuration, and \`sql:migrations/0001_init.sql\` for D1 migrations.
 
 Mandatory requirements:
 1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
@@ -172,13 +178,24 @@ Mandatory requirements:
    - **Internal Anchors**: If you link to an anchor (e.g. \`#features\`), the target element with \`id=\"features\"\` must actually exist in the same HTML file.
    - **Footer Policy**: Legal pages (Privacy Policy, Terms of Service) are often generated as empty links. You are FORBIDDEN from adding these unless you also generate the corresponding \`privacy.html\` or \`terms.html\` files. Omit footer links if they would point nowhere.
 
-7. **Optional Cloudflare Backend**:
+7. **Optional Cloudflare Backend (generate it whenever the product needs APIs, persistence, uploads, jobs, schedules, or realtime behavior)**:
    - Only when the request needs server-side endpoints, generate one import-free \`_worker.js\` using module Worker syntax: \`export default { async fetch(request, env) { ... } }\`.
    - Route API requests inside that fetch handler and fall through to static assets with \`return env.ASSETS.fetch(request)\`.
-   - Do not generate a \`functions/\` directory; this deployment path uses Pages advanced mode.
-   - Only when relational persistence is needed, access D1 as \`env.DB\` and generate ordered, idempotent SQL files under \`migrations/\`.
-   - When using Cloudflare resources, generate \`cloudflare.json\` version 1 with binding arrays for only the products needed: \`d1\`, \`kv\`, \`r2\`, \`queues\`, \`vectorize\`, \`analyticsEngine\`, \`services\`, \`durableObjects\`, \`ai\`, or \`browser\`.
-   - For cron jobs, Queue consumers, or Durable Objects/WebSockets, generate an import-free module under \`workers/*.js\` and declare it in top-level \`workers\` with \`name\`, \`source\`, resource \`bindings\`, optional \`serviceBinding\`, \`crons\`, \`queueConsumers\`, and \`durableObjects\`. Export \`scheduled\`/\`queue\` handlers from its default object and Durable Object classes as named exports.
+   - Do not generate a \`functions/\` directory.
+   - Generate \`wrangler.jsonc\` as the source of truth. Set \`main\` to \`_worker.js\`, pin \`compatibility_date\`, enable observability, and declare only resources the product actually needs.
+   - Never invent Cloudflare resource IDs. Omit optional IDs from portable source; Mini App Factory resolves them during deployment.
+   - When relational persistence is needed, use D1 through \`env.DB\`, parameterized prepared statements, explicit JSON errors, and ordered SQL under \`migrations/\`.
+   - D1 migrations must be additive and safe. Do not emit DROP TABLE, destructive data rewrites, or modifications to an earlier migration.
+   - Generate a \`package.json\` with pinned Wrangler and TypeScript dev dependencies, scripts for dev/deploy/typecheck and local/remote D1 migrations, a \`.dev.vars.example\`, and a README with local setup.
+   - Frontend calls must match real \`/api/*\` routes in \`_worker.js\`. Include \`GET /api/health\` and validate request bodies with body-size limits.
+   - Use R2 for blobs, KV for read-heavy key/value data, Queues for reliable background work, and Durable Objects for coordinated realtime state only when required.
+   - R2 uploads must enforce size and MIME limits. Prefer short-lived presigned PUT URLs and never expose R2 credentials.
+   - Queue delivery is at-least-once. Every duplicate-sensitive consumer must persist and check an idempotency key, configure bounded retries, and declare a dead-letter queue.
+   - Durable Object WebSockets must use the hibernation API, validate room access, and bound retained messages.
+   - Cron and Queue handlers must be idempotent and must not expose public HTTP administration endpoints.
+   - For a Queue consumer, cron handler, or Durable Object, generate a separate standard Worker under \`workers/<service>/index.js\` with \`workers/<service>/wrangler.jsonc\`. Declare its queue consumers, cron triggers, Durable Object bindings, migrations, and observability in that companion Wrangler file. Keep the root \`wrangler.jsonc\` for the frontend/API Worker.
+   - If user accounts are required, generate an OIDC/OAuth extension point with secure, HTTP-only, SameSite cookies, CSRF protection for cookie-authenticated writes, and server-side authorization. Never generate custom password hashing or browser-stored long-lived bearer tokens.
+   - Apply security headers, explicit method checks, consistent JSON error shapes, output escaping, and restrictive CORS by default.
    - Never put credentials in generated files; read configured secrets from \`env\`.
 
 You can also create sub-pages (e.g. about.html, gallery.html).
@@ -214,6 +231,9 @@ Return ONLY code blocks. No explanations.`;
         
         const content = htmlResp?.data?.content || '';
         files = parseMultiFileOutput(content);
+        for (const file of files) {
+          onProgress?.({ status: 'file', message: `Created ${file.path}`, path: file.path });
+        }
         
         if (files.length === 0) {
           // Fallback if no code fences found
@@ -230,11 +250,33 @@ Return ONLY code blocks. No explanations.`;
       await htmlSession.destroy().catch(() => { });
     }
 
-    const structure = validateFileStructure(files);
-    if (!structure.valid) {
-      return { error: `Invalid file structure: ${structure.errors.join(', ')}` };
+    onProgress?.({ status: 'validating', message: 'Validating project structure, Worker routes, migrations, and Wrangler configuration' });
+    if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
+    let validation = validateGeneratedProject(files, projectName);
+    if (!validation.valid) {
+      onProgress?.({ status: 'repairing', message: `Repairing ${validation.errors.length} validation issue${validation.errors.length === 1 ? '' : 's'}` });
+      const repairSession = await client.createSession({
+        model: selectedOpenCodeModel,
+        providerId: 'opencode',
+        systemMessage: { content: developerSystemMsg },
+      });
+      try {
+        const currentFiles = files.map((file) => `\n\`\`\`${file.language}:${file.path}\n${file.content}\n\`\`\``).join('');
+        const repair = await repairSession.sendAndWait({
+          prompt: `The generated project failed validation:\n- ${validation.errors.join('\n- ')}\n\nReturn the complete corrected project as code blocks. Preserve the requested product and fix every listed issue.\n${currentFiles}`,
+          maxOutputTokens: 8000,
+        }, 120_000);
+        const repairedFiles = parseMultiFileOutput(repair?.data?.content || '');
+        if (repairedFiles.length > 0) files = repairedFiles;
+      } finally {
+        await repairSession.destroy().catch(() => {});
+      }
+      validation = validateGeneratedProject(files, projectName);
     }
+    if (!validation.valid) return { error: `Generated project validation failed: ${validation.errors.join('; ')}` };
+    onProgress?.({ status: 'validation', message: `All generated-project checks passed${validation.warnings.length ? ` with ${validation.warnings.length} warning(s)` : ''}` });
 
+    onProgress?.({ status: 'saving', message: 'Saving the project and creating its first version' });
     // Always save the result to the database (even if client disconnected)
     const finalProject = await getProject(projectName);
     if (finalProject) {
@@ -335,6 +377,8 @@ export async function POST(request: Request) {
       storedDescription: project.description,
     });
     const finalPrompt = enriched.prompt;
+    const { runId, projectId } = await createProjectRun(projectName, 'initial', basePrompt);
+    await appendProjectMessage(projectName, 'user', basePrompt);
 
     // Use AbortController to signal cancellation to the generation workflow
     const abortController = new AbortController();
@@ -345,8 +389,7 @@ export async function POST(request: Request) {
       byokConfig: persistedSettings.byokConfig,
     };
 
-    // Also listen to the request's abort signal (client disconnect)
-    request.signal.addEventListener('abort', () => abortController.abort());
+    // A disconnected browser must not destroy a build. The durable run record lets the UI recover.
 
     let sse: ReturnType<typeof createSSEWriter>;
 
@@ -359,36 +402,26 @@ export async function POST(request: Request) {
         heartbeat = setInterval(() => {
           if (sse.isClosed()) {
             if (heartbeat) clearInterval(heartbeat);
-            abortController.abort();
             return;
           }
           if (!sse.write({ status: 'ping' })) {
             if (heartbeat) clearInterval(heartbeat);
-            abortController.abort();
           }
         }, 8000);
 
         // Send initial status
-        if (!sse.write({ status: 'initializing', message: 'Setting up production environment...' })) {
+        const persistEvent = (type: string, message: string, path?: string) => {
+          void appendProjectRunEvent({ projectId, runId, type, message, path }).catch((error) => {
+            console.error(`[Generation ${requestId}] failed to persist event:`, error);
+          });
+        };
+        persistEvent('started', 'Build started');
+        if (!sse.write({ status: 'started', message: 'Build started', requestId, runId })) {
           if (heartbeat) clearInterval(heartbeat);
-          abortController.abort();
-          return;
         }
 
         // Run the generation
         (async () => {
-          await new Promise(r => setTimeout(r, 600));
-          if (sse.isClosed()) return;
-
-          if (!sse.write({ status: 'analyzing', message: 'Analyzing visual requirements...' })) {
-            return;
-          }
-          await new Promise(r => setTimeout(r, 400));
-
-          if (!sse.write({ status: 'designing', message: 'Architecting design system...' })) {
-            return;
-          }
-
           const result = await runGeneration(
             projectName,
             finalPrompt,
@@ -407,29 +440,34 @@ export async function POST(request: Request) {
               }
             },
             requestId,
-            runtimeConfig
+            runtimeConfig,
+            (event) => {
+              persistEvent(event.status, event.message, event.path);
+              sse.write({ ...event, runId });
+            },
+            () => isProjectRunCancelled(projectId, runId)
           );
-
-          // Check stream state before any writes
-          if (sse.isClosed()) return;
 
           if ('error' in result && result.error !== 'Aborted') {
             const errorInfo = classifyGenerationError(result.error);
+            persistEvent('error', errorInfo.message);
+            await finishProjectRun({ projectId, runId, status: 'failed', errorCode: errorInfo.code, errorMessage: errorInfo.message });
+            await appendProjectMessage(projectName, 'system', `Build failed: ${errorInfo.message}`, 'failed');
             sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
           } else if ('html' in result) {
-            // Double-check stream state before each write
-            if (!sse.write({ status: 'fabricating', message: 'Fabricating production code...' })) return;
-            await new Promise(r => setTimeout(r, 300));
-            if (!sse.write({ status: 'finalizing', message: 'Polishing and optimizing...' })) return;
-            await new Promise(r => setTimeout(r, 300));
+            persistEvent('completed', `Created ${result.files.length} project files`);
+            await finishProjectRun({ projectId, runId, status: 'completed' });
+            const messageId = await appendProjectMessage(projectName, 'assistant', `Built the initial project with ${result.files.length} files.`, 'completed', JSON.stringify({ files: result.files.map((file) => file.path) }));
+            await createProjectVersion(projectName, 'Initial build', JSON.stringify(result.files), messageId);
             if (!sse.isClosed()) {
-              sse.write({ status: 'completed', html: result.html, files: result.files, requestId });
+              sse.write({ status: 'completed', html: result.html, files: result.files, requestId, runId });
             }
           }
         })()
           .catch((err) => {
             const errorInfo = classifyGenerationError(err instanceof Error ? err.message : err);
             console.error(`[Generation ${requestId}] workflow error:`, err);
+            void finishProjectRun({ projectId, runId, status: 'failed', errorCode: errorInfo.code, errorMessage: errorInfo.message });
             if (!sse.isClosed()) {
               sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
             }
@@ -440,7 +478,6 @@ export async function POST(request: Request) {
           });
       },
       cancel() {
-        abortController.abort();
         if (sse) sse.markClosed();
       }
     });

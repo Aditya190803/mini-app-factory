@@ -1,302 +1,231 @@
 'use client';
 
-import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Circle, Code2, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
 import EditorWorkspace from '@/components/editor-workspace';
-import { ProjectMetadata } from '@/lib/projects';
-import { ProjectFile } from '@/lib/page-builder';
-import { toast } from 'sonner';
+import type { ProjectMetadata } from '@/lib/projects';
+import type { ProjectFile } from '@/lib/page-builder';
 import { readStream } from '@/lib/stream-utils';
 import { withAIAdminHeaders } from '@/lib/ai-admin-client';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 
 interface ProjectViewProps {
   projectName: string;
   initialProject: ProjectMetadata;
 }
 
-type Step = {
+type Activity = {
   id: string;
-  label: string;
-  status: 'pending' | 'loading' | 'completed' | 'error';
+  status: string;
+  message: string;
+  path?: string;
+  state: 'running' | 'complete' | 'error';
 };
 
-export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
-  const [project, setProject] = useState<ProjectMetadata>(initialProject);
-  const [steps, setSteps] = useState<Step[]>([
-    { id: 'initializing', label: 'Setting up project engine', status: 'pending' },
-    { id: 'analyzing', label: 'Analyzing requirements', status: 'pending' },
-    { id: 'designing', label: 'Architecting design system', status: 'pending' },
-    { id: 'fabricating', label: 'Fabricating production code', status: 'pending' },
-    { id: 'finalizing', label: 'Polishing and optimizing', status: 'pending' },
-  ]);
-  const [_currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
-  const [fallbackInfo, setFallbackInfo] = useState<string | null>(null);
-  const [providerInfo, setProviderInfo] = useState<{ label: string; model?: string; providerId?: string } | null>(null);
-  const hasStarted = useRef(false);
+function ActivityIcon({ activity }: { activity: Activity }) {
+  if (activity.state === 'error') return <TriangleAlert className="size-4 text-red-400" />;
+  if (activity.state === 'complete') return <Check className="size-4 text-emerald-400" />;
+  if (activity.status === 'file') return <FileCode2 className="size-4 text-[var(--primary)]" />;
+  if (activity.message.toLowerCase().includes('database')) return <Database className="size-4 text-[var(--primary)]" />;
+  if (activity.message.toLowerCase().includes('api')) return <Server className="size-4 text-[var(--primary)]" />;
+  return <Circle className="size-3 animate-pulse fill-[var(--primary)] text-[var(--primary)]" />;
+}
 
-  // Poll for project status as a fallback when stream fails
-  const pollForCompletion = useCallback(async (): Promise<boolean> => {
-    for (let i = 0; i < 60; i++) { // Poll for up to 5 minutes
-      await new Promise(r => setTimeout(r, 5000));
-      try {
-        const res = await fetch(`/api/project/${projectName}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'completed') {
-            setProject(prev => ({ ...prev, status: 'completed', html: data.html, files: data.files }));
-            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-            return true;
-          } else if (data.status === 'error') {
-            const code = typeof data.code === 'string' ? data.code : undefined;
-            setError({ message: data.error || 'Generation failed', code });
-            return true;
-          }
-        }
-      } catch {
-        // Continue polling
+export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
+  const [project, setProject] = useState(initialProject);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const hasStarted = useRef(false);
+  const completed = useRef(initialProject.status === 'completed');
+  const projectRecord = useQuery(api.projects.getProject, { projectName });
+  const activeRun = useQuery(api.conversations.getActiveRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
+  const persistedEvents = useQuery(
+    api.conversations.listRunEvents,
+    projectRecord?._id && activeRun?._id ? { projectId: projectRecord._id, runId: activeRun._id } : 'skip'
+  );
+
+  const addActivity = useCallback((status: string, message: string, path?: string) => {
+    setActivities((current) => {
+      const finished = current.map((item) => item.state === 'running' ? { ...item, state: 'complete' as const } : item);
+      const next: Activity = {
+        id: `${Date.now()}-${finished.length}`,
+        status,
+        message,
+        path,
+        state: status === 'error' ? 'error' : 'running',
+      };
+      return [...finished, next].slice(-40);
+    });
+  }, []);
+
+  const pollForCompletion = useCallback(async () => {
+    for (let attempt = 0; attempt < 60 && !completed.current; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const response = await fetch(`/api/project/${projectName}`).catch(() => null);
+      if (!response?.ok) continue;
+      const data = await response.json();
+      if (data.status === 'completed') {
+        completed.current = true;
+        setActivities((current) => current.map((item) => ({ ...item, state: 'complete' })));
+        setProject((current) => ({ ...current, status: 'completed', html: data.html, files: data.files }));
+        return;
+      }
+      if (data.status === 'error') {
+        setError({ message: data.error || 'Generation failed', code: data.code });
+        return;
       }
     }
-    return false;
   }, [projectName]);
 
   const startGeneration = useCallback(async () => {
     hasStarted.current = true;
+    completed.current = false;
     setError(null);
-    setFallbackInfo(null);
-
-    let streamFailed = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
+    setActivities([]);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 300_000);
     try {
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
-
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ projectName, prompt: project.prompt }),
         signal: controller.signal,
       });
-
-      await readStream(
-        response,
-        () => { }, // No raw chunk handling
-        (data) => {
-          if (data.status === 'ping') return;
-
-          if (data.status === 'error') {
-            const code = typeof data.code === 'string' ? data.code : undefined;
-            setError({ message: data.error || 'Generation failed', code });
-            setSteps(prev => prev.map((s, idx) => {
-              if (idx < _currentStepIndex) return { ...s, status: 'completed' };
-              if (idx === _currentStepIndex) return { ...s, status: 'error' };
-              return { ...s, status: 'pending' };
-            }));
-            return;
-          }
-
-          if (data.status === 'fallback') {
-            setFallbackInfo(data.message || 'Main provider failed, a fallback model is being used.');
-            toast.warning('Provider issue detected', {
-              description: data.message || 'Main model failed, switching to fallback...',
-              duration: 5000,
-            });
-            return;
-          }
-
-          if (data.status === 'provider') {
-            setProviderInfo({
-              label: typeof data.label === 'string' ? data.label : (typeof data.message === 'string' ? data.message : 'Unknown provider'),
-              model: typeof data.model === 'string' ? data.model : undefined,
-              providerId: typeof data.providerId === 'string' ? data.providerId : undefined,
-            });
-            return;
-          }
-
-          if (data.status === 'completed') {
-            const completedData = data as { html: string; files?: ProjectFile[] };
-            setProject(prev => ({ 
-              ...prev, 
-              status: 'completed', 
-              html: completedData.html,
-              files: completedData.files || prev.files
-            }));
-            setSteps(prev => prev.map(s => ({ ...s, status: 'completed' })));
-            return;
-          }
-
-          setSteps(prev => prev.map((step, idx) => {
-            if (step.id === data.status) {
-              setCurrentStepIndex(idx);
-              return { ...step, status: 'loading' };
-            }
-            if (idx < prev.findIndex(s => s.id === data.status)) {
-              return { ...step, status: 'completed' };
-            }
-            return step;
-          }));
+      await readStream(response, () => {}, (data) => {
+        if (data.status === 'ping') return;
+        if (data.status === 'provider') {
+          setProvider(typeof data.label === 'string' ? data.label : String(data.model || 'AI provider'));
+          return;
         }
-      );
-    } catch (e) {
-      const isAbort = typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError';
-      const msg = e instanceof Error ? e.message : String(e);
-
-      console.warn('Generation stream failed:', msg);
-      setError({
-        message: isAbort ? 'Generation timed out (5m limit).' : `Stream interrupted: ${msg}`,
-        code: isAbort ? 'AI_TIMEOUT' : 'STREAM_ERROR'
+        if (data.status === 'fallback') {
+          addActivity('provider', data.message || 'Switched to a fallback model');
+          return;
+        }
+        if (data.status === 'error') {
+          setError({ message: String(data.error || 'Generation failed'), code: typeof data.code === 'string' ? data.code : undefined });
+          addActivity('error', data.error || 'Generation failed');
+          return;
+        }
+        if (data.status === 'completed') {
+          completed.current = true;
+          setActivities((current) => current.map((item) => ({ ...item, state: 'complete' })));
+          const result = data as { html: string; files?: ProjectFile[] };
+          setProject((current) => ({ ...current, status: 'completed', html: result.html, files: result.files || current.files }));
+          return;
+        }
+        addActivity(String(data.status), String(data.message || data.status), typeof data.path === 'string' ? data.path : undefined);
       });
-      streamFailed = true;
+    } catch (cause) {
+      const aborted = cause instanceof DOMException && cause.name === 'AbortError';
+      setError({ message: aborted ? 'Generation timed out.' : 'The live connection was interrupted. Checking the saved build…', code: aborted ? 'AI_TIMEOUT' : 'STREAM_ERROR' });
     } finally {
-      if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(timeout);
     }
+    if (!completed.current) await pollForCompletion();
+  }, [addActivity, pollForCompletion, project.prompt, projectName]);
 
-    // If stream failed or ended without completion, poll the API
-    if (streamFailed || project.status !== 'completed') {
-      // Small delay before starting polling
-      await new Promise(r => setTimeout(r, 2000));
-      const completed = await pollForCompletion();
-      if (!completed && !error) {
-        setError({ message: 'Generation timed out. Please try again.', code: 'AI_TIMEOUT' });
-      }
-    }
-  }, [
-    _currentStepIndex,
-    error,
-    pollForCompletion,
-    project.status,
-    projectName,
-    project.prompt
-  ]);
+  const cancelGeneration = useCallback(async () => {
+    if (!activeRun?._id) return;
+    const response = await fetch('/api/runs/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName, runId: activeRun._id }),
+    });
+    if (!response.ok) return;
+    completed.current = true;
+    setActivities((current) => [...current.map((item) => ({ ...item, state: 'complete' as const })), {
+      id: `cancelled-${Date.now()}`,
+      status: 'cancelled',
+      message: 'Build cancelled',
+      state: 'error',
+    }]);
+    setError({ message: 'Build cancelled. You can retry when ready.', code: 'ABORTED' });
+  }, [activeRun?._id, projectName]);
 
   useEffect(() => {
-    if (project.status === 'completed' || hasStarted.current) return;
+    if (project.status === 'completed' || hasStarted.current || activeRun === undefined) return;
+    if (activeRun) {
+      hasStarted.current = true;
+      setActivities((persistedEvents || []).map((event, index, all) => ({
+        id: event._id,
+        status: event.type,
+        message: event.message,
+        path: event.path,
+        state: index === all.length - 1 ? 'running' : 'complete',
+      })));
+      void pollForCompletion();
+      return;
+    }
+    void startGeneration();
+  }, [activeRun, persistedEvents, pollForCompletion, project.status, startGeneration]);
 
-    startGeneration();
-  }, [project.status, startGeneration]);
+  useEffect(() => {
+    if (!hasStarted.current || !persistedEvents?.length || completed.current) return;
+    setActivities(persistedEvents.map((event, index) => ({
+      id: event._id,
+      status: event.type,
+      message: event.message,
+      path: event.path,
+      state: index === persistedEvents.length - 1 ? 'running' : 'complete',
+    })));
+  }, [persistedEvents]);
 
   if (project.status === 'completed') {
-    return (
-      <EditorWorkspace
-        initialHTML={project.html || ''}
-        initialPrompt={project.prompt}
-        projectName={projectName}
-        onBack={() => window.location.href = '/'}
-      />
-    );
+    return <EditorWorkspace initialHTML={project.html || ''} initialPrompt={project.prompt} projectName={projectName} onBack={() => { window.location.href = '/'; }} />;
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 bg-grid">
-      <div className="w-full max-w-2xl">
-        <div className="mb-12 text-center space-y-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-3 py-1 border border-primary/20 bg-primary/5 text-primary text-xs font-mono mb-2"
-          >
-            PROJECT: {projectName.toUpperCase()}
-          </motion.div>
-          <h1 className="text-4xl md:text-5xl font-display font-black tracking-tighter">
-            FABRICATING YOUR VISION
-          </h1>
-          <p className="text-secondary-text font-mono text-sm max-w-md mx-auto">
-            Our autonomous agents are building your application step by step.
-          </p>
+    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <div className="mx-auto grid min-h-screen max-w-6xl lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
+        <section className="flex flex-col justify-between border-b border-[var(--border)] p-8 lg:border-b-0 lg:border-r lg:p-12">
+          <div>
+            <div className="mb-10 flex items-center gap-3 text-xs font-mono text-[var(--muted-text)]">
+              <Code2 className="size-4 text-[var(--primary)]" />
+              <span>{projectName}</span>
+              {provider ? <span className="rounded-full border border-[var(--border)] px-2 py-1">{provider}</span> : null}
+            </div>
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-[var(--primary)]">Building your app</p>
+            <h1 className="max-w-xl text-3xl font-semibold tracking-tight md:text-4xl">Your request is becoming a working project.</h1>
+            <p className="mt-5 max-w-xl text-sm leading-6 text-[var(--secondary-text)]">{project.prompt}</p>
+          </div>
+          <p className="mt-12 max-w-md text-xs leading-5 text-[var(--muted-text)]">You are seeing actual generation events. File creation, validation, persistence, and provider changes appear as they happen.</p>
+        </section>
 
-          {providerInfo && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="inline-flex items-center gap-2 px-3 py-1 border border-secondary-text/25 bg-secondary-text/10 text-secondary-text text-[11px] font-mono rounded-sm"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-secondary-text/80" />
-              <span>Model in use:</span>
-              <span className="text-foreground">{providerInfo.label}</span>
-            </motion.div>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          {steps.map((step, index) => (
-            <motion.div
-              key={step.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className={`p-6 border flex items-center justify-between transition-colors ${step.status === 'loading' ? 'border-primary bg-primary/5 shadow-neon' :
-                step.status === 'completed' ? 'border-secondary-text/20 bg-transparent opacity-50' :
-                  'border-border bg-transparent opacity-30'
-                }`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="font-mono text-xs opacity-40">0{index + 1}</div>
-                <div>
-                  <div className={`font-mono text-sm uppercase tracking-widest ${step.status === 'loading' ? 'text-primary' : ''}`}>
-                    {step.label}
-                  </div>
-                  {step.status === 'loading' && (
-                    <motion.div
-                      className="text-xs text-secondary-text/60 mt-1"
-                      animate={{ opacity: [0.4, 1, 0.4] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                    >
-                      Working...
-                    </motion.div>
-                  )}
+        <section className="flex min-h-[520px] flex-col p-6 lg:p-10" aria-live="polite">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Build activity</h2>
+              <p className="mt-1 text-xs text-[var(--muted-text)]">Live, observable work</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-2 text-xs text-[var(--primary)]"><Circle className="size-2 fill-current" /> Running</span>
+              {activeRun ? <button type="button" onClick={() => void cancelGeneration()} className="text-xs text-[var(--muted-text)] hover:text-red-300">Stop</button> : null}
+            </div>
+          </div>
+          <div className="flex-1 space-y-1 overflow-y-auto border-y border-[var(--border)] py-3">
+            {activities.length === 0 ? (
+              <div className="flex items-center gap-3 px-2 py-4 text-sm text-[var(--muted-text)]"><Circle className="size-3 animate-pulse fill-current" /> Connecting to the build…</div>
+            ) : activities.map((activity) => (
+              <div key={activity.id} className="flex gap-3 rounded-md px-2 py-3 hover:bg-white/[0.025]">
+                <div className="mt-0.5"><ActivityIcon activity={activity} /></div>
+                <div className="min-w-0">
+                  <p className="text-sm text-[var(--secondary-text)]">{activity.message}</p>
+                  {activity.path ? <p className="mt-1 truncate font-mono text-[11px] text-[var(--muted-text)]">{activity.path}</p> : null}
                 </div>
               </div>
-
-              <div className="flex items-center">
-                {step.status === 'loading' ? (
-                  <div className="w-5 h-5 border-2 border-primary border-t-transparent animate-spin rounded-full" />
-                ) : step.status === 'completed' ? (
-                  <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <div className="w-2 h-2 rounded-full bg-border" />
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        {fallbackInfo && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-6 p-4 border border-amber-500/40 bg-amber-500/10 text-amber-500 text-xs font-mono text-center"
-          >
-            <div className="font-mono font-bold mb-2">PROVIDER FALLBACK</div>
-            <div className="whitespace-pre-wrap">{fallbackInfo}</div>
-            <div className="mt-2 text-amber-200/80">
-              If the result looks off, you can retry generation to attempt the primary provider again.
+            ))}
+          </div>
+          {error ? (
+            <div className="mt-5 rounded-md border border-red-400/30 bg-red-400/5 p-4">
+              <p className="text-sm text-red-300">{error.message}</p>
+              {error.code ? <p className="mt-1 font-mono text-[10px] text-red-300/60">{error.code}</p> : null}
+              <button type="button" onClick={() => void startGeneration()} className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-[var(--foreground)] hover:text-[var(--primary)]"><RotateCcw className="size-3" /> Retry build</button>
             </div>
-          </motion.div>
-        )}
-
-        {error && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-8 p-4 border border-red-500/50 bg-red-500/10 text-red-500 text-sm font-mono text-center"
-          >
-            <div className="font-mono font-bold mb-2">ERROR</div>
-            <div className="whitespace-pre-wrap">{error.message}</div>
-            {error.code && (
-              <div className="mt-2 text-[10px] text-red-300/70">Code: {error.code}</div>
-            )}
-            <button
-              onClick={() => { hasStarted.current = false; startGeneration(); }}
-              className="block mx-auto mt-3 underline"
-            >
-              Retry
-            </button>
-          </motion.div>
-        )}
+          ) : null}
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

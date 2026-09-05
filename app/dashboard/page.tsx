@@ -12,7 +12,8 @@ import {
   Layers, 
   Globe,
   ArrowRight,
-  Rocket
+  Rocket,
+  Copy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,8 +32,12 @@ export default function DashboardPage() {
   const deleteProject = useMutation(api.projects.deleteProject);
   const saveProject = useMutation(api.projects.saveProject);
   const addDeploymentHistory = useMutation(api.deployments.addDeploymentHistory);
+  const remixPublishedProject = useMutation(api.projects.remixPublishedProject);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isRedeployDialogOpen, setIsRedeployDialogOpen] = useState(false);
+  const [remixSource, setRemixSource] = useState<NonNullable<typeof projects>[number] | null>(null);
+  const [remixName, setRemixName] = useState('');
+  const [isRemixing, setIsRemixing] = useState(false);
   const [redeployProject, setRedeployProject] = useState<NonNullable<typeof projects>[number] | null>(null);
   const [redeployOption, setRedeployOption] = useState<'github-netlify' | 'github-only' | 'cloudflare'>('github-netlify');
   const [redeployRepoName, setRedeployRepoName] = useState('');
@@ -132,6 +137,22 @@ export default function DashboardPage() {
   const openRedeploy = (project: NonNullable<typeof projects>[number]) => {
     setRedeployProject(project);
     setIsRedeployDialogOpen(true);
+  };
+
+  const openRemix = (project: NonNullable<typeof projects>[number]) => {
+    setRemixSource(project);
+    setRemixName(`${project.projectName}-copy`);
+  };
+
+  const handleRemix = async () => {
+    if (!remixSource || !remixName.trim()) return;
+    setIsRemixing(true);
+    try {
+      const result = await remixPublishedProject({ sourceProjectName: remixSource.projectName, projectName: remixName });
+      toast.success('Remix created', { description: `${result.fileCount} files copied without deployment credentials.` });
+      router.push(`/edit/${result.projectName}`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not remix project'); }
+    finally { setIsRemixing(false); }
   };
 
   const startGithubConnect = () => {
@@ -417,7 +438,7 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
+                    {project.accessRole === 'owner' ? <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDelete(project.projectName)}
@@ -426,7 +447,7 @@ export default function DashboardPage() {
                     >
                       <Trash2 className="w-3 h-3 mr-2" />
                       Decom
-                    </Button>
+                    </Button> : <span className="text-[9px] font-mono uppercase text-[var(--muted-text)]">Shared · {project.accessRole}</span>}
                   </div>
                 </div>
 
@@ -470,12 +491,21 @@ export default function DashboardPage() {
                   >
                     <Globe className="w-3.5 h-3.5" />
                   </Button>
+                  {project.isPublished ? <Button variant="outline" onClick={() => openRemix(project)} className="absolute right-3 top-3 h-8 w-8 border-[var(--border)] p-0 text-[var(--muted-text)] hover:border-[var(--primary)] hover:text-[var(--primary)]" title="Remix project"><Copy className="size-3.5" /></Button> : null}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <Dialog open={remixSource !== null} onOpenChange={(open) => { if (!open) setRemixSource(null); }}>
+        <DialogContent className="border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] sm:max-w-md">
+          <DialogHeader><DialogTitle>Remix {remixSource?.projectName}</DialogTitle><DialogDescription>Create an independent private copy. Cloudflare resources, domains, secrets, and deployment links are never copied.</DialogDescription></DialogHeader>
+          <div className="space-y-2 py-3"><label htmlFor="remix-name" className="text-xs font-medium">New project name</label><Input id="remix-name" value={remixName} onChange={(event) => setRemixName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} maxLength={63} onKeyDown={(event) => { if (event.key === 'Enter') void handleRemix(); }} /></div>
+          <DialogFooter><Button variant="outline" onClick={() => setRemixSource(null)}>Cancel</Button><Button onClick={() => void handleRemix()} disabled={isRemixing || !remixName.trim()}>{isRemixing ? <Spinner className="mr-2 size-4" /> : <Copy className="mr-2 size-4" />}{isRemixing ? 'Remixing…' : 'Create remix'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isRedeployDialogOpen}

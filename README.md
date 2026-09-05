@@ -83,6 +83,10 @@ A powerful AI-powered web application that generates production-ready multi-page
    VERCEL_CLIENT_ID=your_vercel_oauth_client_id
    VERCEL_CLIENT_SECRET=your_vercel_oauth_client_secret
 
+   CLOUDFLARE_CLIENT_ID=your_cloudflare_oauth_client_id
+   CLOUDFLARE_CLIENT_SECRET=your_cloudflare_oauth_client_secret
+   CLOUDFLARE_OAUTH_SCOPES="your registered Cloudflare OAuth scopes"
+
    # Integration Token Encryption
    INTEGRATION_TOKEN_SECRET=your_32+_char_secret
    ```

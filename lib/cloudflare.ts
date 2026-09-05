@@ -165,7 +165,7 @@ export function prepareCloudflareAssets(files: CloudflareDeployFile[]) {
 
   for (const file of files) {
     const path = normalizeAssetPath(file.path);
-    if (path.endsWith('.sql') || path === 'cloudflare.json' || path.startsWith('workers/')) continue;
+    if (path.endsWith('.sql') || ['cloudflare.json', 'wrangler.jsonc', 'wrangler.json', 'package.json', 'tsconfig.json', 'README.md', '.dev.vars.example', '.gitignore'].includes(path) || path.startsWith('workers/') || path.startsWith('src/')) continue;
     if (path.endsWith('/.keep') || path === '.keep') continue;
     const size = Buffer.byteLength(file.content, 'utf8');
     if (SPECIAL_FILES.has(path)) {
@@ -343,9 +343,9 @@ export async function createCloudflareD1Database(params: {
   );
 }
 
-type D1QueryResult = { results?: Array<Record<string, unknown>>; success: boolean; error?: string };
+export type D1QueryResult = { results?: Array<Record<string, unknown>>; success: boolean; error?: string };
 
-async function queryD1(params: {
+export async function queryCloudflareD1(params: {
   token: string;
   accountId: string;
   databaseId: string;
@@ -366,11 +366,11 @@ export async function applyCloudflareD1Migrations(params: {
   migrationDir?: string;
   onProgress?: (message: string) => void;
 }) {
-  await queryD1({
+  await queryCloudflareD1({
     ...params,
     sql: 'CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);',
   });
-  const existing = await queryD1({ ...params, sql: 'SELECT name FROM d1_migrations ORDER BY id;' });
+  const existing = await queryCloudflareD1({ ...params, sql: 'SELECT name FROM d1_migrations ORDER BY id;' });
   const applied = new Set(
     existing.flatMap((result) => result.results ?? []).map((row) => String(row.name))
   );
@@ -384,7 +384,7 @@ export async function applyCloudflareD1Migrations(params: {
     if (applied.has(migration.path)) continue;
     params.onProgress?.(`Cloudflare: Applying ${migration.path}`);
     const escapedName = migration.path.replace(/'/g, "''");
-    const result = await queryD1({
+    const result = await queryCloudflareD1({
       ...params,
       sql: `${migration.content}\nINSERT INTO d1_migrations (name) VALUES ('${escapedName}');`,
     });
@@ -404,6 +404,31 @@ export async function addCloudflarePagesDomain(params: {
     `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/domains`,
     params.token,
     { method: 'POST', body: JSON.stringify({ name: params.domain }) }
+  );
+}
+
+export type CloudflareZone = { id: string; name: string; status: string; type: string };
+export type CloudflarePagesDomain = { name: string; status?: string; verification_data?: { status?: string; error_message?: string } };
+
+export async function listCloudflareZones(params: { token: string; accountId: string }) {
+  return cloudflareRequest<CloudflareZone[]>(
+    `/zones?account.id=${encode(params.accountId)}&status=active&per_page=50`,
+    params.token
+  );
+}
+
+export async function getCloudflarePagesDomain(params: { token: string; accountId: string; projectName: string; domain: string }) {
+  return cloudflareRequest<CloudflarePagesDomain>(
+    `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/domains/${encode(params.domain)}`,
+    params.token
+  );
+}
+
+export async function removeCloudflarePagesDomain(params: { token: string; accountId: string; projectName: string; domain: string }) {
+  await cloudflareRequest(
+    `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/domains/${encode(params.domain)}`,
+    params.token,
+    { method: 'DELETE' }
   );
 }
 

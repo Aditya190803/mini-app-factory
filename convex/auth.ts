@@ -80,6 +80,19 @@ export function canAccessProject(
   return !project.userId || project.userId === userId;
 }
 
+export async function canReadProject(ctx: QueryCtx | MutationCtx, project: Doc<'projects'> | null, userId: string | null): Promise<boolean> {
+  if (canAccessProject(project, userId)) return true;
+  if (!project || !userId) return false;
+  return (await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first()) !== null;
+}
+
+export async function canEditProject(ctx: QueryCtx | MutationCtx, project: Doc<'projects'> | null, userId: string | null): Promise<boolean> {
+  if (canAccessProject(project, userId)) return true;
+  if (!project || !userId) return false;
+  const member = await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first();
+  return member?.role === 'editor';
+}
+
 /** Load a project by name and assert the caller may use it. Throws otherwise. */
 export async function requireProjectAccess(
   ctx: QueryCtx | MutationCtx,
@@ -92,7 +105,7 @@ export async function requireProjectAccess(
     .first();
 
   if (!project) throw new Error('Project not found');
-  if (!canAccessProject(project, userId)) throw new Error('Unauthorized');
+  if (!(await canEditProject(ctx, project, userId))) throw new Error('Unauthorized');
   return project;
 }
 
@@ -105,6 +118,14 @@ export async function requireProjectAccessById(
   const project = await ctx.db.get(projectId);
 
   if (!project) throw new Error('Project not found');
-  if (!canAccessProject(project, userId)) throw new Error('Unauthorized');
+  if (!(await canEditProject(ctx, project, userId))) throw new Error('Unauthorized');
+  return project;
+}
+
+export async function requireProjectReadAccessById(ctx: QueryCtx | MutationCtx, projectId: Id<'projects'>): Promise<Doc<'projects'>> {
+  const userId = await requireUserId(ctx);
+  const project = await ctx.db.get(projectId);
+  if (!project) throw new Error('Project not found');
+  if (!(await canReadProject(ctx, project, userId))) throw new Error('Unauthorized');
   return project;
 }

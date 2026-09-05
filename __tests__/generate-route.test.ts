@@ -17,6 +17,15 @@ vi.mock('@/lib/projects', () => ({
   saveFiles: vi.fn(),
 }));
 
+vi.mock('@/lib/project-runs', () => ({
+  createProjectRun: vi.fn(async () => ({ runId: 'run-1', projectId: 'project-1' })),
+  appendProjectMessage: vi.fn(async () => 'message-1'),
+  appendProjectRunEvent: vi.fn(async () => undefined),
+  finishProjectRun: vi.fn(async () => undefined),
+  isProjectRunCancelled: vi.fn(async () => false),
+  createProjectVersion: vi.fn(async () => 'version-1'),
+}));
+
 vi.mock('@/lib/resolve-reference-url', () => ({
   appendReferenceUrlToPrompt: vi.fn(async (base: string) => ({ prompt: base })),
 }));
@@ -218,6 +227,6 @@ describe('POST /api/generate', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/event-stream');
     const streamOutput = await res.text();
-    expect(streamOutput).toContain('"status":"initializing"');
+    expect(streamOutput).toContain('"status":"started"');
   });
 });

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireProjectAccessById } from "./auth";
+import { requireProjectAccessById, requireProjectReadAccessById } from "./auth";
 
 /**
  * Deployment history, scoped to projects the caller may access. Both handlers were previously
@@ -39,7 +39,7 @@ export const getDeploymentHistory = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    await requireProjectReadAccessById(ctx, args.projectId);
 
     // Bounded: this table only grows, and an unpaginated collect() would eventually return every
     // deployment a long-lived project ever had.
