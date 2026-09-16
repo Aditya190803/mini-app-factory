@@ -24,13 +24,39 @@ const TONE_TEXT: Record<Tone, string> = {
   info: 'text-[var(--info-text)]',
 }
 
-const TONE_FILL: Record<Tone, string> = {
-  neutral: 'bg-[var(--muted-foreground)]',
-  live: 'bg-[var(--success-text)]',
-  pending: 'bg-transparent',
-  warning: 'bg-[var(--warning-text)]',
-  failed: 'bg-[var(--destructive-text)]',
-  info: 'bg-[var(--info-text)]',
+function StatusShape({ tone }: { tone: Tone }) {
+  if (tone === 'failed') {
+    return (
+      <span className="relative block size-2" aria-hidden>
+        <span className="absolute left-1/2 top-0 h-full w-[1.5px] -translate-x-1/2 rotate-45 bg-current" />
+        <span className="absolute left-1/2 top-0 h-full w-[1.5px] -translate-x-1/2 -rotate-45 bg-current" />
+      </span>
+    )
+  }
+
+  if (tone === 'warning') {
+    return <span aria-hidden className="block size-[7px] rotate-45 bg-current" />
+  }
+
+  if (tone === 'pending') {
+    return (
+      <span
+        aria-hidden
+        className="block size-[7px] rounded-full border-[1.5px] border-current bg-transparent"
+      />
+    )
+  }
+
+  if (tone === 'info') {
+    return <span aria-hidden className="block size-[7px] rounded-[1px] bg-current" />
+  }
+
+  return (
+    <span
+      aria-hidden
+      className={cn('block size-[7px] rounded-full bg-current', tone === 'neutral' && 'opacity-70')}
+    />
+  )
 }
 
 export function StatusDot({
@@ -50,13 +76,13 @@ export function StatusDot({
       aria-hidden={label ? undefined : true}
       title={label}
       className={cn(
-        'inline-block size-[7px] shrink-0 rounded-full',
-        TONE_FILL[tone],
-        tone === 'pending' && 'border-[1.5px] border-current',
-        tone === 'pending' && TONE_TEXT[tone],
+        'inline-flex size-2 shrink-0 items-center justify-center',
+        TONE_TEXT[tone],
         className
       )}
-    />
+    >
+      <StatusShape tone={tone} />
+    </span>
   )
 }
 

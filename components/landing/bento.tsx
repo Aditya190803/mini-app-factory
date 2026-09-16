@@ -2,6 +2,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { CAPABILITY_SPECS } from '@/lib/constants'
 import { TARGETS } from '@/lib/targets'
+import { PlateFrame } from '@/components/kit'
 
 /**
  * The bento.
@@ -17,11 +18,11 @@ import { TARGETS } from '@/lib/targets'
  */
 export function Bento({ className }: { className?: string }) {
   return (
+    <PlateFrame className={className}>
     <div
       className={cn(
         'grid grid-flow-dense grid-cols-1 overflow-hidden rounded-xl border border-[var(--rule-strong)]',
-        'lg:grid-cols-6 lg:grid-rows-[repeat(2,minmax(10rem,auto))_minmax(6rem,auto)]',
-        className
+        'lg:grid-cols-6 lg:grid-rows-[repeat(2,minmax(10rem,auto))_minmax(6rem,auto)]'
       )}
     >
       {/* A: cols 1-4, rows 1-2 */}
@@ -97,6 +98,7 @@ export function Bento({ className }: { className?: string }) {
         </dl>
       </Cell>
     </div>
+    </PlateFrame>
   )
 }
 

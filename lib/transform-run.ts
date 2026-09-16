@@ -12,8 +12,8 @@ import {
 } from '@/lib/edit-intent/context';
 import { withRetry } from '@/lib/ai-retry';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
-import { resolveOpenRouterModel } from '@/lib/openrouter-models';
 import { resolveOpenCodeModel } from '@/lib/opencode-models';
+import { resolveGatewayModel } from '@/lib/gateway-models';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import type { TransformStreamEvent } from '@/lib/transform-stream';
 import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-project-validation';
@@ -224,10 +224,10 @@ export async function runTransformWork(input: TransformWorkInput) {
 
   const client = await getAIClient(runtimeConfig);
   const requested = resolveSelectedAIModel(modelId, providerId);
-  const effectiveModelId = requested?.providerId === 'openrouter'
-    ? await resolveOpenRouterModel(requested?.model)
+  const effectiveModelId = requested?.providerId === 'gateway'
+    ? await resolveGatewayModel(requested.model)
     : requested?.providerId === 'opencode'
-      ? await resolveOpenCodeModel(requested?.model)
+      ? await resolveOpenCodeModel(requested.model)
       : requested?.model;
   const effectiveProviderId = requested?.providerId;
 

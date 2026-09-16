@@ -16,14 +16,15 @@ import {
   RowList,
   Section,
   Skeleton,
+  EmptyState,
   StatusDot,
 } from '@/components/kit';
-import { TopBar } from '@/components/shell/top-bar';
+import { TopBar, NavLink } from '@/components/shell/top-bar';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
 import { logout } from '@/lib/logout';
 import { ExternalLink, Eye, EyeOff, FlaskConical, KeyRound, Trash2 } from 'lucide-react';
-import { AI_PROVIDER_IDS, type AIProviderId, type ProviderCustomModelsConfig } from '@/lib/ai-admin-config';
+import { AI_PROVIDER_IDS, PROVIDER_KEY_URLS, PROVIDER_LABELS, type AIProviderId, type ProviderCustomModelsConfig, emptyProviderRecord } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 import CloudflareConnect from '@/components/cloudflare-connect';
 
@@ -37,15 +38,8 @@ type IntegrationStatus = {
   cloudflareAccountName?: string;
 };
 
-const providerLabel: Record<AIProviderId, string> = {
-  opencode: 'OpenCode Zen',
-  openrouter: 'OpenRouter',
-};
-
-const providerKeyUrl: Record<AIProviderId, string> = {
-  opencode: 'https://opencode.ai/zen',
-  openrouter: 'https://openrouter.ai/keys',
-};
+const providerLabel = PROVIDER_LABELS;
+const providerKeyUrl = PROVIDER_KEY_URLS;
 
 export default function SettingsPage() {
   const user = useUser();
@@ -61,29 +55,14 @@ export default function SettingsPage() {
   const [byokStatus, setByokStatus] = useState<Record<string, boolean>>({});
   const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
   const [customModelsConfig, setCustomModelsConfig] = useState<ProviderCustomModelsConfig>({});
-  const [customModelInput, setCustomModelInput] = useState<Record<AIProviderId, string>>({
-    opencode: '',
-    openrouter: '',
-  });
+  const [customModelInput, setCustomModelInput] = useState<Record<AIProviderId, string>>(() => emptyProviderRecord(''));
   const [isLoading, setIsLoading] = useState(true);
   const [isDisconnecting, setIsDisconnecting] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showKey, setShowKey] = useState<Record<AIProviderId, boolean>>({
-    opencode: false,
-    openrouter: false,
-  });
-  const [saveState, setSaveState] = useState<Record<AIProviderId, 'idle' | 'saving' | 'saved' | 'error'>>({
-    opencode: 'idle',
-    openrouter: 'idle',
-  });
-  const [testState, setTestState] = useState<Record<AIProviderId, 'idle' | 'testing' | 'ok' | 'error'>>({
-    opencode: 'idle',
-    openrouter: 'idle',
-  });
-  const [testMessage, setTestMessage] = useState<Record<AIProviderId, string>>({
-    opencode: '',
-    openrouter: '',
-  });
+  const [showKey, setShowKey] = useState<Record<AIProviderId, boolean>>(() => emptyProviderRecord(false));
+  const [saveState, setSaveState] = useState<Record<AIProviderId, 'idle' | 'saving' | 'saved' | 'error'>>(() => emptyProviderRecord('idle'));
+  const [testState, setTestState] = useState<Record<AIProviderId, 'idle' | 'testing' | 'ok' | 'error'>>(() => emptyProviderRecord('idle'));
+  const [testMessage, setTestMessage] = useState<Record<AIProviderId, string>>(() => emptyProviderRecord(''));
 
   const formatConnectedAt = (value?: number) => (value ? new Date(value).toLocaleString() : '—');
 
@@ -298,16 +277,22 @@ export default function SettingsPage() {
 
   if (!user) {
     return (
-      <div className="grid min-h-dvh place-items-center px-6">
-        <div className="text-center">
-          <h1 className="text-lg font-medium">Sign in to manage settings</h1>
-          <p className="mt-1.5 text-sm text-[var(--muted-foreground)]">
-            Connections and keys belong to your account.
-          </p>
-          <Button intent="primary" className="mt-5" onClick={() => router.push('/handler/sign-in')}>
-            Sign in
-          </Button>
-        </div>
+      <div className="flex min-h-dvh flex-col">
+        <TopBar>
+          <NavLink href="/docs">Docs</NavLink>
+          <ThemeToggle className="mx-1.5 hidden sm:inline-flex" />
+          <AccountMenu />
+        </TopBar>
+        <main id="main" className="mx-auto flex w-full max-w-md flex-1 items-center px-6">
+          <EmptyState title="Sign in to manage settings" className="w-full">
+            <p>Connections and keys belong to your account.</p>
+            <div className="mt-5 flex justify-center">
+              <Button intent="primary" onClick={() => router.push('/handler/sign-in')}>
+                Sign in
+              </Button>
+            </div>
+          </EmptyState>
+        </main>
       </div>
     );
   }
@@ -343,8 +328,10 @@ export default function SettingsPage() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar crumbs={[{ label: 'Settings' }]}>
-        <ThemeToggle className="mr-1 hidden sm:inline-flex" />
+      <TopBar>
+        <NavLink href="/projects">Projects</NavLink>
+        <NavLink href="/docs">Docs</NavLink>
+        <ThemeToggle className="mx-1.5 hidden sm:inline-flex" />
         <AccountMenu />
       </TopBar>
 

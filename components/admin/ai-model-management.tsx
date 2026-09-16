@@ -12,6 +12,7 @@ import {
   type AIAdminConfig,
   type AIProviderId,
   DEFAULT_AI_ADMIN_CONFIG,
+  emptyProviderRecord,
   sanitizeAIAdminConfig,
 } from '@/lib/ai-admin-config';
 import { setStoredAIAdminConfig } from '@/lib/ai-admin-client';
@@ -31,10 +32,7 @@ type ProviderCatalog = {
   models: ProviderCatalogModel[];
 };
 
-const emptySearchState: Record<AIProviderId, string> = {
-  opencode: '',
-  openrouter: '',
-};
+const emptySearchState: Record<AIProviderId, string> = emptyProviderRecord('');
 
 export default function AIModelManagement() {
   const [isLoading, setIsLoading] = useState(true);
@@ -190,7 +188,6 @@ export default function AIModelManagement() {
         crumbs={[
           { label: 'Settings', href: '/settings' },
           { label: 'AI console', href: '/admin' },
-          { label: 'Models' },
         ]}
       >
         <ThemeToggle className="mr-1 hidden sm:inline-flex" />

@@ -81,7 +81,7 @@ export default function ProjectSettings({ projectName }: { projectName: string }
   if (!project) {
     return (
       <div className="flex min-h-dvh flex-col">
-        <TopBar crumbs={[{ label: 'Projects', href: '/dashboard' }, { label: projectName }]}>
+        <TopBar crumbs={[{ label: 'Projects', href: '/projects' }]}>
           {chrome}
         </TopBar>
         <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10 sm:px-6">
@@ -102,9 +102,8 @@ export default function ProjectSettings({ projectName }: { projectName: string }
     <div className="flex min-h-dvh flex-col">
       <TopBar
         crumbs={[
-          { label: 'Projects', href: '/dashboard' },
+          { label: 'Projects', href: '/projects' },
           { label: project.projectName, href: `/edit/${project.projectName}` },
-          { label: 'Settings' },
         ]}
       >
         {chrome}

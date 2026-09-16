@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { type AIProviderId } from '@/lib/ai-admin-config';
-import { fetchOpenRouterFreeModels, OPENROUTER_AUTO_ROUTER_ID } from '@/lib/openrouter-models';
 import { fetchOpenCodeFreeModels } from '@/lib/opencode-models';
+import { fetchGatewayModels, getAiGatewayConfig } from '@/lib/gateway-models';
 import { stackServerApp } from '@/stack/server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
@@ -22,8 +22,8 @@ type ProviderMeta = {
 };
 
 const PROVIDERS: ProviderMeta[] = [
+  { id: 'gateway', name: 'AI Gateway' },
   { id: 'opencode', name: 'OpenCode Zen' },
-  { id: 'openrouter', name: 'OpenRouter' },
 ];
 
 function addModel(
@@ -60,82 +60,77 @@ function canExposeModel(modelId: string, defaultModel: string, visibleModels: st
   return visibleModels.includes(modelId);
 }
 
-/**
- * OpenRouter models are discovered live from the provider catalog on every
- * request (short server cache); OpenCode serves its configured models.
- */
+/** Gateway catalog when configured; OpenCode free models otherwise. */
 export async function GET(_request: Request) {
-  const user = await stackServerApp.getUser();
+  try {
+    const user = await stackServerApp.getUser();
+    const adminConfig = await getGlobalAdminModelConfig();
 
-  // Read global admin model config from Convex (fast, single DB read)
-  const adminConfig = await getGlobalAdminModelConfig();
+    const models: ModelEntry[] = [];
+    const seen = new Set<string>();
 
-  const models: ModelEntry[] = [];
-  const seen = new Set<string>();
+    for (const provider of PROVIDERS) {
+      const providerAdmin = adminConfig.providers[provider.id];
+      if (!providerAdmin?.enabled) continue;
 
-  for (const provider of PROVIDERS) {
-    const providerAdmin = adminConfig.providers[provider.id];
-    if (!providerAdmin?.enabled) continue;
+      if (provider.id === 'gateway') {
+        if (!getAiGatewayConfig().configured) continue;
+        const live = await fetchGatewayModels();
+        const liveNames = new Map(live.map((model) => [model.id, model.name]));
+        addModel(models, seen, provider, providerAdmin.defaultModel, liveNames.get(providerAdmin.defaultModel));
+        live
+          .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
+          .forEach((model) => addModel(models, seen, provider, model.id, model.name));
+      } else {
+        addModel(models, seen, provider, providerAdmin.defaultModel);
+        const liveOpenCode = await fetchOpenCodeFreeModels();
+        liveOpenCode
+          .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
+          .forEach((model) => addModel(models, seen, provider, model.id, model.name));
+      }
 
-    if (provider.id === 'openrouter') {
-      const live = await fetchOpenRouterFreeModels();
-      const liveNames = new Map(live.map((model) => [model.id, model.name]));
-      const defaultName = liveNames.get(providerAdmin.defaultModel)
-        ?? (providerAdmin.defaultModel === OPENROUTER_AUTO_ROUTER_ID ? 'Free Models Router (auto)' : undefined);
-      addModel(models, seen, provider, providerAdmin.defaultModel, defaultName);
-      live
-        .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
-        .forEach((model) => addModel(models, seen, provider, model.id, model.name));
-    } else {
-      addModel(models, seen, provider, providerAdmin.defaultModel);
-      const liveOpenCode = await fetchOpenCodeFreeModels();
-      liveOpenCode
-        .filter((model) => canExposeModel(model.id, providerAdmin.defaultModel, providerAdmin.visibleModels))
-        .forEach((model) => addModel(models, seen, provider, model.id, model.name));
+      providerAdmin.customModels
+        .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
+        .forEach((modelId) => addModel(models, seen, provider, modelId));
+
+      providerAdmin.visibleModels
+        .forEach((modelId) => addModel(models, seen, provider, modelId));
     }
 
-    // Add admin-configured custom models that pass the visibility filter
-    providerAdmin.customModels
-      .filter((modelId) => canExposeModel(modelId, providerAdmin.defaultModel, providerAdmin.visibleModels))
-      .forEach((modelId) => addModel(models, seen, provider, modelId));
-
-    // Add any models explicitly in the visibleModels list
-    providerAdmin.visibleModels
-      .forEach((modelId) => addModel(models, seen, provider, modelId));
-  }
-
-  // Merge user custom models from Convex
-  if (user) {
-    const persisted = await getPersistedAISettings();
-    const customModels = persisted.customModels;
-    if (customModels && typeof customModels === 'object') {
-      for (const [providerIdStr, providerModels] of Object.entries(customModels)) {
-        if (!Array.isArray(providerModels)) continue;
-        const provider = PROVIDERS.find((p) => p.id === providerIdStr);
-        if (!provider) continue;
-        providerModels.forEach((modelId) => {
-          if (typeof modelId === 'string') {
-            addModel(models, seen, provider, modelId);
-          }
-        });
+    if (user) {
+      const persisted = await getPersistedAISettings();
+      const customModels = persisted.customModels;
+      if (customModels && typeof customModels === 'object') {
+        for (const [providerIdStr, providerModels] of Object.entries(customModels)) {
+          if (!Array.isArray(providerModels)) continue;
+          const provider = PROVIDERS.find((p) => p.id === providerIdStr);
+          if (!provider) continue;
+          providerModels.forEach((modelId) => {
+            if (typeof modelId === 'string') {
+              addModel(models, seen, provider, modelId);
+            }
+          });
+        }
       }
     }
-  }
 
-  // Sort by provider order then name
-  const orderMap = new Map(adminConfig.providerOrder.map((id, i) => [id, i]));
-  models.sort((a, b) => {
-    const orderDiff = (orderMap.get(a.providerId) ?? 99) - (orderMap.get(b.providerId) ?? 99);
-    if (orderDiff !== 0) return orderDiff;
-    return a.name.localeCompare(b.name);
-  });
+    const orderMap = new Map(adminConfig.providerOrder.map((id, i) => [id, i]));
+    models.sort((a, b) => {
+      const orderDiff = (orderMap.get(a.providerId) ?? 99) - (orderMap.get(b.providerId) ?? 99);
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
 
-  return NextResponse.json(
-    { models },
-    {
-      headers: {
-        'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
+    return NextResponse.json(
+      { models },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ models: [] }, { status: 200 });
+  }
 }

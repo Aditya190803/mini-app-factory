@@ -67,7 +67,7 @@ export default function InvitePage() {
             title="This invitation is not usable"
             action={
               <Button asChild>
-                <a href="/dashboard">Back to your projects</a>
+                <a href="/projects">Back to your projects</a>
               </Button>
             }
           >

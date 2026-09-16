@@ -1,4 +1,4 @@
-export const AI_PROVIDER_IDS = ['opencode', 'openrouter'] as const;
+export const AI_PROVIDER_IDS = ['gateway', 'opencode'] as const;
 
 export type AIProviderId = (typeof AI_PROVIDER_IDS)[number];
 
@@ -37,9 +37,23 @@ export const AI_USER_CUSTOM_MODELS_STORAGE_KEY = 'mini_app_factory_user_custom_m
 export const AI_SELECTED_MODEL_STORAGE_KEY = 'mini_app_factory_selected_model_v1';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
+  gateway: 'claude-sonnet-4-6',
   opencode: 'deepseek-v4-flash-free',
-  openrouter: 'openrouter/free',
 };
+
+export const PROVIDER_LABELS: Record<AIProviderId, string> = {
+  gateway: 'AI Gateway',
+  opencode: 'OpenCode Zen',
+};
+
+export const PROVIDER_KEY_URLS: Record<AIProviderId, string> = {
+  gateway: 'https://ai-gateway.adityamer.dev',
+  opencode: 'https://opencode.ai/zen',
+};
+
+export function emptyProviderRecord<T>(value: T): Record<AIProviderId, T> {
+  return Object.fromEntries(AI_PROVIDER_IDS.map((id) => [id, value])) as Record<AIProviderId, T>;
+}
 
 export function isOpenCodeFreeModelId(modelId: string): boolean {
   const trimmed = modelId.trim();
@@ -48,18 +62,11 @@ export function isOpenCodeFreeModelId(modelId: string): boolean {
   return trimmed === 'big-pickle';
 }
 
-export function isOpenRouterFreeModel(modelId: string): boolean {
+export function isAllowedProviderModel(providerId: AIProviderId, modelId: string): boolean {
   const trimmed = modelId.trim();
   if (!trimmed) return false;
-  if (trimmed === 'openrouter/free') return true;
-  return trimmed.endsWith(':free');
-}
-
-export function isAllowedProviderModel(providerId: AIProviderId, modelId: string): boolean {
-  if (providerId === 'opencode') {
-    return isOpenCodeFreeModelId(modelId);
-  }
-  return isOpenRouterFreeModel(modelId);
+  if (providerId === 'gateway') return !trimmed.startsWith('tab_');
+  return isOpenCodeFreeModelId(trimmed);
 }
 
 export function resolveSelectedAIModel(
@@ -74,8 +81,8 @@ export function resolveSelectedAIModel(
 
 export const DEFAULT_AI_ADMIN_CONFIG: AIAdminConfig = {
   providers: {
+    gateway: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.gateway, customModels: [], visibleModels: [] },
     opencode: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.opencode, customModels: [], visibleModels: [] },
-    openrouter: { enabled: true, defaultModel: DEFAULT_PROVIDER_MODELS.openrouter, customModels: [], visibleModels: [] },
   },
   providerOrder: [...AI_PROVIDER_IDS],
 };
@@ -124,7 +131,7 @@ export function sanitizeAIAdminConfig(input: unknown): AIAdminConfig {
     : [];
   const uniqueRequestedOrder = requestedOrder.filter((entry, index) => requestedOrder.indexOf(entry) === index);
   const missing = AI_PROVIDER_IDS.filter((providerId) => !uniqueRequestedOrder.includes(providerId));
-  const providerOrder = [...uniqueRequestedOrder, ...missing];
+  const providerOrder = [...missing, ...uniqueRequestedOrder];
 
   return { providers, providerOrder };
 }

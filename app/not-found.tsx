@@ -18,7 +18,7 @@ export default function NotFound() {
                 <Link href="/">Back to the composer</Link>
               </Button>
               <Button asChild>
-                <Link href="/dashboard">Your projects</Link>
+                <Link href="/projects">Your projects</Link>
               </Button>
             </div>
           }

@@ -7,9 +7,9 @@ const serverEnvSchema = z
     OPENCODE_API_KEY: z.string().optional(),
     OPENCODE_MODEL: z.string().optional(),
     OPENCODE_FALLBACK_MODEL: z.string().optional(),
-    OPENROUTER_API_KEY: z.string().optional(),
-    OPENROUTER_MODEL: z.string().optional(),
-    OPENROUTER_FALLBACK_MODEL: z.string().optional(),
+    AI_GATEWAY_BASE_URL: z.string().optional(),
+    AI_GATEWAY_API_KEY: z.string().optional(),
+    AI_GATEWAY_MODEL: z.string().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1, "NEXT_PUBLIC_CONVEX_URL is required"),
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1, "NEXT_PUBLIC_STACK_PROJECT_ID is required"),
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z

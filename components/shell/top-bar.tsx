@@ -21,8 +21,14 @@ export function TopBar({
   className,
 }: {
   children?: React.ReactNode
-  /** Path back to context. The last entry is the current page and is not a link. */
-  crumbs?: ReadonlyArray<{ label: string; href?: string }>
+  /**
+   * The ancestors of the current page, never the page itself.
+   *
+   * The heading already says where you are, so repeating it here just prints
+   * the same word twice on the same screen. The bar's job is the path back.
+   * A top-level page passes nothing.
+   */
+  crumbs?: ReadonlyArray<{ label: string; href: string }>
   className?: string
 }) {
   return (
@@ -46,33 +52,21 @@ export function TopBar({
             <Rule orientation="vertical" className="hidden h-4 sm:block" />
             <nav aria-label="Breadcrumb" className="hidden min-w-0 sm:block">
               <ol className="flex min-w-0 items-center gap-1.5 text-sm">
-                {crumbs.map((crumb, index) => {
-                  const last = index === crumbs.length - 1
-                  return (
-                    <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
-                      {index > 0 && (
-                        <span aria-hidden className="text-[var(--rule-strong)]">
-                          /
-                        </span>
-                      )}
-                      {last || !crumb.href ? (
-                        <span
-                          aria-current={last ? 'page' : undefined}
-                          className="truncate font-medium text-[var(--foreground)]"
-                        >
-                          {crumb.label}
-                        </span>
-                      ) : (
-                        <Link
-                          href={crumb.href}
-                          className="truncate rounded text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
-                        >
-                          {crumb.label}
-                        </Link>
-                      )}
-                    </li>
-                  )
-                })}
+                {crumbs.map((crumb, index) => (
+                  <li key={`${crumb.href}-${index}`} className="flex min-w-0 items-center gap-1.5">
+                    {index > 0 && (
+                      <span aria-hidden className="text-[var(--rule-strong)]">
+                        /
+                      </span>
+                    )}
+                    <Link
+                      href={crumb.href}
+                      className="truncate rounded text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+                    >
+                      {crumb.label}
+                    </Link>
+                  </li>
+                ))}
               </ol>
             </nav>
           </>

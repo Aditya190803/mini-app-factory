@@ -77,6 +77,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                     <a href="#main" className="skip-link">
                       Skip to content
                     </a>
+                    <div className="plate-grain" aria-hidden />
                     {children}
                     <SiteFooter />
                     <Toaster />

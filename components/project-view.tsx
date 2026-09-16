@@ -197,7 +197,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         initialHTML={project.html || ''}
         initialPrompt={project.prompt}
         projectName={projectName}
-        onBack={() => router.push('/dashboard')}
+        onBack={() => router.push('/projects')}
       />
     );
   }

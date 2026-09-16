@@ -63,13 +63,12 @@ export const upsertForUser = mutation({
 // --- Global admin model config (singleton) ---
 
 /**
- * Readable by any signed-in user — the client needs it to filter the model picker. It contains
- * provider enable/disable state and model ids, no secrets.
+ * Readable by anyone. The home composer lists models before sign-in, and this
+ * row is provider flags and model ids, no secrets. Writes stay admin-only.
  */
 export const getAdminModelConfig = query({
   args: {},
   handler: async (ctx) => {
-    await requireUserId(ctx);
     const rows = await ctx.db.query('adminModelConfig').order('desc').take(1);
     return rows[0] ?? null;
   },

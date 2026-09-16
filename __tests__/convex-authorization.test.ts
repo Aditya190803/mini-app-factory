@@ -371,6 +371,16 @@ describe('Convex authorization', () => {
       expect(row?.configJson).toBe('{"ok":true}');
     });
 
+    test('the global model catalog is readable without a session', async () => {
+      const t = setup();
+      await t
+        .withIdentity(ADMIN)
+        .mutation(api.aiSettings.upsertAdminModelConfig, { configJson: '{"ok":true}' });
+
+      const row = await t.query(api.aiSettings.getAdminModelConfig, {});
+      expect(row?.configJson).toBe('{"ok":true}');
+    });
+
     test('an allowlisted but unverified email is not an admin', async () => {
       const t = setup();
       await expect(

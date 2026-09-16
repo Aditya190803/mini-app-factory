@@ -11,15 +11,15 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
-import { resolveOpenRouterModel } from '@/lib/openrouter-models';
 import { resolveOpenCodeModel } from '@/lib/opencode-models';
+import { resolveGatewayModel } from '@/lib/gateway-models';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
 import { validateGeneratedProject } from '@/lib/generated-project-validation';
 import { appendProjectMessage, appendProjectRunEvent, createProjectRun, createProjectVersion, finishProjectRun, isProjectRunCancelled } from '@/lib/project-runs';
 
-const MODEL = process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
+const MODEL = process.env.AI_GATEWAY_MODEL || process.env.OPENCODE_MODEL || 'claude-sonnet-4-6';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -42,7 +42,7 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
     ) {
       return {
         code: 'ENV_MISSING',
-        message: 'Missing AI provider key. Set OPENCODE_API_KEY or OPENROUTER_API_KEY and restart the server.'
+        message: 'Missing AI provider key. Set AI_GATEWAY_API_KEY or OPENCODE_API_KEY and restart the server.'
       };
     }
 
@@ -53,7 +53,7 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
       };
     }
 
-    if (m.includes('opencode') || m.includes('openrouter') || m.includes('provider returned') || m.includes('rate-limited')) {
+    if (m.includes('opencode') || m.includes('gateway') || m.includes('provider returned') || m.includes('rate-limited')) {
       return {
         code: 'AI_PROVIDER_ERROR',
         message: 'The AI provider is unavailable or rate-limited. Check your provider key, switch providers, or try again shortly.'
@@ -94,8 +94,8 @@ export async function runGeneration(
     // Update status. Honor the model the user picked in the selector; only fall
     // back to the OpenCode default when nothing valid was stored on the project.
     const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
-    const liveModel = requested?.providerId === 'openrouter'
-      ? await resolveOpenRouterModel(requested.model)
+    const liveModel = requested?.providerId === 'gateway'
+      ? await resolveGatewayModel(requested.model)
       : requested?.providerId === 'opencode'
         ? await resolveOpenCodeModel(requested.model)
         : requested?.model;

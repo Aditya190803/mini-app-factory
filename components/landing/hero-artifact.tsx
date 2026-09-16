@@ -120,16 +120,15 @@ export function HeroArtifact({ className }: { className?: string }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--rule)] bg-[var(--surface-2)] px-3 py-2 font-mono text-[10px] text-[var(--muted-foreground)]">
-          <span>D1 · DB</span>
-          <span>KV · CACHE</span>
-          <span>R2 · FILES</span>
+          <span>D1 DB</span>
+          <span>KV CACHE</span>
+          <span>R2 FILES</span>
           <span className="ml-auto text-[var(--success-text)]">deployed</span>
         </div>
       </div>
 
-      {/* The tag that overlaps the plate's lower edge. One accent moment. */}
-      <div className="absolute -bottom-3 left-6 rounded-md border border-[var(--rule-strong)] bg-[var(--background)] px-2.5 py-1 font-mono text-[10px] tracking-[0.06em] text-[var(--muted-foreground)] shadow-[var(--shadow-sm)]">
-        8 FILES · 1 WORKER · 1 DATABASE
+      <div className="absolute -bottom-3 left-6 rounded-md border border-[var(--rule-strong)] bg-[var(--background)] px-2.5 py-1 font-mono text-[10px] tracking-[0.04em] text-[var(--muted-foreground)] shadow-[var(--shadow-sm)]">
+        8 files, 1 worker, 1 database
       </div>
     </div>
   )

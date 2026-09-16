@@ -197,8 +197,8 @@ describe('POST /api/ai/settings', () => {
       ...DEFAULT_AI_ADMIN_CONFIG,
       providers: {
         ...DEFAULT_AI_ADMIN_CONFIG.providers,
-        openrouter: {
-          ...DEFAULT_AI_ADMIN_CONFIG.providers.openrouter,
+        opencode: {
+          ...DEFAULT_AI_ADMIN_CONFIG.providers.opencode,
           enabled: false,
         },
       },

@@ -46,7 +46,7 @@ or a Cloudflare config file. See `lib/targets.ts`.
 - **Framework**: Next.js 16, App Router
 - **Database**: Convex
 - **Auth**: Stack Auth
-- **Models**: OpenCode Zen and OpenRouter, both fetched live on every visit,
+- **Models**: AI Gateway and OpenCode Zen, fetched live on every visit,
   never hardcoded
 - **Styling**: Tailwind CSS v4, plus the Plate design system in
   `app/globals.css` and `components/kit/`

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { api } from '@/convex/_generated/api';
 import { decryptSecret, encryptSecret } from '@/lib/secret-box';
-import { getAuthedConvexClient } from '@/lib/convex-server';
+import { getAuthedConvexClient, getPublicConvexClient } from '@/lib/convex-server';
 import {
   DEFAULT_AI_ADMIN_CONFIG,
   type AIAdminConfig,
@@ -84,12 +84,20 @@ export async function savePersistedAISettings(params: {
 // --- Global admin model config (singleton) ---
 
 export async function getGlobalAdminModelConfig(): Promise<AIAdminConfig> {
-  const convex = await getConvexClient();
-  const row = await convex.query(api.aiSettings.getAdminModelConfig, {}) as { configJson?: string } | null;
-  if (!row?.configJson) {
+  try {
+    // Public on purpose: the home composer needs the catalog before sign-in.
+    // The row is provider flags and model ids, no secrets.
+    const convex = getPublicConvexClient();
+    const row = (await convex.query(api.aiSettings.getAdminModelConfig, {})) as {
+      configJson?: string;
+    } | null;
+    if (!row?.configJson) {
+      return DEFAULT_AI_ADMIN_CONFIG;
+    }
+    return sanitizeAIAdminConfig(safeParse(row.configJson, DEFAULT_AI_ADMIN_CONFIG));
+  } catch {
     return DEFAULT_AI_ADMIN_CONFIG;
   }
-  return sanitizeAIAdminConfig(safeParse(row.configJson, DEFAULT_AI_ADMIN_CONFIG));
 }
 
 export async function saveGlobalAdminModelConfig(params: {

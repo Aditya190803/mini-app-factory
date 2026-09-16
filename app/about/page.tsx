@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/shell/theme-toggle'
 import { AccountMenu } from '@/components/shell/account-menu'
 import { HeroArtifact } from '@/components/landing/hero-artifact'
 import { Bento } from '@/components/landing/bento'
+import { Workflow } from '@/components/landing/workflow'
 
 export const metadata: Metadata = {
   title: 'What it does',
@@ -17,14 +18,8 @@ export const metadata: Metadata = {
 /**
  * The explanatory page.
  *
- * Deliberately short. Someone lands here from the app wanting to know what
- * this is, and they will decide inside two screens. It used to run to six
- * full-viewport sections, which was five more than the idea needs: a pinned
- * scroll sequence, a services accordion, and an examples carousel all restated
- * the same claim at length.
- *
- * What is left is the claim, one dense block that proves it, and a way in.
- * Anything that wants more detail belongs in the docs, which is one link away.
+ * The claim, the path, one dense block that proves it. The composer lives on
+ * the home page; this page exists so someone can decide whether to open it.
  */
 export default function AboutPage() {
   return (
@@ -46,9 +41,6 @@ export default function AboutPage() {
               Docs
             </Link>
             <ThemeToggle className="mx-1.5 hidden sm:inline-flex" />
-            <Button intent="primary" size="sm" asChild>
-              <Link href="/">Open the factory</Link>
-            </Button>
             <AccountMenu className="ml-1" />
           </nav>
         </div>
@@ -56,14 +48,13 @@ export default function AboutPage() {
 
       <section className="relative">
         <PlateBackdrop />
-        <div className="relative mx-auto w-full max-w-[84rem] px-4 pb-20 pt-14 sm:px-6 sm:pt-20 lg:pb-28">
-          <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        <div className="relative mx-auto w-full max-w-[84rem] px-4 pb-20 pt-12 sm:px-6 sm:pt-16 lg:pb-28">
+          <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
             <div className="max-w-5xl">
-              <h1 className="display-xl">Describe it once. Ship it to the edge.</h1>
+              <h1 className="display-xl max-w-5xl">Describe it once. Ship it to the edge.</h1>
               <p className="mt-6 max-w-[54ch] text-lg leading-relaxed text-[var(--muted-foreground)]">
-                Write what you want in plain language. You get real files you can read, a preview you
-                can click through, and a deployment into your own Cloudflare account. Static sites
-                and full edge apps, from the same sentence.
+                Real files you can read, a preview you can click, a deploy into your own Cloudflare
+                account.
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -86,6 +77,12 @@ export default function AboutPage() {
         </div>
       </section>
 
+      <section className="pb-16 md:pb-20">
+        <div className="mx-auto w-full max-w-[84rem] px-4 sm:px-6">
+          <Workflow />
+        </div>
+      </section>
+
       <section className="pb-20 md:pb-28">
         <div className="mx-auto w-full max-w-[84rem] px-4 sm:px-6">
           <h2 className="display-lg max-w-3xl">Not a black box. A directory you can open.</h2>
@@ -96,24 +93,6 @@ export default function AboutPage() {
           <div className="mt-9">
             <Bento />
           </div>
-        </div>
-      </section>
-
-      {/* A ruled strip, not another full-height chapter. */}
-      <section className="border-t border-[var(--rule)]">
-        <div className="mx-auto flex w-full max-w-[84rem] flex-wrap items-center justify-between gap-5 px-4 py-12 sm:px-6">
-          <div className="min-w-0">
-            <h2 className="display-md">Start with one sentence.</h2>
-            <p className="mt-2 max-w-[48ch] text-sm leading-relaxed text-[var(--muted-foreground)]">
-              You connect Cloudflare only when you are ready to publish.
-            </p>
-          </div>
-          <Button intent="primary" size="lg" asChild>
-            <Link href="/">
-              Open the factory
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
         </div>
       </section>
     </main>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@stackframe/stack'
 import { ArrowUp, Link2, TriangleAlert, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button, IconButton, Kbd, Segmented, Callout } from '@/components/kit'
+import { Button, IconButton, Kbd, Segmented, Callout, PlateFrame } from '@/components/kit'
 import { ModelPicker } from '@/components/shell/model-picker'
 import { getStoredSelectedModel, setStoredSelectedModel, withAIAdminHeaders } from '@/lib/ai-admin-client'
 import { isHttpUrl } from '@/lib/url-reference'
@@ -168,6 +168,7 @@ export function Composer({ className }: { className?: string }) {
         </Callout>
       )}
 
+      <PlateFrame>
       <div className="composer">
         <div className="flex items-center gap-2 border-b border-[var(--rule)] px-2.5 py-2">
           <Segmented
@@ -272,6 +273,7 @@ export function Composer({ className }: { className?: string }) {
           </div>
         </div>
       </div>
+      </PlateFrame>
 
       {starters && (
         <div className="mt-3 flex flex-wrap gap-1.5">

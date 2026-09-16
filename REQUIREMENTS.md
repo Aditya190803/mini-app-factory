@@ -20,7 +20,8 @@ These already existed before the redesign. Listed so the list is complete.
 | `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Stack Auth dashboard |
 | `STACK_SECRET_SERVER_KEY` | Stack Auth dashboard |
 | `OPENCODE_API_KEY` | opencode.ai/zen |
-| `OPENROUTER_API_KEY` | openrouter.ai/keys |
+| `AI_GATEWAY_API_KEY` | Your AI gateway |
+| `AI_GATEWAY_BASE_URL` | e.g. `https://ai-gateway.example/v1` |
 | `INTEGRATION_TOKEN_SECRET` | Generate one: `openssl rand -base64 48`. 32+ chars. |
 
 ### Schema push (new, and required)

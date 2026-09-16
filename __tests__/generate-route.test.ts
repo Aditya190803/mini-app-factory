@@ -32,13 +32,13 @@ vi.mock('@/lib/resolve-reference-url', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
+    adminConfig: { providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } }, providerOrder: ['gateway', 'opencode'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } },
-    providerOrder: ['opencode', 'openrouter'],
+    providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } },
+    providerOrder: ['gateway', 'opencode'],
   }),
 }));
 
@@ -156,7 +156,7 @@ describe('POST /api/generate', () => {
     expect(res.status).toBe(400);
   });
 
-  test('uses the stored OpenRouter free model instead of forcing OpenCode', async () => {
+  test('uses the stored gateway model instead of forcing OpenCode', async () => {
     const { runGeneration } = await import('@/app/api/generate/route');
     const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
     const session = (content: string) => ({
@@ -171,8 +171,8 @@ describe('POST /api/generate', () => {
       name: 'monkey-type',
       prompt: 'Build a typing test',
       status: 'error',
-      selectedModel: 'openrouter/free',
-      providerId: 'openrouter',
+      selectedModel: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     });
     aiMocks.createSession
       .mockResolvedValueOnce(session('Concise design spec'))
@@ -192,20 +192,20 @@ describe('POST /api/generate', () => {
 
     expect(aiMocks.createSession).toHaveBeenCalledTimes(2);
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      model: 'openrouter/free',
-      providerId: 'openrouter',
+      model: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     }));
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      model: 'openrouter/free',
-      providerId: 'openrouter',
+      model: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     }));
     expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({
-      selectedModel: 'openrouter/free',
-      providerId: 'openrouter',
+      selectedModel: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     }));
   });
 
-  test('ignores a paid OpenRouter selection so the default chain can run', async () => {
+  test('ignores an unknown provider selection so the default chain can run', async () => {
     const { runGeneration } = await import('@/app/api/generate/route');
     const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
     const session = (content: string) => ({

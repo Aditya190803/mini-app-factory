@@ -23,7 +23,7 @@ let cachedModels: Model[] | null = null
 let cacheTimestamp = 0
 const CACHE_TTL_MS = 5 * 60 * 1000
 
-const PROVIDER_ORDER = ['opencode', 'openrouter'] as const
+const PROVIDER_ORDER = ['gateway', 'opencode'] as const
 
 export function ModelPicker({
   selectedModelId,

@@ -26,16 +26,20 @@ type ProviderProbe = {
   buildHeaders: (apiKey: string) => Record<string, string>;
 };
 
-const providerProbe: Record<AIProviderId, ProviderProbe> = {
-  opencode: {
+function getProviderProbe(providerId: AIProviderId): ProviderProbe | null {
+  if (providerId === 'gateway') {
+    const baseURL = (process.env.AI_GATEWAY_BASE_URL || '').trim().replace(/\/$/, '');
+    if (!baseURL) return null;
+    return {
+      url: `${baseURL}/models`,
+      buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
+    };
+  }
+  return {
     url: 'https://opencode.ai/zen/v1/models',
     buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
-  },
-  openrouter: {
-    url: 'https://openrouter.ai/api/v1/models',
-    buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
-  },
-};
+  };
+}
 
 export async function POST(request: Request) {
   const user = await stackServerApp.getUser();
@@ -75,7 +79,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const probe = providerProbe[providerId];
+  const probe = getProviderProbe(providerId);
+  if (!probe) {
+    return NextResponse.json({ error: 'This provider is not configured on the server.' }, { status: 400 });
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
 

@@ -12,7 +12,7 @@ export const APP_FOOTER_GROUPS: ReadonlyArray<FooterGroup> = [
   {
     title: 'Product',
     links: [
-      { href: '/dashboard', label: 'Projects' },
+      { href: '/projects', label: 'Projects' },
       { href: '/docs', label: 'Documentation' },
       { href: '/settings', label: 'Settings' },
     ],

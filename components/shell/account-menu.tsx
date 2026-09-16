@@ -29,7 +29,7 @@ export function AccountMenu({
 
   if (!user) {
     return (
-      <Button intent="primary" size="sm" onClick={() => router.push('/handler/sign-in')}>
+      <Button size="sm" onClick={() => router.push('/handler/sign-in')}>
         Sign in
       </Button>
     )
@@ -58,7 +58,7 @@ export function AccountMenu({
       <MenuContent>
         <MenuLabel>{email}</MenuLabel>
         <MenuSeparator />
-        <MenuItem onSelect={() => router.push('/dashboard')}>
+        <MenuItem onSelect={() => router.push('/projects')}>
           <LayoutGrid />
           Projects
         </MenuItem>

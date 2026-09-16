@@ -31,6 +31,7 @@ import {
   Tooltip,
 } from '@/components/kit'
 import { TARGETS, type BuildTarget } from '@/lib/targets'
+import { ThemeToggle } from '@/components/shell/theme-toggle'
 import { cn } from '@/lib/utils'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'conflict'
@@ -177,6 +178,8 @@ export default function EditorHeader({
       <IconButton label="Redo" size="sm" disabled={!canRedo} onClick={onRedo} className="hidden lg:grid">
         <Redo2 className="size-4" />
       </IconButton>
+
+      <ThemeToggle className="hidden xl:inline-flex" />
 
       <Menu>
         <MenuTrigger asChild>

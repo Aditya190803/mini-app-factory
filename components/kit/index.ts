@@ -18,6 +18,7 @@ export {
   Toolbar,
   Spacer,
   PlateBackdrop,
+  PlateFrame,
 } from './surface'
 
 export { StatusDot, Badge, Callout, Skeleton, EmptyState, Progress } from './status'

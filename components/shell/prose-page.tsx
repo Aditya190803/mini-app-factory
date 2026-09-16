@@ -2,6 +2,8 @@ import * as React from 'react'
 import Link from 'next/link'
 import { Wordmark } from '@/components/brand/mark'
 import { Rule } from '@/components/kit'
+import { ThemeToggle } from '@/components/shell/theme-toggle'
+import { AccountMenu } from '@/components/shell/account-menu'
 
 /**
  * The document shell for legal and reference pages.
@@ -34,12 +36,22 @@ export function ProsePage({
           >
             <Wordmark />
           </Link>
-          <Link
-            href="/dashboard"
-            className="rounded-md px-2.5 py-1.5 text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            Projects
-          </Link>
+          <nav aria-label="Main" className="flex items-center gap-1">
+            <Link
+              href="/docs"
+              className="rounded-md px-2.5 py-1.5 text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+            >
+              Docs
+            </Link>
+            <Link
+              href="/projects"
+              className="rounded-md px-2.5 py-1.5 text-sm text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+            >
+              Projects
+            </Link>
+            <ThemeToggle className="mx-1 hidden sm:inline-flex" />
+            <AccountMenu />
+          </nav>
         </div>
       </header>
 

@@ -21,13 +21,13 @@ vi.mock('@/lib/ai-client', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
+    adminConfig: { providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } }, providerOrder: ['gateway', 'opencode'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } },
-    providerOrder: ['opencode', 'openrouter'],
+    providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } },
+    providerOrder: ['gateway', 'opencode'],
   }),
 }));
 
@@ -230,16 +230,16 @@ describe('POST /api/transform', () => {
       body: JSON.stringify({
         projectName: 'demo-project',
         prompt: 'Update title',
-        modelId: 'openrouter/free',
-        providerId: 'openrouter',
+        modelId: 'claude-sonnet-4-6',
+        providerId: 'gateway',
       }),
     });
 
     const res = await POST(req);
     await consumeTransformStream(res);
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'openrouter/free',
-      providerId: 'openrouter',
+      model: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     }));
   });
 

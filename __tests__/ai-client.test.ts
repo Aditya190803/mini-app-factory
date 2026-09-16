@@ -5,10 +5,10 @@ describe('ai client', () => {
   test('getAIClient throws when no provider keys are set', async () => {
     const saved = {
       OPENCODE_API_KEY: process.env.OPENCODE_API_KEY,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
     };
     delete process.env.OPENCODE_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.AI_GATEWAY_API_KEY;
     try {
       await expect(getAIClient()).rejects.toThrow(/at least one AI provider/i);
     } finally {

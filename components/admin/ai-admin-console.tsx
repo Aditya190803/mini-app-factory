@@ -7,13 +7,10 @@ import { TopBar } from '@/components/shell/top-bar';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
 import { Shield, Settings2, ArrowUp, ArrowDown } from 'lucide-react';
-import { AI_PROVIDER_IDS, type AIProviderId } from '@/lib/ai-admin-config';
+import { AI_PROVIDER_IDS, PROVIDER_LABELS, type AIProviderId, emptyProviderRecord } from '@/lib/ai-admin-config';
 import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
-const providerLabel: Record<AIProviderId, string> = {
-  opencode: 'OpenCode Zen',
-  openrouter: 'OpenRouter',
-};
+const providerLabel = PROVIDER_LABELS;
 
 type ProviderCatalog = {
   providerId: AIProviderId;
@@ -38,10 +35,7 @@ export default function AIAdminConsole() {
     createdAt: number;
   }>>([]);
   const [aiConfig, setAiConfig] = useState(() => getStoredAIAdminConfig());
-  const [newModelInput, setNewModelInput] = useState<Record<AIProviderId, string>>({
-    opencode: '',
-    openrouter: '',
-  });
+  const [newModelInput, setNewModelInput] = useState<Record<AIProviderId, string>>(() => emptyProviderRecord(''));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const orderedProviders = aiConfig.providerOrder.length > 0
@@ -177,7 +171,7 @@ export default function AIAdminConsole() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar crumbs={[{ label: 'Settings', href: '/settings' }, { label: 'AI console' }]}>
+      <TopBar crumbs={[{ label: 'Settings', href: '/settings' }]}>
         <ThemeToggle className="mr-1 hidden sm:inline-flex" />
         <AccountMenu isAdmin />
       </TopBar>
@@ -291,7 +285,7 @@ export default function AIAdminConsole() {
                       </div>
                     </div>
 
-                    {providerId === 'openrouter' && (
+                    {providerId === 'gateway' && (
                     <div className="space-y-2">
                       <div className="text-xs font-mono uppercase text-[var(--muted-foreground)]">Custom models</div>
                       <div className="flex gap-2">
@@ -299,7 +293,7 @@ export default function AIAdminConsole() {
                           value={newModelInput[providerId]}
                           onChange={(event) => setNewModelInput((prev) => ({ ...prev, [providerId]: event.target.value }))}
                           className="text-xs font-mono"
-                          placeholder="openrouter/free or provider/model:free"
+                          placeholder="claude-sonnet-4-6"
                         />
                         <Button
                           className="text-xs font-mono uppercase border-[var(--rule)]"
@@ -310,7 +304,7 @@ export default function AIAdminConsole() {
                         </Button>
                       </div>
                       <div className="text-xs font-mono text-[var(--muted-foreground)]">
-                        OpenRouter is limited to free models (`openrouter/free` or ids ending in `:free`).
+                        Any model id from the gateway catalog.
                       </div>
 
                       {provider.customModels.length > 0 ? (
@@ -328,10 +322,6 @@ export default function AIAdminConsole() {
                       ) : (
                         <div className="text-xs font-mono text-[var(--muted-foreground)]">No custom models configured.</div>
                       )}
-
-                      <div className="text-xs font-mono text-[var(--muted-foreground)]">
-                        The selector lists every free model from OpenRouter's live catalog.
-                      </div>
                     </div>
                     )}
                   </div>

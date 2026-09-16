@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       .slice(0, 80_000);
     const client = await getAIClient({ adminConfig, byokConfig: persisted.byokConfig });
     const session = await client.createSession({
-      model: parsed.data.modelId || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free',
+      model: parsed.data.modelId || process.env.AI_GATEWAY_MODEL || process.env.OPENCODE_MODEL || 'claude-sonnet-4-6',
       providerId: isAIProviderId(parsed.data.providerId) ? parsed.data.providerId : undefined,
       systemMessage: { content: 'You are discussing an existing generated application. Answer clearly using the supplied project context. Do not claim to edit files, run commands, or deploy anything. Mention exact files when useful.' },
     });

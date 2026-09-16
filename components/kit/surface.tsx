@@ -160,6 +160,39 @@ export function Spacer() {
 }
 
 /**
+ * Registration corners around a region. Marks a plate without drawing a box.
+ */
+export function PlateFrame({
+  className,
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={cn('relative', className)}>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -left-px -top-px size-2.5 border-l border-t border-[var(--rule-strong)]"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-px -top-px size-2.5 border-r border-t border-[var(--rule-strong)]"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-px -left-px size-2.5 border-b border-l border-[var(--rule-strong)]"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -bottom-px -right-px size-2.5 border-b border-r border-[var(--rule-strong)]"
+      />
+      {children}
+    </div>
+  )
+}
+
+/**
  * The drafting-plate backdrop. A masked grid and one breath of the accent at
  * the top edge. Deliberately restrained: it should read as paper, not as a
  * hero graphic, so it can sit under both marketing and product surfaces.
