@@ -1,20 +1,76 @@
-'use client';
+import type { Metadata } from 'next'
+import { ProsePage, ProseSection } from '@/components/shell/prose-page'
+
+export const metadata: Metadata = {
+  title: 'Support',
+  description: 'How to report a problem with Mini App Factory and what to include.',
+}
+
+const TOC = [
+  { id: 'report', label: 'Reporting a problem' },
+  { id: 'include', label: 'What to include' },
+  { id: 'first', label: 'Worth checking first' },
+] as const
 
 export default function SupportPage() {
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-4xl mx-auto px-6 py-12 space-y-6">
-        <h1 className="text-2xl font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>
-          Support
-        </h1>
-        <p className="text-sm font-sans text-[var(--secondary-text)]">
-          Need help? Use the project repository to report issues and request help.
+    <ProsePage
+      title="Support"
+      subtitle="Issues go through the repository, where they stay visible and can be linked to a fix."
+      toc={TOC}
+    >
+      <ProseSection id="report" title="Reporting a problem">
+        <p>
+          Open an issue at{' '}
+          <a
+            href="https://github.com/Aditya190803/mini-app-factory/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            github.com/Aditya190803/mini-app-factory
+          </a>
+          .
         </p>
-        <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-2">
-          <p>GitHub: `https://github.com/Aditya190803/mini-app-factory`</p>
-          <p>Include your project name, a short description of the issue, and steps to reproduce.</p>
-        </div>
-      </div>
-    </div>
-  );
+      </ProseSection>
+
+      <ProseSection id="include" title="What to include">
+        <p>
+          The <strong>project name</strong>, which is the slug in the editor URL. It is the fastest
+          way to find what happened.
+        </p>
+        <p>
+          Whether the project is a <strong>static site or an edge app</strong>, shown as a badge next
+          to the name in the editor.
+        </p>
+        <p>
+          What you expected and what happened instead, and the steps that get there from a fresh
+          page load.
+        </p>
+        <p>
+          The exact error text if there was one. A deploy failure shows its message in the deploy
+          dialog rather than only in the console.
+        </p>
+        <p>
+          Never paste an API token, an OAuth token, or the contents of a secret. None of them are
+          needed to reproduce anything.
+        </p>
+      </ProseSection>
+
+      <ProseSection id="first" title="Worth checking first">
+        <p>
+          <strong>A deploy is refused.</strong> Check that Cloudflare is still connected in Settings.
+          Authorizations expire and are revocable from the Cloudflare side.
+        </p>
+        <p>
+          <strong>A migration is rejected.</strong> Migrations that already ran cannot be edited, and
+          destructive ones are refused on purpose. Add a new migration instead.
+        </p>
+        <p>
+          <strong>Changes will not save.</strong> If the editor says the project was saved elsewhere,
+          someone else has written to it. The bar at the top offers both recovery paths, and your
+          edits are still in the page until you pick one.
+        </p>
+      </ProseSection>
+    </ProsePage>
+  )
 }

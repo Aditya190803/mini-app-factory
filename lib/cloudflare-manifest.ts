@@ -114,7 +114,7 @@ const cloudflareResourceStateSchema = z.object({
 
 export type CloudflareResourceState = z.infer<typeof cloudflareResourceStateSchema>;
 
-export function emptyCloudflareResourceState(): CloudflareResourceState {
+function emptyCloudflareResourceState(): CloudflareResourceState {
   return { version: 1 };
 }
 
@@ -135,7 +135,7 @@ function migrationPath(value: string) {
 }
 
 /** JSONC parser for generated Wrangler files. Handles comments and trailing commas without a dependency. */
-export function parseJsonc(source: string): unknown {
+function parseJsonc(source: string): unknown {
   let output = '';
   let inString = false;
   let escaped = false;

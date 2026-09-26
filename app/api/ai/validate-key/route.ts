@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { isAIProviderId, type AIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 
 /**
  * Either validate a key the user just typed (`apiKey`), or validate the one already stored for
@@ -26,16 +26,20 @@ type ProviderProbe = {
   buildHeaders: (apiKey: string) => Record<string, string>;
 };
 
-const providerProbe: Record<AIProviderId, ProviderProbe> = {
-  opencode: {
+function getProviderProbe(providerId: AIProviderId): ProviderProbe | null {
+  if (providerId === 'gateway') {
+    const baseURL = (process.env.AI_GATEWAY_BASE_URL || '').trim().replace(/\/$/, '');
+    if (!baseURL) return null;
+    return {
+      url: `${baseURL}/models`,
+      buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
+    };
+  }
+  return {
     url: 'https://opencode.ai/zen/v1/models',
     buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
-  },
-  openrouter: {
-    url: 'https://openrouter.ai/api/v1/models',
-    buildHeaders: (apiKey) => ({ Authorization: `Bearer ${apiKey}` }),
-  },
-};
+  };
+}
 
 export async function POST(request: Request) {
   const user = await stackServerApp.getUser();
@@ -45,7 +49,7 @@ export async function POST(request: Request) {
 
   // Each call makes an outbound request to a third-party provider, so this needs a limit of its
   // own regardless of what the caller is validating.
-  const limit = checkRateLimit({ key: `validate-key:${user.id}`, limit: 10, windowMs: 60_000 });
+  const limit = await consumeRateLimit('validate-key', user.id);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many key checks. Try again shortly.' },
@@ -75,7 +79,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  const probe = providerProbe[providerId];
+  const probe = getProviderProbe(providerId);
+  if (!probe) {
+    return NextResponse.json({ error: 'This provider is not configured on the server.' }, { status: 400 });
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
 

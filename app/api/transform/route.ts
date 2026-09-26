@@ -3,7 +3,7 @@ import { stackServerApp } from '@/stack/server';
 import { claimProjectOrphan, getProject, getFiles } from '@/lib/projects';
 import { canUserEditProject, isOrphanProject } from '@/lib/project-access';
 import { getServerEnv } from '@/lib/env';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -24,7 +24,6 @@ const transformSchema = z
     html: z.string().max(2_000_000).optional(),
     prompt: z.string().trim().max(80_000).optional(),
     activeFile: z.string().trim().max(500).optional(),
-    polishDescription: z.string().trim().max(8_000).optional(),
     modelId: z.string().trim().max(200).optional(),
     providerId: z.string().trim().max(50).optional(),
   })
@@ -67,7 +66,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
     }
 
-    const rateLimit = checkRateLimit({ key: `${user.id}:transform`, limit: 20, windowMs: 60_000 });
+    const rateLimit = await consumeRateLimit('transform', user.id);
     if (!rateLimit.allowed) {
       const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
       return Response.json(
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { projectName, html, prompt, activeFile, polishDescription, modelId, providerId } = parsed.data;
+    const { projectName, html, prompt, activeFile, modelId, providerId } = parsed.data;
 
     const project = projectName ? await getProject(projectName) : null;
     if (projectName && !project) {
@@ -123,7 +122,6 @@ export async function POST(request: Request) {
       prompt,
       projectInstructions: project?.projectInstructions,
       activeFile,
-      polishDescription,
       modelId,
       providerId: isAIProviderId(providerId) ? providerId : undefined,
       finalFiles,

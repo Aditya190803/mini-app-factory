@@ -2,14 +2,11 @@ import {
   AI_ADMIN_CONFIG_STORAGE_KEY,
   AI_BYOK_STORAGE_KEY,
   AI_SELECTED_MODEL_STORAGE_KEY,
-  AI_USER_CUSTOM_MODELS_STORAGE_KEY,
   DEFAULT_AI_ADMIN_CONFIG,
   type AIAdminConfig,
-  type ProviderCustomModelsConfig,
   type StoredSelectedModel,
   resolveSelectedAIModel,
   sanitizeAIAdminConfig,
-  sanitizeCustomModelsConfig,
 } from '@/lib/ai-admin-config';
 
 const isBrowser = () => typeof window !== 'undefined';
@@ -48,24 +45,6 @@ export function purgeLegacyStoredBYOK(): void {
   } catch {
     // Private-mode or storage-disabled browsers: nothing to purge.
   }
-}
-
-export function getStoredCustomModelsConfig(): ProviderCustomModelsConfig {
-  if (!isBrowser()) return {};
-  const raw = window.localStorage.getItem(AI_USER_CUSTOM_MODELS_STORAGE_KEY);
-  if (!raw) return {};
-
-  try {
-    const parsed = JSON.parse(raw);
-    return sanitizeCustomModelsConfig(parsed);
-  } catch {
-    return {};
-  }
-}
-
-export function setStoredCustomModelsConfig(config: ProviderCustomModelsConfig): void {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(AI_USER_CUSTOM_MODELS_STORAGE_KEY, JSON.stringify(sanitizeCustomModelsConfig(config)));
 }
 
 const EMPTY_SELECTED_MODEL: StoredSelectedModel = { id: '', providerId: '' };

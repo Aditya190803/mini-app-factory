@@ -17,4 +17,12 @@ describe('consumeTransformStream', () => {
     const res = new Response(body, { status: 200 });
     await expect(consumeTransformStream(res)).rejects.toMatchObject({ message: 'nope', code: 'X' });
   });
+
+  test('throws a recoverable abort when the stream ends cleanly without a result', async () => {
+    const res = new Response('data: {"status":"generating","message":"Waiting"}\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+    await expect(consumeTransformStream(res)).rejects.toMatchObject({ code: 'ABORTED' });
+  });
 });

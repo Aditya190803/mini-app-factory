@@ -38,7 +38,7 @@ function normalizeToolPath(input: string): string | null {
   return normalized;
 }
 
-export function validateToolCall(toolName: string, args: Record<string, unknown>): ToolValidationResult {
+function validateToolCall(toolName: string, args: Record<string, unknown>): ToolValidationResult {
   if (!ALLOWED_TOOLS.has(toolName)) {
     return { success: false, message: `Tool not allowed: ${toolName}` };
   }

@@ -21,13 +21,13 @@ vi.mock('@/lib/ai-client', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   getPersistedAISettings: vi.fn().mockResolvedValue({
-    adminConfig: { providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } }, providerOrder: ['opencode', 'openrouter'] },
+    adminConfig: { providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } }, providerOrder: ['gateway', 'opencode'] },
     byokConfig: {},
     customModels: {},
   }),
   getGlobalAdminModelConfig: vi.fn().mockResolvedValue({
-    providers: { opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] }, openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] } },
-    providerOrder: ['opencode', 'openrouter'],
+    providers: { gateway: { enabled: true, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] }, opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] } },
+    providerOrder: ['gateway', 'opencode'],
   }),
 }));
 
@@ -43,6 +43,12 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+const baseProjectFiles = [
+  { path: 'index.html', content: '<html><head><link rel="stylesheet" href="styles.css"></head><body><h1>Old</h1><script src="script.js"></script></body></html>', language: 'html' as const, fileType: 'page' as const },
+  { path: 'styles.css', content: 'body { color: #111; }', language: 'css' as const, fileType: 'style' as const },
+  { path: 'script.js', content: 'console.log("ok")', language: 'javascript' as const, fileType: 'script' as const },
+];
 
 describe('POST /api/transform', () => {
   test('returns 401 when unauthenticated', async () => {
@@ -109,9 +115,7 @@ describe('POST /api/transform', () => {
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(orphan);
     (claimProjectOrphan as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       createSession: vi.fn().mockResolvedValue({
@@ -163,9 +167,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       createSession: vi.fn().mockResolvedValue({
@@ -218,9 +220,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ createSession });
 
@@ -230,16 +230,16 @@ describe('POST /api/transform', () => {
       body: JSON.stringify({
         projectName: 'demo-project',
         prompt: 'Update title',
-        modelId: 'openrouter/free',
-        providerId: 'openrouter',
+        modelId: 'claude-sonnet-4-6',
+        providerId: 'gateway',
       }),
     });
 
     const res = await POST(req);
     await consumeTransformStream(res);
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'openrouter/free',
-      providerId: 'openrouter',
+      model: 'claude-sonnet-4-6',
+      providerId: 'gateway',
     }));
   });
 
@@ -254,9 +254,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
 
     const sendAndWait = vi

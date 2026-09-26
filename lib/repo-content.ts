@@ -1,7 +1,41 @@
 import { getAIClient } from "@/lib/ai-client";
-import { buildReadmePrompt } from "@/lib/site-builder";
 
 const FALLBACK_ATTRIBUTION = "Made by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)";
+
+function buildReadmePrompt(projectName: string, description: string, files: string[]): string {
+  // Callers only have paths here, so this mirrors the path rules in `inferTarget`.
+  const isEdgeApp = files.some(
+    (f) =>
+      f === "_worker.js" ||
+      f.startsWith("workers/") ||
+      f.startsWith("migrations/") ||
+      f === "cloudflare.manifest.json"
+  );
+  const runInstructions = isEdgeApp
+    ? "How to run it: this is a Cloudflare edge app (a Worker plus declared bindings), so explain running it locally with `npx wrangler pages dev .` and deploying with `npx wrangler pages deploy .`, and list the bindings from cloudflare.manifest.json that must exist first."
+    : "How to preview it: open index.html in a browser, or deploy the folder as-is to Cloudflare Pages with `npx wrangler pages deploy .`.";
+
+  return `Create a high-quality, professional README.md file for the project: "${projectName}".
+
+Context:
+This project was generated based on the following prompt: "${description}"
+
+Included files:
+${files.map((f) => `- ${f}`).join("\n")}
+
+The README should include:
+1. A clear project title.
+2. A compelling project description based on the prompt.
+3. Features list (infer from the prompt and files).
+4. Project structure overview.
+5. ${runInstructions}
+
+Final line requirement:
+The very last line of the README must be exactly:
+"${FALLBACK_ATTRIBUTION}", preceded by a horizontal rule.
+
+Output only the Markdown content for the README.md file. No preamble or conversational filler.`;
+}
 
 function cleanRepoDescription(text: string, maxLength = 160): string {
   const cleaned = text

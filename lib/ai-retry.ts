@@ -6,7 +6,7 @@ type RetryOptions = {
   signal?: AbortSignal;
 };
 
-export function isTransientError(error: unknown): boolean {
+function isTransientError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const lowered = message.toLowerCase();
   return (

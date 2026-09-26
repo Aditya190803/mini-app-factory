@@ -6,6 +6,7 @@ import { getAIClient } from '@/lib/ai-client';
 import { getGlobalAdminModelConfig, getPersistedAISettings } from '@/lib/ai-settings-store';
 import { appendProjectMessage, appendProjectRunEvent, createProjectRun, finishProjectRun } from '@/lib/project-runs';
 import { isAIProviderId } from '@/lib/ai-admin-config';
+import { consumeRateLimit, retryAfterSeconds } from '@/lib/rate-limit';
 
 const schema = z.object({
   projectName: z.string().trim().min(1).max(120),
@@ -17,6 +18,14 @@ const schema = z.object({
 export async function POST(request: Request) {
   const user = await stackServerApp.getUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const limit = await consumeRateLimit('discuss', user.id);
+  if (!limit.allowed) {
+    const retryAfter = retryAfterSeconds(limit);
+    return Response.json(
+      { error: 'Rate limit exceeded. Please wait before retrying.', code: 'RATE_LIMITED', retryAfter },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+    );
+  }
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
   const project = await getProject(parsed.data.projectName);
@@ -35,13 +44,14 @@ export async function POST(request: Request) {
     ]);
     const manifest = files.map((file) => `${file.path} (${file.fileType})`).join('\n');
     const focused = files
-      .filter((file) => ['wrangler.jsonc', '_worker.js', 'index.html', 'styles.css', 'script.js'].includes(file.path))
+      .filter((file) => ['index.html', 'styles.css', 'app.js', 'script.js', '_worker.js', 'cloudflare.manifest.json', 'wrangler.jsonc'].includes(file.path))
       .map((file) => `\n--- ${file.path} ---\n${file.content}`)
       .join('')
       .slice(0, 80_000);
     const client = await getAIClient({ adminConfig, byokConfig: persisted.byokConfig });
     const session = await client.createSession({
-      model: parsed.data.modelId || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free',
+      // Left unset, the client falls back to the admin-configured default.
+      model: parsed.data.modelId || undefined,
       providerId: isAIProviderId(parsed.data.providerId) ? parsed.data.providerId : undefined,
       systemMessage: { content: 'You are discussing an existing generated application. Answer clearly using the supplied project context. Do not claim to edit files, run commands, or deploy anything. Mention exact files when useful.' },
     });

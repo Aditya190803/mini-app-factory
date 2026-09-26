@@ -1,485 +1,236 @@
-'use client';
+import type { Metadata } from 'next'
+import { ProsePage, ProseSection } from '@/components/shell/prose-page'
+import { SpecTable } from '@/components/kit'
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  Search, 
-  Menu, 
-  ArrowLeft, 
-  Zap, 
-  Eye, 
-  Copy, 
-  AlertTriangle, 
-  Check
-} from 'lucide-react';
-import Link from 'next/link';
-import { FactoryIcon } from "@/components/ui/factory-icon";
+export const metadata: Metadata = {
+  title: 'Documentation',
+  description:
+    'How a project is built, what a static site and an edge app each contain, and how deploying to Cloudflare works.',
+}
 
-const SidebarItem = ({ title, active, onClick }: { title: string, active?: boolean, onClick?: () => void }) => (
-  <li>
-    <button 
-      onClick={onClick}
-      className={`sidebar-item w-full text-left px-3 py-2 text-xs font-medium rounded-md ${active ? 'active' : ''}`}
-    >
-      {title}
-    </button>
-  </li>
-);
-
-const CodeBlock = ({ filename, code }: { filename: string, code: string }) => {
-  const [copied, setCopied] = useState(false);
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="code-block-container group my-6 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-2">
-        <span className="tech-label">{filename}</span>
-        <button
-          onClick={copyToClipboard}
-          aria-label={copied ? 'Copied to clipboard' : `Copy ${filename}`}
-          className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-      <pre className="overflow-x-auto bg-muted/30 p-6 font-mono text-sm text-foreground">
-        <code>{code}</code>
-      </pre>
-    </div>
-  );
-};
+const TOC = [
+  { id: 'start', label: 'Getting started' },
+  { id: 'targets', label: 'Static sites and edge apps' },
+  { id: 'files', label: 'What is in a project' },
+  { id: 'manifest', label: 'The manifest' },
+  { id: 'migrations', label: 'Migrations' },
+  { id: 'editing', label: 'Editing' },
+  { id: 'deploy', label: 'Deploying' },
+  { id: 'preview', label: 'Previews' },
+  { id: 'export', label: 'Export and portability' },
+  { id: 'models', label: 'Models and keys' },
+  { id: 'shortcuts', label: 'Shortcuts' },
+] as const
 
 export default function DocsPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeId, setActiveId] = useState('introduction');
-
-  const sidebarSections = useMemo(() => ([
-    {
-      id: '01',
-      title: 'Getting started',
-      items: [
-        { id: 'introduction', label: 'Introduction' },
-        { id: 'quick-start', label: 'Quick Start Guide' },
-        { id: 'architecture', label: 'Architecture Specs' }
-      ]
-    },
-    {
-      id: '02',
-      title: 'Command reference',
-      items: [
-        { id: 'cmd-generate', label: '/generate' },
-        { id: 'cmd-transform', label: '/transform' },
-        { id: 'cmd-polish', label: '/polish' },
-        { id: 'tool-schema', label: 'Tool Call Schema' }
-      ]
-    },
-    {
-      id: '03',
-      title: 'Build and deploy',
-      items: [
-        { id: 'model-selection', label: 'Model Selection' },
-        { id: 'editor-preview', label: 'Editor & Preview' },
-        { id: 'publish-export', label: 'Export' },
-        { id: 'deploy', label: 'Deploy' },
-        { id: 'project-settings', label: 'Project Settings' }
-      ]
-    }
-  ]), []);
-
-  const filteredSections = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return sidebarSections;
-    return sidebarSections
-      .map(section => ({
-        ...section,
-        items: section.items.filter(item => item.label.toLowerCase().includes(q))
-      }))
-      .filter(section => section.items.length > 0);
-  }, [searchQuery, sidebarSections]);
-
-  const visibleItemIds = useMemo(() => {
-    return new Set(filteredSections.flatMap(section => section.items.map(item => item.id)));
-  }, [filteredSections]);
-
-  const scrollToId = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.history.replaceState(null, '', `#${id}`);
-      setActiveId(id);
-      setIsSidebarOpen(false);
-    }
-  };
-
-  useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    if (hash) {
-      setActiveId(hash);
-    }
-  }, []);
-
-  useEffect(() => {
-    const ids = sidebarSections.flatMap(section => section.items.map(item => item.id));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter(entry => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible?.target?.id) {
-          setActiveId(visible.target.id);
-        }
-      },
-      { rootMargin: '-20% 0px -60% 0px', threshold: [0, 0.1, 0.5, 1] }
-    );
-
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [sidebarSections]);
-
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="px-6 py-3 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                aria-label="Toggle docs navigation"
-                className="inline-flex items-center rounded-lg p-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring sm:hidden"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-              <Link href="/" className="flex items-center gap-2.5 rounded-md">
-                <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-                  <FactoryIcon size={18} />
-                </span>
-                <span className="text-[15px] font-semibold tracking-tight">Mini App Factory</span>
-                <span className="tech-label hidden opacity-60 sm:inline">Docs</span>
-              </Link>
-            </div>
-            <div className="flex items-center gap-6">
-              <Link href="/" className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-                <ArrowLeft className="size-3.5" />
-                Back to home
-              </Link>
-            </div>
-          </div>
+    <ProsePage
+      title="Documentation"
+      subtitle="What the factory produces, where it runs, and what it will not do without asking you first."
+      toc={TOC}
+    >
+      <ProseSection id="start" title="Getting started">
+        <p>
+          Describe the application on the home page and press Build. You land in the editor with the
+          generated files, a preview, and a conversation you can keep going in.
+        </p>
+        <p>
+          Signing in is only needed to keep a project. Deploying additionally needs a connected
+          Cloudflare account.
+        </p>
+      </ProseSection>
+
+      <ProseSection id="targets" title="Static sites and edge apps">
+        <p>Every project is one of two shapes, and the shape is read off the files.</p>
+        <div className="not-prose my-5">
+          <SpecTable
+            caption="Build targets"
+            rows={[
+              {
+                key: 'static-what',
+                label: 'Static site',
+                value: 'Pages, styles, and browser scripts. No server, no database.',
+              },
+              {
+                key: 'static-runs',
+                label: 'Runs on',
+                value: 'Cloudflare Pages, as a plain asset bundle',
+              },
+              {
+                key: 'static-creates',
+                label: 'Creates',
+                value: 'Nothing billable',
+                muted: true,
+              },
+              {
+                key: 'edge-what',
+                label: 'Edge app',
+                value: 'The same assets plus a Worker and, usually, stored data.',
+              },
+              {
+                key: 'edge-runs',
+                label: 'Runs on',
+                value: 'Cloudflare Pages and Workers, with D1, KV, R2, Queues as needed',
+              },
+              {
+                key: 'edge-creates',
+                label: 'Creates',
+                value: 'The Worker and the bindings you approve. Nothing before that.',
+              },
+            ]}
+          />
         </div>
-      </nav>
+        <p>
+          A project becomes an edge app the moment it contains a <code>_worker.js</code>, a SQL
+          migration, or a Cloudflare config file. You do not set a mode, and there is no mode to
+          forget to change. The badge next to the project name in the editor shows which one you
+          have.
+        </p>
+        <p>
+          On the home page you can steer this: pick <strong>Static site</strong> to keep it to
+          assets, pick <strong>Edge app</strong> to ask for a backend, or leave it on{' '}
+          <strong>Decide for me</strong> and let the description settle it.
+        </p>
+      </ProseSection>
 
-      <aside
-        className={`fixed left-0 top-0 z-40 h-screen w-72 border-r border-border bg-background pt-20 transition-transform sm:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-      >
-        <div className="h-full px-4 pb-4 overflow-y-auto custom-scrollbar">
-          <div className="relative mb-6">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search docs…"
-              aria-label="Search docs"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-background pl-10 pr-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25"
-            />
-          </div>
-
-          <ul className="space-y-6">
-            {filteredSections.map((section) => (
-              <li key={section.id}>
-                <span className="tech-label mb-3 block px-3">{section.id} · {section.title}</span>
-                <ul className="space-y-1">
-                  {section.items.map((item) => (
-                    <SidebarItem 
-                      key={item.id} 
-                      title={item.label} 
-                      active={activeId === item.id} 
-                      onClick={() => scrollToId(item.id)}
-                    />
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
+      <ProseSection id="files" title="What is in a project">
+        <div className="not-prose my-5">
+          <SpecTable
+            dense
+            caption="File kinds"
+            rows={[
+              { key: 'page', label: <code>*.html</code>, value: 'A route. index.html is the home page.', mono: true },
+              { key: 'partial', label: 'partials', value: 'Reusable markup, included with an include comment.' },
+              { key: 'style', label: <code>*.css</code>, value: 'Stylesheets. Editing one hot-swaps in the preview.', mono: true },
+              { key: 'script', label: <code>*.js</code>, value: 'Browser JavaScript.', mono: true },
+              { key: 'worker', label: <code>_worker.js</code>, value: 'The Worker entry point. Edge apps only.', mono: true },
+              { key: 'migration', label: <code>migrations/*.sql</code>, value: 'Ordered D1 schema changes.', mono: true },
+              { key: 'config', label: <code>cloudflare.manifest.json</code>, value: 'Declared bindings and runtime settings.', mono: true },
+            ]}
+          />
         </div>
-      </aside>
+      </ProseSection>
 
-      {/* Main Content */}
-      <div className="p-4 sm:ml-72 pt-24 pb-20">
-        <div className="max-w-3xl mx-auto px-4 lg:px-8">
-          <motion.article 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            <div className="mb-10">
-              <span className="tech-label text-primary">Documentation</span>
-              <h1 className="mb-6 mt-2 text-4xl font-semibold tracking-tight">System documentation</h1>
-              <p className="text-lg leading-relaxed text-muted-foreground">
-                This documentation reflects what is currently implemented and working in Mini App Factory.
-              </p>
-            </div>
+      <ProseSection id="manifest" title="The manifest">
+        <p>
+          An edge app declares what it needs in <code>cloudflare.manifest.json</code>, in the repo,
+          in a file you can read and edit. It lists each binding, the name of the resource behind
+          it, and the runtime settings for the Worker.
+        </p>
+        <p>
+          Nothing in it exists until a deploy runs and you approve the plan. The plan shows every
+          entry labelled <strong>create</strong> or <strong>reuse</strong>, and until you approve it,
+          nothing is created and nothing bills.
+        </p>
+        <p>
+          Bindings available: D1 for SQL, KV for cached reads, R2 for files, Queues for deferred
+          work, Vectorize for embeddings, Durable Objects for coordination, plus Analytics Engine,
+          service bindings, Workers AI, and Browser Rendering.
+        </p>
+      </ProseSection>
 
-            <div className="my-12 h-px w-full bg-border" />
+      <ProseSection id="migrations" title="Migrations">
+        <p>
+          Schema changes are numbered SQL files under <code>migrations/</code>, applied in order on
+          deploy.
+        </p>
+        <p>
+          Two rules are enforced rather than suggested. A migration that has already been applied
+          cannot be edited afterwards; the deploy is refused and you are asked to add a new one
+          instead. And a migration containing a destructive statement, such as dropping a table or
+          truncating one, is refused outright and needs a person to handle it deliberately.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('introduction') && (
-              <section id="introduction" className="space-y-6 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">01</span>
-                  Introduction
-                </h2>
-                <p className="text-muted-foreground">
-                  Mini App Factory generates multi-file static websites from a single prompt, then lets you iterate with AI transforms, manual code edits, and a live preview.
-                </p>
-                <div className="grid gap-4">
-                  <div className="p-6 technical-border rounded-xl bg-card space-y-4">
-                    <div className="flex items-start gap-4">
-                      <Zap className="w-5 h-5 text-primary shrink-0 mt-1" />
-                      <div>
-                        <h4 className="text-sm font-semibold">Generate</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Create a project from a prompt. The system outputs multiple HTML files with shared partials when appropriate.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-6 technical-border rounded-xl bg-card space-y-4">
-                    <div className="flex items-start gap-4">
-                      <Eye className="w-5 h-5 text-primary shrink-0 mt-1" />
-                      <div>
-                        <h4 className="text-sm font-semibold">Iterate</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          Use transform prompts, targeted element edits, and polish passes to refine the output.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
+      <ProseSection id="editing" title="Editing">
+        <p>
+          The conversation has two modes. <strong>Build</strong> writes files, and every build turn
+          lists the files it touched and is saved as a restorable version.{' '}
+          <strong>Discuss</strong> answers questions and never writes anything.
+        </p>
+        <p>
+          The crosshair in the preview lets you click an element and either jump to its line in the
+          code or attach it to your next request, so &ldquo;make this smaller&rdquo; has something
+          specific to refer to.
+        </p>
+        <p>
+          You can edit any file by hand. Manual edits and generated edits share the same history and
+          the same undo.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('quick-start') && (
-              <section id="quick-start" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">02</span>
-                  Quick Start Guide
-                </h2>
-                <p className="text-muted-foreground">
-                  Create a project, wait for the generation pipeline, then iterate in the editor.
-                </p>
-                <CodeBlock 
-                  filename="Example_Prompt.txt"
-                  code={`A minimalist dashboard for a satellite telemetry system.
-Use a dark palette with neon cyan accents.
-Include a real-time clock and status indicators in the header.
-Add data visualization cards in the main grid.`}
-                />
-                <div className="p-6 border-l-2 border-primary bg-primary/5 rounded-r-xl">
-                  <div className="flex items-center gap-3 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-primary" />
-                    <span className="tech-label text-primary">Tip</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Include layout, tone, and content constraints to get consistent structure and better first-pass output.
-                  </p>
-                </div>
-              </section>
-            )}
+      <ProseSection id="deploy" title="Deploying">
+        <p>
+          <strong>Cloudflare</strong> is the default and the only surface that hosts both targets. A
+          static site becomes a Pages project. An edge app becomes a Pages project with a Worker in
+          front of it and the approved bindings attached. It goes into your own Cloudflare account.
+        </p>
+        <p>
+          <strong>Factory preview</strong> serves a static project from this app at a{' '}
+          <code>/results/</code> URL. No account needed, and no backend.
+        </p>
+        <p>
+          <strong>GitHub mirror</strong> pushes the same bundle to a repository you own. It hosts
+          nothing on its own; it is there so the code has somewhere to live.
+        </p>
+        <p>
+          <strong>Netlify</strong> mirrors to GitHub and then hosts the assets. Static output only,
+          since there is no Worker runtime on the other end.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('architecture') && (
-              <section id="architecture" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">03</span>
-                  Architecture Specs
-                </h2>
-                <p className="text-muted-foreground">
-                  The pipeline is: prompt → design spec → multi-file HTML output → editor transforms → polish → publish or export.
-                </p>
-                <div className="grid gap-4">
-                  <div className="p-6 technical-border rounded-xl bg-card space-y-3">
-                    <h4 className="text-sm font-semibold">Storage</h4>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Projects and files are stored in Convex. Editor changes sync automatically while you work.
-                    </p>
-                  </div>
-                  <div className="p-6 technical-border rounded-xl bg-card space-y-3">
-                    <h4 className="text-sm font-semibold">Multi-file Output</h4>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Generated sites can include shared partials like `partials/header.html` and `partials/footer.html`.
-                    </p>
-                  </div>
-                </div>
-              </section>
-            )}
+      <ProseSection id="preview" title="Previews">
+        <p>
+          The editor preview renders the files in memory as you type. It is enough for anything
+          static, and it is what the crosshair works against.
+        </p>
+        <p>
+          An edge app can also run for real: <strong>Run the backend</strong> deploys a throwaway
+          Cloudflare preview on its own subdomain with its own preview-suffixed resources, so
+          nothing it does can reach your production data. It expires on its own and can be taken
+          down from the same button.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('cmd-generate') && (
-              <section id="cmd-generate" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">04</span>
-                  /generate
-                </h2>
-                <p className="text-muted-foreground">
-                  Generates a project from a prompt. Returns multiple files as code blocks which are parsed into the editor.
-                </p>
-                <CodeBlock 
-                  filename="Request_Payload.json"
-                  code={`{
-  "prompt": "Build a retro-futurist landing page for a robotics lab",
-  "projectName": "robotics-lab"
-}`}
-                />
-              </section>
-            )}
+      <ProseSection id="export" title="Export and portability">
+        <p>
+          Export produces a zip of every file plus a generated README. The same bundle can be pushed
+          to a GitHub repository you own.
+        </p>
+        <p>
+          The output is ordinary web files and standard Wrangler configuration. Nothing about it
+          depends on this product, which is the point: you should be able to walk away with it and
+          keep deploying with the normal Cloudflare tooling.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('cmd-transform') && (
-              <section id="cmd-transform" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">05</span>
-                  /transform
-                </h2>
-                <p className="text-muted-foreground">
-                  Applies targeted edits to the current project files. You can optionally include the active file and a selected element.
-                </p>
-                <CodeBlock 
-                  filename="Request_Payload.json"
-                  code={`{
-  "files": [/* full project file list */],
-  "prompt": "Make the hero headline tighter and add a gradient underline",
-  "activeFile": "index.html"
-}`}
-                />
-              </section>
-            )}
+      <ProseSection id="models" title="Models and keys">
+        <p>
+          The model list is fetched live from the providers on each visit, so what you see in the
+          picker is what is actually available. Leaving it on the default routes across whichever
+          providers are up.
+        </p>
+        <p>
+          You can bring your own key in Settings. It is stored against your account and used in
+          place of the shared one.
+        </p>
+      </ProseSection>
 
-            {visibleItemIds.has('cmd-polish') && (
-              <section id="cmd-polish" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">06</span>
-                  /polish
-                </h2>
-                <p className="text-muted-foreground">
-                  Runs a structured refinement pass for typography, motion, and responsive layout using the transform engine.
-                </p>
-                <CodeBlock 
-                  filename="Request_Payload.json"
-                  code={`{
-  "files": [/* full project file list */],
-  "polishDescription": "improve typography hierarchy, add subtle animations, refine mobile spacing"
-}`}
-                />
-              </section>
-            )}
-
-            {visibleItemIds.has('tool-schema') && (
-              <section id="tool-schema" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">07</span>
-                  Tool Call Schema
-                </h2>
-                <p className="text-muted-foreground">
-                  Transform operations are executed through structured tool calls. Each call must be a JSON object with a tool name and args.
-                </p>
-                <CodeBlock
-                  filename="Tool_Call_Example.json"
-                  code={`[
-  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello" } },
-  { "tool": "updateStyle", "args": { "selector": ".hero", "properties": { "gap": "24px" }, "action": "merge" } }
-]`}
-                />
-                <div className="space-y-2 text-muted-foreground text-sm">
-                  <div className="font-semibold text-foreground">Constraints</div>
-                  <ul className="list-disc pl-6">
-                    <li>File paths must be relative (no leading slash, no <code className="font-mono">..</code> segments).</li>
-                    <li>Supported file types: <code className="font-mono">.html</code>, <code className="font-mono">.css</code>, <code className="font-mono">.js</code>.</li>
-                    <li>Use partials for shared layout: <code className="font-mono">header.html</code> and <code className="font-mono">footer.html</code>.</li>
-                    <li>Selectors should be specific (IDs/classes over tag names).</li>
-                  </ul>
-                </div>
-              </section>
-            )}
-
-            {visibleItemIds.has('model-selection') && (
-              <section id="model-selection" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">08</span>
-                  Model Selection
-                </h2>
-                <p className="text-muted-foreground">
-                  The editor lets you choose the provider and model for transforms. Vision-capable models are tagged in the selector.
-                </p>
-              </section>
-            )}
-
-            {visibleItemIds.has('editor-preview') && (
-              <section id="editor-preview" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">09</span>
-                  Editor & Preview
-                </h2>
-                <p className="text-muted-foreground">
-                  Edit files directly, switch between preview/code/split views, and preview multi-page navigation.
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Undo/redo, quick open, and file tree navigation are available in the editor.
-                </p>
-              </section>
-            )}
-
-            {visibleItemIds.has('publish-export') && (
-              <section id="publish-export" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">10</span>
-                  Export ZIP
-                </h2>
-                <p className="text-muted-foreground">
-                  Export your project as a ZIP with all files and a generated README.
-                </p>
-              </section>
-            )}
-
-            {visibleItemIds.has('deploy') && (
-              <section id="deploy" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">11</span>
-                  Deploy
-                </h2>
-                <p className="text-muted-foreground">
-                  Deployment lets you publish a live URL directly from the editor. Choose the deploy option that fits your workflow, then follow the prompts to connect any required accounts and confirm your publish settings.
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  After a successful deploy, the editor displays the live URL and repository link (when applicable) so you can share or continue iterating.
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Use the dashboard to redeploy or export at any time without re-opening the editor.
-                </p>
-              </section>
-            )}
-
-            {visibleItemIds.has('project-settings') && (
-              <section id="project-settings" className="space-y-6 mt-12 scroll-mt-24">
-                <h2 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-                  <span className="w-6 h-6 rounded flex items-center justify-center bg-primary/10 text-primary text-xs font-mono">12</span>
-                  Project Settings
-                </h2>
-                <p className="text-muted-foreground">
-                  Project settings live at <code className="font-mono">/edit/[projectName]/settings</code>, including deployment info and metadata/SEO controls.
-                </p>
-              </section>
-            )}
-
-          </motion.article>
+      <ProseSection id="shortcuts" title="Shortcuts">
+        <div className="not-prose my-5">
+          <SpecTable
+            dense
+            caption="Keyboard shortcuts in the editor"
+            rows={[
+              { key: 'p', label: 'Ctrl P', value: 'Jump to a file', mono: false },
+              { key: 's', label: 'Ctrl S', value: 'Save everything now' },
+              { key: 'b', label: 'Ctrl B', value: 'Show or hide the file tree' },
+              { key: 'i', label: 'Ctrl I', value: 'Show or hide the conversation' },
+              { key: 'enter', label: 'Ctrl Enter', value: 'Send the request in the composer' },
+            ]}
+          />
         </div>
-      </div>
-
-    </div>
-  );
+      </ProseSection>
+    </ProsePage>
+  )
 }

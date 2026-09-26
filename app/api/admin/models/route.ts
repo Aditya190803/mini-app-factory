@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { isAdminUser } from '@/lib/admin-access';
 import { isAllowedProviderModel, type AIProviderId } from '@/lib/ai-admin-config';
-import { fetchOpenRouterFreeModels } from '@/lib/openrouter-models';
 import { fetchOpenCodeFreeModels } from '@/lib/opencode-models';
+import { fetchGatewayModels } from '@/lib/gateway-models';
 import { getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,8 @@ type ProviderConfig = {
 };
 
 const PROVIDERS: ProviderConfig[] = [
+  { id: 'gateway', name: 'AI Gateway' },
   { id: 'opencode', name: 'OpenCode Zen' },
-  { id: 'openrouter', name: 'OpenRouter' },
 ];
 
 function addModel(
@@ -67,8 +67,8 @@ export async function GET(_request: Request) {
       providerConfig.customModels.forEach((modelId) => addModel(modelMap, modelId, { isCustom: true }));
       providerConfig.visibleModels.forEach((modelId) => addModel(modelMap, modelId));
 
-      const discovered = providerId === 'openrouter'
-        ? await fetchOpenRouterFreeModels().catch(() => [])
+      const discovered = providerId === 'gateway'
+        ? await fetchGatewayModels().catch(() => [])
         : await fetchOpenCodeFreeModels().catch(() => []);
       discovered.forEach((model) => {
         if (isAllowedProviderModel(providerId, model.id)) {

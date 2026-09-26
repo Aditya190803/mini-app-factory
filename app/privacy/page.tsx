@@ -1,83 +1,116 @@
-'use client';
+import type { Metadata } from 'next'
+import { ProsePage, ProseSection } from '@/components/shell/prose-page'
+
+export const metadata: Metadata = {
+  title: 'Privacy',
+  description: 'What Mini App Factory stores, why, and how to get rid of it.',
+}
+
+const TOC = [
+  { id: 'collect', label: 'What is stored' },
+  { id: 'use', label: 'What it is used for' },
+  { id: 'sharing', label: 'Who else sees it' },
+  { id: 'cloudflare', label: 'Your Cloudflare account' },
+  { id: 'retention', label: 'How long it is kept' },
+  { id: 'choices', label: 'Removing it' },
+  { id: 'contact', label: 'Contact' },
+] as const
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-dvh" style={{ backgroundColor: 'var(--background)' }}>
-      <div className="max-w-5xl mx-auto px-6 py-12 space-y-10">
-        <div className="space-y-3">
-          <h1 className="text-2xl font-display font-black uppercase tracking-[0.2em]" style={{ color: 'var(--foreground)' }}>
-            Privacy Policy
-          </h1>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--muted-text)]">
-            Effective Date: February 4, 2026
-          </div>
-          <p className="text-sm font-sans text-[var(--secondary-text)] max-w-3xl">
-            This Privacy Policy explains how Mini App Factory collects, uses, and protects information when you use the product.
-          </p>
-        </div>
+    <ProsePage
+      title="Privacy"
+      subtitle="What this product stores about you and your projects, why it stores it, and how to remove it."
+      updated="4 February 2026"
+      toc={TOC}
+    >
+      <ProseSection id="collect" title="What is stored">
+        <p>
+          <strong>Account identity.</strong> Authentication runs through Stack. Your email and
+          profile metadata are held by that provider; this product stores the identifier it returns
+          so projects can be tied to you.
+        </p>
+        <p>
+          <strong>Project data.</strong> Your prompts, the generated files, the conversation
+          history, saved versions, metadata and SEO settings, and deployment records are stored in
+          Convex so you can edit, restore, export, and redeploy.
+        </p>
+        <p>
+          <strong>Integration tokens.</strong> Connecting Cloudflare, GitHub, Netlify, or Vercel
+          stores an OAuth token so deployments can run on your behalf. Tokens are encrypted at rest
+          and can be removed from Settings.
+        </p>
+        <p>
+          <strong>Operational signals.</strong> Request errors and basic stability telemetry, used
+          for diagnosis.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Information We Collect
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p><span className="text-[var(--secondary-text)]">Account data:</span> Authentication is handled by Stack. Your account identity (email and profile metadata) is stored and managed by that provider.</p>
-            <p><span className="text-[var(--secondary-text)]">Project data:</span> Prompts, generated files, metadata/SEO settings, and deployment details are stored in Convex so you can edit, export, and deploy.</p>
-            <p><span className="text-[var(--secondary-text)]">Integration data:</span> When you connect GitHub or Netlify, OAuth tokens are stored to enable deployments. You can disconnect integrations in Settings.</p>
-            <p><span className="text-[var(--secondary-text)]">Usage signals:</span> We may process basic telemetry required for stability and error diagnosis (e.g., request errors).</p>
-          </div>
-        </section>
+      <ProseSection id="use" title="What it is used for">
+        <p>
+          Running the product: generating projects, saving them, previewing them, and deploying
+          them where you tell it to.
+        </p>
+        <p>
+          Keeping accounts separated and preventing abuse, including verifying that a request for a
+          project actually comes from someone with access to it.
+        </p>
+        <p>Finding and fixing failures.</p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            How We Use Information
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>To provide core features: generating sites, saving projects, and enabling export/deploy workflows.</p>
-            <p>To maintain security and prevent abuse, including verifying authenticated access to user data.</p>
-            <p>To improve product reliability and performance.</p>
-          </div>
-        </section>
+      <ProseSection id="sharing" title="Who else sees it">
+        <p>
+          Infrastructure providers process data in order to run the service: hosting,
+          authentication, the database, and the model providers that generate your project.
+        </p>
+        <p>
+          Your prompt and relevant project files are sent to the model provider you have selected in
+          order to produce a result. Which providers are available, and which one is in use, is
+          shown in the model picker.
+        </p>
+        <p>
+          When you deploy, the destination provider receives the files being published and whatever
+          configuration that deployment requires.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Data Sharing
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>We use third-party infrastructure providers to run the product. These providers process data only to deliver services (hosting, authentication, storage, deployments).</p>
-            <p>When you connect GitHub or Netlify, those providers receive data required to create repos and deploy sites under your account.</p>
-          </div>
-        </section>
+      <ProseSection id="cloudflare" title="Your Cloudflare account">
+        <p>
+          Cloudflare deployments go into <strong>your</strong> account, not into one owned by this
+          product. The authorization you grant is used to create the Pages project, upload the
+          asset bundle, and, for an edge app, create the Worker and the bindings listed in the
+          project&apos;s manifest.
+        </p>
+        <p>
+          No resource that persists or bills is created without you approving the exact list first.
+          Revoking the authorization from Settings, or from Cloudflare directly, stops all of it.
+          Resources already created stay in your account and remain yours to keep or delete.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Data Retention
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>Project data is retained while your account is active to allow editing and redeploys. You can delete projects from the dashboard.</p>
-            <p>Integration tokens can be removed at any time from Settings.</p>
-          </div>
-        </section>
+      <ProseSection id="retention" title="How long it is kept">
+        <p>
+          Project data is kept while your account is active, because that is what makes editing and
+          redeploying possible. Deleting a project from the dashboard removes its stored files and
+          history.
+        </p>
+        <p>
+          Deleting a project here does not take down anything already deployed. That lives in your
+          own hosting account and has to be removed there.
+        </p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Your Choices
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)] space-y-3">
-            <p>Disconnect integrations at any time in Settings.</p>
-            <p>Delete projects from the dashboard to remove their stored data.</p>
-          </div>
-        </section>
+      <ProseSection id="choices" title="Removing it">
+        <p>Disconnect any integration at any time from Settings, which deletes the stored token.</p>
+        <p>Delete a project from the dashboard to remove its files, versions, and conversation.</p>
+        <p>Export a project to a zip or a GitHub repo first if you want to keep a copy.</p>
+      </ProseSection>
 
-        <section className="border border-[var(--border)] bg-[var(--background-surface)] p-6 space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-[var(--secondary-text)]">
-            Contact
-          </h2>
-          <div className="text-[11px] font-mono text-[var(--muted-text)]">
-            For privacy questions or data requests, contact the team via the Support page.
-          </div>
-        </section>
-      </div>
-    </div>
-  );
+      <ProseSection id="contact" title="Contact">
+        <p>
+          For a privacy question or a data request, use the <a href="/support">support page</a>.
+        </p>
+      </ProseSection>
+    </ProsePage>
+  )
 }

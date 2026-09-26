@@ -2,28 +2,28 @@ export const dynamic = 'force-dynamic';
 
 const providers = [
   {
+    name: 'AI Gateway',
+    key: () => process.env.AI_GATEWAY_API_KEY,
+    url: `${(process.env.AI_GATEWAY_BASE_URL || '').trim().replace(/\/$/, '')}/models`,
+  },
+  {
     name: 'OpenCode Zen',
     key: () => process.env.OPENCODE_API_KEY,
     url: 'https://opencode.ai/zen/v1/models',
-  },
-  {
-    name: 'OpenRouter',
-    key: () => process.env.OPENROUTER_API_KEY,
-    url: 'https://openrouter.ai/api/v1/models',
   },
 ];
 
 export async function GET() {
   try {
-    const configured = providers.filter((provider) => provider.key());
+    const configured = providers.filter((provider) => provider.key() && provider.url && !provider.url.startsWith('/'));
     const details = {
+      gatewayKey: !!process.env.AI_GATEWAY_API_KEY,
       opencodeKey: !!process.env.OPENCODE_API_KEY,
-      openrouterKey: !!process.env.OPENROUTER_API_KEY,
     };
 
     if (configured.length === 0) {
       return Response.json(
-        { status: 'unavailable', error: 'No AI provider key is set. Configure OpenCode or OpenRouter.' },
+        { status: 'unavailable', error: 'No AI provider key is set. Configure AI Gateway or OpenCode.' },
         { status: 503 },
       );
     }

@@ -31,7 +31,17 @@ describe('generated project validation', () => {
     ];
     const result = validateGeneratedProject(files, 'demo');
     expect(result.valid).toBe(false);
-    expect(result.errors.join('\n')).toMatch(/embedded secret|Destructive SQL|pinned versions|missing Worker route/i);
+    expect(result.errors.join('\n')).toMatch(/styles\.css is required|embedded secret|Destructive SQL|pinned versions|missing Worker route/i);
+  });
+
+  test('rejects missing styles.css for HTML apps', () => {
+    const files: ProjectFile[] = [
+      file('index.html', '<h1>App</h1>', 'page', 'html'),
+      file('script.js', 'console.log(1)', 'script', 'javascript'),
+    ];
+    const result = validateGeneratedProject(files, 'demo');
+    expect(result.valid).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/styles\.css is required/);
   });
 
   test('prevents deleting or rewriting saved migrations', () => {

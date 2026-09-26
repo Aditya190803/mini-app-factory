@@ -23,6 +23,8 @@ export type TransformStreamEvent =
 
 export type TransformCompletePayload = Extract<TransformStreamEvent, { status: 'complete' }>;
 
+const STREAM_IDLE_MS = 180_000;
+
 /** Parse SSE body from POST /api/transform until complete or error. */
 export async function consumeTransformStream(
   response: Response,
@@ -40,10 +42,31 @@ export async function consumeTransformStream(
   let buffer = '';
   let lastError: TransformStreamEvent | null = null;
   let complete: TransformCompletePayload | null = null;
+  let lastEventAt = Date.now();
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const remaining = STREAM_IDLE_MS - (Date.now() - lastEventAt);
+      if (remaining <= 0) {
+        await reader.cancel().catch(() => undefined);
+        throw Object.assign(new Error('Model stopped responding. Try again, or pick a faster model.'), {
+          code: 'TIMEOUT',
+        });
+      }
+
+      const readResult = await Promise.race([
+        reader.read(),
+        new Promise<'idle'>((resolve) => setTimeout(() => resolve('idle'), remaining)),
+      ]);
+
+      if (readResult === 'idle') {
+        await reader.cancel().catch(() => undefined);
+        throw Object.assign(new Error('Model stopped responding. Try again, or pick a faster model.'), {
+          code: 'TIMEOUT',
+        });
+      }
+
+      const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const messages = buffer.split('\n\n');
@@ -54,6 +77,7 @@ export async function consumeTransformStream(
         if (!line.startsWith('data: ')) continue;
         try {
           const data = JSON.parse(line.slice(6)) as TransformStreamEvent;
+          lastEventAt = Date.now();
           onEvent?.(data);
           if (data.status === 'error') lastError = data;
           if (data.status === 'complete') complete = data;
@@ -70,5 +94,7 @@ export async function consumeTransformStream(
   if (lastError?.status === 'error') {
     throw Object.assign(new Error(lastError.error), { code: lastError.code, requestId: lastError.requestId });
   }
-  throw new Error('Transform stream ended without result');
+  throw Object.assign(new Error('Transform was interrupted. Your prompt was restored — send again.'), {
+    code: 'ABORTED',
+  });
 }

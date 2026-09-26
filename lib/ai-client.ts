@@ -1,5 +1,4 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
 import { isAllowedProviderModel, resolveSelectedAIModel, type AIProviderId } from '@/lib/ai-admin-config';
@@ -67,13 +66,9 @@ function getFriendlyModelName(modelId: string): string {
     'mimo-v2.5-free': 'MiMo V2.5 Free',
     'deepseek-v4-flash-free': 'DeepSeek V4 Flash Free',
     'longcat-2.0-free': 'LongCat 2.0 Free',
-    'openrouter/free': 'Free Models Router',
-    'z-ai/glm-5.2:free': 'GLM 5.2 Free',
-    'nvidia/nemotron-3.5-lightning:free': 'Nemotron 3.5 Lightning Free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra Free',
-    'minimax/minimax-m2.7:free': 'MiniMax M2.7 Free',
-    'poolside/laguna-s-2.1:free': 'Laguna S 2.1 Free',
-    'google/gemma-4-31b-it:free': 'Gemma 4 31B Free',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+    'claude-opus-4-6': 'Claude Opus 4.6',
+    'gemini-3.1-pro-high': 'Gemini 3.1 Pro High',
   };
   return mapping[modelId] || modelId;
 }
@@ -81,27 +76,23 @@ function getFriendlyModelName(modelId: string): string {
 function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMap {
   const admin = runtimeConfig?.adminConfig.providers;
   const byok = runtimeConfig?.byokConfig;
+  const requestedGatewayModel = admin?.gateway?.defaultModel || process.env.AI_GATEWAY_MODEL || 'claude-sonnet-4-6';
+
   const requestedOpenCodeModel = admin?.opencode?.defaultModel || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
   const requestedOpenCodeFallback = process.env.OPENCODE_FALLBACK_MODEL;
 
-  const requestedOpenRouterModel = admin?.openrouter?.defaultModel || process.env.OPENROUTER_MODEL || 'openrouter/free';
-  const requestedOpenRouterFallback = process.env.OPENROUTER_FALLBACK_MODEL;
-
   return {
+    gateway: {
+      enabled: admin?.gateway?.enabled ?? true,
+      apiKey: byok?.gateway || process.env.AI_GATEWAY_API_KEY,
+      defaultModel: isAllowedProviderModel('gateway', requestedGatewayModel) ? requestedGatewayModel : 'claude-sonnet-4-6',
+    },
     opencode: {
       enabled: admin?.opencode?.enabled ?? true,
       apiKey: byok?.opencode || process.env.OPENCODE_API_KEY,
       defaultModel: isAllowedProviderModel('opencode', requestedOpenCodeModel) ? requestedOpenCodeModel : 'deepseek-v4-flash-free',
       fallbackModel: requestedOpenCodeFallback && isAllowedProviderModel('opencode', requestedOpenCodeFallback)
         ? requestedOpenCodeFallback
-        : undefined,
-    },
-    openrouter: {
-      enabled: admin?.openrouter?.enabled ?? true,
-      apiKey: byok?.openrouter || process.env.OPENROUTER_API_KEY,
-      defaultModel: isAllowedProviderModel('openrouter', requestedOpenRouterModel) ? requestedOpenRouterModel : 'openrouter/free',
-      fallbackModel: requestedOpenRouterFallback && isAllowedProviderModel('openrouter', requestedOpenRouterFallback)
-        ? requestedOpenRouterFallback
         : undefined,
     },
   };
@@ -113,6 +104,14 @@ function hasConfiguredProvider(runtimeConfig?: AIRuntimeConfig) {
 }
 
 function buildProviderFactories(state: ProviderStateMap) {
+  const gatewayBaseURL = (process.env.AI_GATEWAY_BASE_URL || '').trim().replace(/\/$/, '');
+  const gateway = state.gateway.apiKey && gatewayBaseURL
+    ? createOpenAICompatible({
+        name: 'gateway',
+        baseURL: gatewayBaseURL,
+        apiKey: state.gateway.apiKey,
+      })
+    : null;
   const opencode = state.opencode.apiKey
     ? createOpenAICompatible({
         name: 'opencode',
@@ -120,9 +119,7 @@ function buildProviderFactories(state: ProviderStateMap) {
         apiKey: state.opencode.apiKey,
       })
     : null;
-  const openrouter = state.openrouter.apiKey ? createOpenRouter({ apiKey: state.openrouter.apiKey }) : null;
-
-  return { opencode, openrouter };
+  return { gateway, opencode };
 }
 
 function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: string; providerId?: AIProviderId }): ProviderStep[] {
@@ -141,7 +138,7 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
   const configuredOrder = runtimeConfig?.adminConfig.providerOrder;
   const order: AIProviderId[] = configuredOrder && configuredOrder.length > 0
     ? configuredOrder
-    : ['opencode', 'openrouter'];
+    : ['gateway', 'opencode'];
   const requested = resolveSelectedAIModel(opts?.model, opts?.providerId);
   const prioritized = requested
     ? [requested.providerId, ...order.filter((providerId) => providerId !== requested.providerId)]
@@ -254,7 +251,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
   loadEnv();
 
   if (!hasConfiguredProvider(runtimeConfig)) {
-    throw new Error('At least one AI provider key must be configured (OpenCode or OpenRouter).');
+    throw new Error('At least one AI provider key must be configured (AI Gateway or OpenCode).');
   }
 
   const client: AIClient = {
@@ -284,9 +281,6 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
             try {
               const messages: ModelMessage[] = [];
-              if (opts?.systemMessage?.content) {
-                messages.push({ role: 'system', content: opts.systemMessage.content });
-              }
 
               if (images && images.length > 0) {
                 const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
@@ -298,6 +292,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
               const result = await generateText({
                 model: step.createModel() as never,
+                system: opts?.systemMessage?.content,
                 messages,
                 maxOutputTokens,
                 maxRetries: 0,
@@ -337,15 +332,10 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
             const streamTimeout = setTimeout(() => controller.abort(), 60000);
 
             try {
-              const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-              if (opts?.systemMessage?.content) {
-                messages.push({ role: 'system', content: opts.systemMessage.content });
-              }
-              messages.push({ role: 'user', content: prompt });
-
               const result = await streamText({
                 model: step.createModel() as never,
-                messages,
+                system: opts?.systemMessage?.content,
+                messages: [{ role: 'user', content: prompt }],
                 maxRetries: 0,
                 abortSignal: controller.signal,
               });
@@ -377,32 +367,3 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
   return client;
 }
 
-export async function withSession<T>(client: AIClient, fn: (session: AIClientSession) => Promise<T>): Promise<T> {
-  const session = await client.createSession();
-  try {
-    return await fn(session);
-  } finally {
-    await session.destroy().catch(() => { });
-  }
-}
-
-export async function waitForEvent(
-  session: { on: (cb: (e: SessionEvent) => void) => () => void },
-  eventType: string
-): Promise<SessionEvent> {
-  return new Promise((resolve) => {
-    const unsubscribe = session.on((event: SessionEvent) => {
-      if (event.type === eventType) {
-        unsubscribe();
-        resolve(event);
-      }
-    });
-  });
-}
-
-export async function shutdownAIClient() {
-  if (singletonClient && 'stop' in singletonClient && singletonClient.stop) {
-    await singletonClient.stop();
-  }
-  singletonClient = null;
-}

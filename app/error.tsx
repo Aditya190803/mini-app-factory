@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { Button, EmptyState } from '@/components/kit'
+import { TriangleAlert } from 'lucide-react'
 
 export default function Error({
   error,
@@ -17,28 +19,32 @@ export default function Error({
   return (
     <main
       id="main"
-      className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center"
+      className="flex min-h-dvh items-center justify-center bg-[var(--background)] px-6"
     >
-      <h1 className="text-lg font-semibold text-foreground">
-        Something went wrong
-      </h1>
-      <p className="max-w-md text-sm text-muted-foreground">
-        This page failed to load. Trying again usually fixes it.
-      </p>
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-[var(--primary-hover)]"
+      <div className="w-full max-w-md">
+        <EmptyState
+          title="This page did not load"
+          icon={<TriangleAlert className="size-5" />}
+          action={
+            <div className="flex gap-2">
+              <Button intent="primary" onClick={reset}>
+                Try again
+              </Button>
+              <Button asChild>
+                <Link href="/">Back to the composer</Link>
+              </Button>
+            </div>
+          }
         >
-          Try again
-        </button>
-        <Link
-          href="/"
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
-        >
-          Go home
-        </Link>
+          <p>Retrying usually fixes it. Nothing you had saved is affected.</p>
+          {/* The digest is the only handle support has on a specific failure,
+              so it is shown rather than swallowed. */}
+          {error.digest && (
+            <p className="mt-3 font-mono text-xs text-[var(--muted-foreground)]">
+              reference {error.digest}
+            </p>
+          )}
+        </EmptyState>
       </div>
     </main>
   )

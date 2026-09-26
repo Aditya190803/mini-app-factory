@@ -1,18 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Id } from '@/convex/_generated/dataModel';
 import { ProjectFile } from '@/lib/page-builder';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { Globe, Info, Layout, Smile, AlertTriangle, Settings2, Box, CheckCircle2, Loader2, Rocket } from 'lucide-react';
+import { Badge, Button, Field, Input, Textarea } from '@/components/kit';
 import { cn } from '@/lib/utils';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { AnimatePresence, motion } from 'framer-motion';
 
 interface MetadataDashboardProps {
   projectId?: Id<"projects">;
@@ -104,271 +98,207 @@ export default function MetadataDashboard({ projectId, projectName, files: initi
   };
 
   return (
-    <div className="relative flex flex-col bg-[var(--background)] font-mono text-xs">
-      <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-        <Tabs defaultValue="global" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-[var(--background-overlay)] border border-[var(--border)] h-12 p-1">
-            <TabsTrigger value="global" className="data-[state=active]:bg-[var(--primary)] data-[state=active]:text-black font-black uppercase text-[10px]">
-              <Settings2 className="w-4 h-4 mr-2" />
-              Global Settings
-            </TabsTrigger>
-            <TabsTrigger value="pages" className="data-[state=active]:bg-[var(--primary)] data-[state=active]:text-black font-black uppercase text-[10px]">
-              <Layout className="w-4 h-4 mr-2" />
-              Page Overrides ({pages.length})
-            </TabsTrigger>
-          </TabsList>
+    <div className="space-y-8">
+      <div>
+        <p className="key mb-3">Site wide</p>
+        <div className="grid gap-4 sm:grid-cols-[6rem_minmax(0,1fr)]">
+          <Field
+            label="Favicon"
+            hint="One emoji"
+          >
+            <Input
+              value={favicon}
+              maxLength={4}
+              onChange={(event) => setFavicon(event.target.value)}
+              className="text-center text-lg"
+            />
+          </Field>
 
-          <TabsContent value="global" className="mt-6 space-y-8 animate-in fade-in slide-in-from-bottom-2">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-[var(--primary)] font-black uppercase tracking-widest text-[10px]">
-                <Smile className="w-3 h-3" />
-                Browser Identity
-              </div>
-              <div className="flex items-center gap-4 bg-[var(--background-overlay)] p-4 border border-[var(--border)] rounded-sm">
-                <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center bg-[var(--background)] border border-[var(--border)] rounded text-3xl shadow-inner">
-                    {favicon.startsWith('http') ? (
-                      <Image
-                        src={favicon}
-                        alt="favicon"
-                        width={40}
-                        height={40}
-                        unoptimized
-                        className="w-10 h-10 object-contain"
-                      />
+          <div className="space-y-4">
+            <Field
+              label="Site name"
+              hint="Appended to every page title."
+            >
+              <Input
+                value={globalSeo.siteName}
+                onChange={(event) => setGlobalSeo((prev) => ({ ...prev, siteName: event.target.value }))}
+                placeholder={projectName}
+              />
+            </Field>
+
+            <Field
+              label="Default description"
+              hint="Used for any page that does not set its own. Aim for 150 to 160 characters."
+              aside={
+                <span
+                  className={cn(
+                    'tabular text-xs',
+                    globalSeo.description.length > 160
+                      ? 'text-[var(--warning-text)]'
+                      : 'text-[var(--muted-foreground)]'
+                  )}
+                >
+                  {globalSeo.description.length}/160
+                </span>
+              }
+            >
+              <Textarea
+                value={globalSeo.description}
+                onChange={(event) =>
+                  setGlobalSeo((prev) => ({ ...prev, description: event.target.value }))
+                }
+                placeholder="What this site is, in one sentence."
+                className="min-h-16"
+              />
+            </Field>
+
+            <Field
+              label="Default social image"
+              optional
+              hint="An absolute URL. Shown when a link to this site is shared."
+            >
+              <Input
+                value={globalSeo.ogImage}
+                onChange={(event) => setGlobalSeo((prev) => ({ ...prev, ogImage: event.target.value }))}
+                placeholder="https://example.com/preview.png"
+                className="font-mono"
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p className="key mb-3">Per page</p>
+
+        {pages.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            No pages yet. Metadata appears here once the project has HTML files.
+          </p>
+        ) : (
+          <div className="space-y-px overflow-hidden rounded-lg border border-[var(--rule)]">
+            {pages.map((page) => {
+              const seo = getPageSeo(page.path);
+              const description = seo.description || '';
+              const inherited = !seo.title && !description;
+
+              return (
+                <details
+                  key={page.path}
+                  className="group bg-[var(--surface-1)] open:bg-[var(--surface-2)]"
+                >
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--surface-2)]">
+                    <span className="inline-block h-3 w-[3px] shrink-0 rounded-[1px] bg-[var(--rule-strong)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-sm">{page.path}</span>
+                      <span className="block truncate text-xs text-[var(--muted-foreground)]">
+                        {seo.title || 'No title set'}
+                      </span>
+                    </span>
+                    {inherited ? (
+                      <Badge tone="neutral">inherits</Badge>
                     ) : (
-                      favicon
+                      <Badge tone="live">set</Badge>
                     )}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <p className="text-[9px] text-[var(--muted-text)] uppercase font-bold tracking-tighter">Project Favicon (Emoji or URL)</p>
-                  <Input 
-                    value={favicon}
-                    onChange={(e) => setFavicon(e.target.value)}
-                    placeholder="e.g. ⚡️ or https://cdn.com/icon.png"
-                    className="bg-[var(--background)] border-[var(--border)] h-9 text-xs font-mono focus:ring-1 focus:ring-[var(--primary)]"
-                  />
-                </div>
-              </div>
-            </section>
+                  </summary>
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-[var(--primary)] font-black uppercase tracking-widest text-[10px]">
-                <Globe className="w-3 h-3" />
-                Default Meta Configuration
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[9px] uppercase text-[var(--muted-text)] font-bold">Base Site Name</label>
-                  <Input 
-                    value={globalSeo.siteName}
-                    onChange={(e) => setGlobalSeo({...globalSeo, siteName: e.target.value})}
-                    placeholder="e.g. Acme Corp"
-                    className="bg-[var(--background-overlay)] border-[var(--border)] h-9 text-xs"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] uppercase text-[var(--muted-text)] font-bold">Default OG Image</label>
-                  <Input 
-                    value={globalSeo.ogImage}
-                    onChange={(e) => setGlobalSeo({...globalSeo, ogImage: e.target.value})}
-                    placeholder="https://..."
-                    className="bg-[var(--background-overlay)] border-[var(--border)] h-9 text-xs"
-                  />
-                </div>
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-[9px] uppercase text-[var(--muted-text)] font-bold">Global Description (Fallback)</label>
-                  <Textarea 
-                    value={globalSeo.description}
-                    onChange={(e) => setGlobalSeo({...globalSeo, description: e.target.value})}
-                    placeholder="Describe your site for search engines..."
-                    className="bg-[var(--background-overlay)] border-[var(--border)] text-xs h-24 resize-none"
-                  />
-                </div>
-              </div>
-            </section>
-          </TabsContent>
+                  <div className="space-y-4 border-t border-[var(--rule)] px-3 py-4">
+                    <Field
+                      label="Title"
+                      hint="Around 60 characters before search results truncate it."
+                      aside={
+                        <span
+                          className={cn(
+                            'tabular text-xs',
+                            (seo.title || '').length > 60
+                              ? 'text-[var(--warning-text)]'
+                              : 'text-[var(--muted-foreground)]'
+                          )}
+                        >
+                          {(seo.title || '').length}/60
+                        </span>
+                      }
+                    >
+                      <Input
+                        value={seo.title || ''}
+                        onChange={(event) => handleUpdateSeo(page.path, 'title', event.target.value)}
+                        placeholder={globalSeo.siteName || projectName}
+                      />
+                    </Field>
 
-          <TabsContent value="pages" className="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-2">
-            {pages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 border border-dashed border-[var(--border)] bg-[var(--background-overlay)] rounded-sm">
-                <AlertTriangle className="w-8 h-8 text-[var(--muted-text)] mb-2" />
-                <p className="text-[var(--muted-text)] uppercase text-[10px]">No configurable pages detected</p>
-              </div>
-            ) : (
-              pages.map(page => {
-                const data = getPageSeo(page.path);
-                const isMissing = !data.title || !data.description;
-                
-                return (
-                  <div 
-                    key={page.path} 
-                    className={cn(
-                      "p-4 border rounded-sm space-y-4 bg-[var(--background-overlay)] transition-colors",
-                      isMissing ? "border-yellow-500/20" : "border-[var(--border)]"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Box className="w-3 h-3 text-[var(--primary)]" />
-                        <span className="font-bold text-[var(--foreground)] text-[10px] tracking-tight">{page.path}</span>
-                      </div>
-                      {isMissing && (
-                        <div className="flex items-center gap-1 text-yellow-500 uppercase text-[8px] font-black px-2 py-0.5 border border-yellow-500/30 bg-yellow-500/5 rounded-full">
-                          Unoptimized
-                        </div>
-                      )}
-                    </div>
+                    <Field
+                      label="Description"
+                      aside={
+                        <span
+                          className={cn(
+                            'tabular text-xs',
+                            description.length > 160
+                              ? 'text-[var(--warning-text)]'
+                              : 'text-[var(--muted-foreground)]'
+                          )}
+                        >
+                          {description.length}/160
+                        </span>
+                      }
+                    >
+                      <Textarea
+                        value={description}
+                        onChange={(event) =>
+                          handleUpdateSeo(page.path, 'description', event.target.value)
+                        }
+                        placeholder={globalSeo.description || 'Falls back to the site description.'}
+                        className="min-h-16"
+                      />
+                    </Field>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[9px] uppercase text-[var(--muted-text)]">Page Title</label>
-                        <Input 
-                          value={data.title || ''}
-                          onChange={(e) => handleUpdateSeo(page.path, 'title', e.target.value)}
-                          placeholder={globalSeo.siteName ? `${globalSeo.siteName} | ...` : "Title Override"}
-                          className="bg-[var(--background)] border-[var(--border)] h-8 text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] uppercase text-[var(--muted-text)]">OG Image URL</label>
-                        <Input 
-                          value={data.ogImage || ''}
-                          onChange={(e) => handleUpdateSeo(page.path, 'ogImage', e.target.value)}
-                          placeholder={globalSeo.ogImage || "https://..."}
-                          className="bg-[var(--background)] border-[var(--border)] h-8 text-xs"
-                        />
-                      </div>
-                      <div className="md:col-span-2 space-y-1">
-                        <label className="text-[9px] uppercase text-[var(--muted-text)]">Meta Description</label>
-                        <Textarea 
-                          value={data.description || ''}
-                          onChange={(e) => handleUpdateSeo(page.path, 'description', e.target.value)}
-                          placeholder={globalSeo.description || "Description Override"}
-                          className="bg-[var(--background)] border-[var(--border)] text-xs h-16 resize-none"
-                        />
-                        <div className="flex justify-end">
-                          <span className={cn(
-                            "text-[8px] font-black uppercase",
-                            (data.description?.length || 0) > 160 ? "text-red-500" : "text-[var(--muted-text)]"
-                          )}>
-                            {(data.description?.length || 0)} / 160
-                          </span>
-                        </div>
-                      </div>
+                    <Field label="Social image" optional>
+                      <Input
+                        value={seo.ogImage || ''}
+                        onChange={(event) =>
+                          handleUpdateSeo(page.path, 'ogImage', event.target.value)
+                        }
+                        placeholder={globalSeo.ogImage || 'https://example.com/preview.png'}
+                        className="font-mono"
+                      />
+                    </Field>
+
+                    {/* A real search preview, so the character counts above have
+                        something to be about. */}
+                    <div className="rounded-md border border-[var(--rule)] bg-[var(--background)] p-3">
+                      <p className="key mb-2">How it will read</p>
+                      <p className="truncate text-[15px] text-[var(--info-text)]">
+                        {seo.title || globalSeo.siteName || projectName}
+                      </p>
+                      <p className="truncate font-mono text-xs text-[var(--success-text)]">
+                        {page.path === 'index.html' ? '/' : `/${page.path.replace(/\.html$/, '')}`}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm text-[var(--muted-foreground)]">
+                        {description || globalSeo.description || 'No description set.'}
+                      </p>
                     </div>
                   </div>
-                );
-              })
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      <div className="p-4 border-t border-[var(--border)] bg-[var(--background-overlay)] flex justify-between items-center">
-        <div className="flex items-center gap-2 text-[var(--muted-text)] text-[9px] uppercase font-bold">
-          <Info className="w-3 h-3" />
-          Changes apply to production builds
-        </div>
-        <div className="flex gap-2">
-          {onClose && (
-            <Button 
-              variant="ghost" 
-              onClick={onClose}
-              className="h-9 px-6 text-[10px] font-black uppercase text-[var(--muted-text)]"
-            >
-              Cancel
-            </Button>
-          )}
-          <Button 
-            onClick={save}
-            disabled={isSaving}
-            className="h-9 px-8 bg-[var(--primary)] text-black font-black uppercase text-[10px] shadow-[4px_4px_0px_rgba(var(--primary-rgb),0.2)] hover:translate-y-[-1px] transition-transform disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Rocket className="w-4 h-4 mr-2" />}
-            Save
-          </Button>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {(isSaving || showStatus) && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--background)]/80 backdrop-blur-sm p-6"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-[var(--background-overlay)] border border-[var(--border)] p-8 rounded-sm shadow-2xl max-w-sm w-full text-center space-y-6"
-            >
-              {isSaving ? (
-                <>
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <Loader2 className="w-16 h-16 text-[var(--primary)] animate-spin" />
-                      <Rocket className="w-6 h-6 text-[var(--primary)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-black uppercase text-[var(--foreground)] tracking-tighter">Deploying Configuration</h3>
-                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
-                      Updating SEO headers, social graph, and favicon across all pages...
-                    </p>
-                  </div>
-                </>
-              ) : showStatus === 'success' ? (
-                <>
-                  <div className="flex justify-center">
-                    <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
-                      <CheckCircle2 className="w-10 h-10 text-green-500" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-black uppercase text-green-500 tracking-tighter">Saved</h3>
-                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
-                      Metadata saved.
-                    </p>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                        setShowStatus(null);
-                        if (onClose) onClose();
-                    }}
-                    className="w-full border-[var(--border)] text-[9px] uppercase font-black"
-                  >
-                    Close
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-center">
-                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                      <AlertTriangle className="w-10 h-10 text-red-500" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-black uppercase text-red-500 tracking-tighter">Deploy Failed</h3>
-                    <p className="text-[10px] text-[var(--muted-text)] uppercase font-bold tracking-widest leading-relaxed">
-                      Something went wrong during the sync process. Please try again.
-                    </p>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowStatus(null)}
-                    className="w-full border-[var(--border)] text-[9px] uppercase font-black"
-                  >
-                    Retry
-                  </Button>
-                </>
-              )}
-            </motion.div>
-          </motion.div>
+                </details>
+              );
+            })}
+          </div>
         )}
-      </AnimatePresence>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        {showStatus === 'success' && (
+          <span className="text-sm text-[var(--success-text)]" role="status">
+            Saved
+          </span>
+        )}
+        {showStatus === 'error' && (
+          <span className="text-sm text-[var(--destructive-text)]" role="alert">
+            Could not save
+          </span>
+        )}
+        <Button intent="primary" busy={isSaving} onClick={() => void save()}>
+          Save metadata
+        </Button>
+      </div>
     </div>
   );
 }

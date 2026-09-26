@@ -1,4 +1,7 @@
-type RateLimitResult = {
+import { api } from '@/convex/_generated/api';
+import { RATE_LIMITS, type RateLimitBucket } from '@/convex/rateLimits';
+
+export type RateLimitResult = {
   allowed: boolean;
   remaining: number;
   resetAt: number;
@@ -11,7 +14,7 @@ type Bucket = {
 
 const buckets = new Map<string, Bucket>();
 
-export function checkRateLimit(params: {
+function checkRateLimit(params: {
   key: string;
   limit: number;
   windowMs: number;
@@ -33,4 +36,24 @@ export function checkRateLimit(params: {
   existing.count += 1;
   buckets.set(key, existing);
   return { allowed: true, remaining: limit - existing.count, resetAt: existing.resetAt };
+}
+
+/**
+ * The limit the API routes use. Counts in Convex so it holds across server
+ * instances; the in-process counter above only covers the case where Convex
+ * cannot be reached, so an outage degrades to a per-instance limit rather than
+ * to none at all.
+ */
+export async function consumeRateLimit(bucket: RateLimitBucket, userId: string): Promise<RateLimitResult> {
+  try {
+    const { getAuthedConvexClient } = await import('@/lib/convex-server');
+    const client = await getAuthedConvexClient();
+    return await client.mutation(api.rateLimits.consume, { bucket });
+  } catch {
+    return checkRateLimit({ key: `${bucket}:${userId}`, ...RATE_LIMITS[bucket] });
+  }
+}
+
+export function retryAfterSeconds(result: RateLimitResult): number {
+  return Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
 }

@@ -63,10 +63,6 @@ export async function cloudflareRequest<T>(path: string, token: string, init?: R
   return payload.result;
 }
 
-export async function verifyCloudflareToken(token: string) {
-  return cloudflareRequest<{ id: string; status: string }>('/user/tokens/verify', token);
-}
-
 export async function listCloudflareAccounts(token: string): Promise<CloudflareAccount[]> {
   return cloudflareRequest<CloudflareAccount[]>('/accounts?per_page=50', token);
 }

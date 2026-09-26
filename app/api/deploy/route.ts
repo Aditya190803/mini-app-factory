@@ -21,7 +21,7 @@ type DeployRequest = {
   files?: DeployFile[];
   repoVisibility?: "private" | "public";
   githubOrg?: string | null;
-  deployMode?: "github-vercel" | "github-netlify" | "github-only" | "cloudflare";
+  deployMode?: "github-netlify" | "github-only" | "cloudflare";
   repoName?: string;
   cloudflareProjectName?: string;
   confirmCloudflareResources?: boolean;
@@ -42,7 +42,7 @@ const deploySchema = z.object({
   prompt: z.string().trim().min(1).max(8_000).optional(),
   repoVisibility: z.enum(["private", "public"]).optional(),
   githubOrg: z.string().trim().min(1).max(120).nullable().optional(),
-  deployMode: z.enum(["github-vercel", "github-netlify", "github-only", "cloudflare"]).optional(),
+  deployMode: z.enum(["github-netlify", "github-only", "cloudflare"]).optional(),
   repoName: z.string().trim().min(1).max(120).optional(),
   cloudflareProjectName: z.string().trim().min(1).max(58).optional(),
   confirmCloudflareResources: z.boolean().optional(),
@@ -69,22 +69,6 @@ async function githubRequest<T>(url: string, token: string, init?: RequestInit):
       details = await resp.text();
     }
     throw new Error(`GitHub API error: ${resp.status} ${details}`);
-  }
-  return (await resp.json()) as T;
-}
-
-async function vercelRequest<T>(url: string, token: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Vercel API error: ${resp.status} ${text}`);
   }
   return (await resp.json()) as T;
 }
@@ -149,16 +133,7 @@ export async function POST(req: Request) {
     content: file.content,
   }));
 
-  const deployMode =
-    body.deployMode === "github-only"
-      ? "github-only"
-      : body.deployMode === "cloudflare"
-        ? "cloudflare"
-        : body.deployMode === "github-netlify"
-          ? "github-netlify"
-          : body.deployMode === "github-vercel"
-            ? "github-vercel"
-            : "github-netlify";
+  const deployMode = body.deployMode ?? "github-netlify";
 
   const integrations = await getIntegrationTokens();
   if (deployMode === "cloudflare") {
@@ -167,9 +142,6 @@ export async function POST(req: Request) {
     }
   } else if (!integrations?.githubAccessToken) {
     return Response.json({ error: "GitHub connection required" }, { status: 400 });
-  }
-  if (deployMode === "github-vercel" && !integrations?.vercelAccessToken) {
-    return Response.json({ error: "Vercel connection required" }, { status: 400 });
   }
   if (deployMode === "github-netlify" && !integrations?.netlifyAccessToken) {
     return Response.json({ error: "Netlify connection required" }, { status: 400 });
@@ -197,7 +169,6 @@ export async function POST(req: Request) {
         writer.write({ status: "progress", message: "Preparing repository details" });
 
         const githubToken = integrations.githubAccessToken!;
-        const vercelToken = integrations.vercelAccessToken ?? "";
         const netlifyToken = integrations.netlifyAccessToken ?? "";
 
         const repoName = slugifyRepoName(body.repoName || body.projectName);
@@ -325,29 +296,6 @@ export async function POST(req: Request) {
         }
 
         let deploymentUrl: string | undefined;
-        if (deployMode === "github-vercel") {
-          writer.write({ status: "progress", message: "Vercel: Creating deployment" });
-          const deployment = await vercelRequest<{ url?: string; id?: string }>(
-            "https://api.vercel.com/v13/deployments",
-            vercelToken,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: repoName,
-                target: "production",
-                gitSource: {
-                  type: "github",
-                  repoId: repo.id,
-                  ref: defaultBranch,
-                  repo: repo.name,
-                  org: owner,
-                },
-              }),
-            }
-          );
-          deploymentUrl = deployment.url ? `https://${deployment.url}` : undefined;
-        }
-
         let netlifySiteName: string | undefined;
         if (deployMode === "github-netlify") {
           writer.write({ status: "progress", message: "Netlify: Configuring deploy keys" });

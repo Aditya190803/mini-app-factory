@@ -1,5 +1,5 @@
 /** Max text from Exa passed into generation prompts. */
-export const EXA_TEXT_MAX_CHARS = 12_000;
+const EXA_TEXT_MAX_CHARS = 12_000;
 
 export type ExaUrlContext = {
   url: string;

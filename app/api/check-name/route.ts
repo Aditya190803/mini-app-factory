@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { projectExists, reserveProjectName } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { isHttpUrl, normalizeReferenceUrl } from '@/lib/url-reference';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 
 const checkNameSchema = z
   .object({
@@ -12,6 +12,7 @@ const checkNameSchema = z
     selectedModel: z.string().max(200).optional(),
     providerId: z.string().max(60).optional(),
     referenceUrl: z.string().max(2_000).optional(),
+    target: z.enum(['static', 'edge']).optional(),
   })
   .strict();
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   // This creates a database row per call, so it needs a limit of its own.
-  const limit = checkRateLimit({ key: `check-name:${user.id}`, limit: 20, windowMs: 60_000 });
+  const limit = await consumeRateLimit('check-name', user.id);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many projects created. Try again shortly.' },
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
-  const { name, prompt, selectedModel, providerId, referenceUrl } = parsed.data;
+  const { name, prompt, selectedModel, providerId, referenceUrl, target } = parsed.data;
 
   const normalizedName = name.trim().toLowerCase();
 
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     selectedModel,
     providerId,
     referenceUrl: storedRef,
+    target,
   });
 
   if (!reserved) {

@@ -7,19 +7,19 @@ import { getAIClient, SessionEvent } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import { ProjectFile } from '@/lib/page-builder';
 import { getServerEnv } from '@/lib/env';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 import { getCachedDesignSpec, setCachedDesignSpec } from '@/lib/ai-cache';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
-import { resolveOpenRouterModel } from '@/lib/openrouter-models';
 import { resolveOpenCodeModel } from '@/lib/opencode-models';
+import { resolveGatewayModel } from '@/lib/gateway-models';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
 import { validateGeneratedProject } from '@/lib/generated-project-validation';
 import { appendProjectMessage, appendProjectRunEvent, createProjectRun, createProjectVersion, finishProjectRun, isProjectRunCancelled } from '@/lib/project-runs';
 
-const MODEL = process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
+const MODEL = process.env.AI_GATEWAY_MODEL || process.env.OPENCODE_MODEL || 'claude-sonnet-4-6';
 
 const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -42,7 +42,7 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
     ) {
       return {
         code: 'ENV_MISSING',
-        message: 'Missing AI provider key. Set OPENCODE_API_KEY or OPENROUTER_API_KEY and restart the server.'
+        message: 'Missing AI provider key. Set AI_GATEWAY_API_KEY or OPENCODE_API_KEY and restart the server.'
       };
     }
 
@@ -53,7 +53,7 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
       };
     }
 
-    if (m.includes('opencode') || m.includes('openrouter') || m.includes('provider returned') || m.includes('rate-limited')) {
+    if (m.includes('opencode') || m.includes('gateway') || m.includes('provider returned') || m.includes('rate-limited')) {
       return {
         code: 'AI_PROVIDER_ERROR',
         message: 'The AI provider is unavailable or rate-limited. Check your provider key, switch providers, or try again shortly.'
@@ -70,6 +70,29 @@ function classifyGenerationError(raw: unknown): { code: string; message: string 
     return { code: 'AI_ERROR', message: concise };
   } catch {
     return { code: 'AI_ERROR', message: 'Unknown error contacting AI provider' };
+  }
+}
+
+/** Keep the activity feed alive while a long model call is in flight. */
+async function waitWithProgress<T>(
+  work: Promise<T>,
+  onProgress: ((event: { status: string; message: string; path?: string }) => void) | undefined,
+  status: string,
+  baseMessage: string,
+  intervalMs = 12_000,
+): Promise<T> {
+  let ticks = 0;
+  const timer = setInterval(() => {
+    ticks += 1;
+    onProgress?.({
+      status,
+      message: `${baseMessage} (${ticks * (intervalMs / 1000)}s)`,
+    });
+  }, intervalMs);
+  try {
+    return await work;
+  } finally {
+    clearInterval(timer);
   }
 }
 
@@ -94,8 +117,8 @@ export async function runGeneration(
     // Update status. Honor the model the user picked in the selector; only fall
     // back to the OpenCode default when nothing valid was stored on the project.
     const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
-    const liveModel = requested?.providerId === 'openrouter'
-      ? await resolveOpenRouterModel(requested.model)
+    const liveModel = requested?.providerId === 'gateway'
+      ? await resolveGatewayModel(requested.model)
       : requested?.providerId === 'opencode'
         ? await resolveOpenCodeModel(requested.model)
         : requested?.model;
@@ -114,9 +137,8 @@ export async function runGeneration(
 
     if (signal.aborted || await shouldCancel?.()) return { error: 'Aborted' };
 
-    onProgress?.({ status: 'planning', message: 'Planning pages, API routes, data, and Cloudflare resources' });
-    // Design phase
-    const architectSystemMsg = 'You are an expert web design architect. Create a detailed design spec for the requested site.';
+    onProgress?.({ status: 'planning', message: 'Planning the app UI, data, and any backend' });
+    const architectSystemMsg = 'You are an expert product engineer. Spec the real working app: screens, data, and interactions people use. Never spec a marketing landing page, hero+CTA brochure, or empty About/Pricing pages.';
 
     const designSession = await client.createSession({
       model: selectedModel,
@@ -143,10 +165,15 @@ export async function runGeneration(
         if (cached) {
           designSpec = cached;
         } else {
-          const designResp = await designSession.sendAndWait({
-            prompt: finalPrompt,
-            maxOutputTokens: 1600,
-          }, 60000);
+          const designResp = await waitWithProgress(
+            designSession.sendAndWait({
+              prompt: `Spec a working application for this request. Include the primary UI, data, and interactions. Do not spec a marketing site.\n\nRequest:\n${finalPrompt}`,
+              maxOutputTokens: 1600,
+            }, 60000),
+            onProgress,
+            'planning',
+            'Planning the app UI, data, and any backend',
+          );
           if (sessionError) throw sessionError;
           designSpec = designResp?.data?.content || '';
           if (designSpec) setCachedDesignSpec(cacheKey, designSpec);
@@ -162,7 +189,7 @@ export async function runGeneration(
 
     onProgress?.({ status: 'generating', message: 'Generating the project files' });
     // HTML generation phase
-    const developerSystemMsg = `You are an expert developer. Generate a complete multi-file website project. 
+    const developerSystemMsg = `You are an expert developer. Generate a complete multi-file web APPLICATION (not a marketing landing page).
 Return files using code blocks with the format:
 \`\`\`html:filename.html
 Code here...
@@ -170,48 +197,23 @@ Code here...
 Use \`javascript:_worker.js\` for a Cloudflare backend, \`jsonc:wrangler.jsonc\` for Cloudflare configuration, and \`sql:migrations/0001_init.sql\` for D1 migrations.
 
 Mandatory requirements:
-1. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js. 
-2. **No Inline Tags**: DO NOT use <style> or <script> tags inside HTML files.
-3. **Linking**: index.html MUST include <link rel="stylesheet" href="styles.css"> and <script src="script.js" defer></script>.
-4. **Project Files**: Always include at least:
-   - index.html (main landing page)
-   - styles.css (common styles)
-   - script.js (common interactions)
+1. **Product first**: Ship the actual tool UI the user asked for (forms, tables, charts, filters, CRUD). A hero+CTA brochure with no working app is a failure.
+2. **Separation of Concerns**: ALWAYS put CSS in styles.css and JS in script.js.
+3. **No Inline Tags**: DO NOT use <style> or <script> tags inside HTML files.
+4. **Linking**: index.html MUST include <link rel="stylesheet" href="styles.css"> and <script src="script.js" defer></script>.
+5. **Required files** (never omit):
+   - index.html (app shell / primary UI)
+   - styles.css (complete non-empty stylesheet)
+   - script.js (working client logic; use localStorage when no backend is needed)
+6. **Shared Partials**: Only split header.html / footer.html when there are multiple real app views sharing chrome. Do not invent About/Pricing/Features pages.
+7. **Link Integrity**: No dead "#" links. Only link to files you also generate, or same-page anchors. Relative paths only (about.html, never /about.html).
+8. **Cloudflare Backend** when the product needs shared APIs, auth, or persistence beyond localStorage:
+   - One import-free \`_worker.js\` with \`export default { async fetch(request, env) { ... } }\`.
+   - Fall through with \`return env.ASSETS.fetch(request)\`.
+   - Generate \`wrangler.jsonc\` (main: _worker.js). Never invent resource IDs.
+   - D1 via env.DB + additive migrations/ SQL when relational data is needed.
+   - Match frontend fetch calls to real /api/* routes. Include GET /api/health.
 
-5. **Shared Partials (CRITICAL)**:
-   - If the project has multiple pages, you MUST create a \`header.html\` (and \`footer.html\` if applicable).
-   - DO NOT duplicate the header or footer HTML code inside individual page files.
-   - Instead, use the placeholder \`<!-- include:header.html -->\` and \`<!-- include:footer.html -->\` in your HTML pages where they should appear.
-   - Any shared code (navigation, branding, social links) MUST be moved to these partial files.
-
-6. **Link Integrity & Navigation (CRITICAL)**:
-   - **Zero Dead Links**: DO NOT use \`#\` for links (except for the logo if it points to home).
-   - **Mandatory Page Generation**: If you link to a page (e.g. \`about.html\`, \`privacy.html\`, \`services.html\`), YOU MUST PROVIDE THE CONTENT for that page in its own code block in this same response. If you are not prepared to generate the page, DO NOT link to it.
-   - **Relative Paths Only**: Always use relative filenames like \`about.html\`. NEVER use absolute paths like \`/about.html\` or \`/index.html\`.
-   - **Internal Anchors**: If you link to an anchor (e.g. \`#features\`), the target element with \`id=\"features\"\` must actually exist in the same HTML file.
-   - **Footer Policy**: Legal pages (Privacy Policy, Terms of Service) are often generated as empty links. You are FORBIDDEN from adding these unless you also generate the corresponding \`privacy.html\` or \`terms.html\` files. Omit footer links if they would point nowhere.
-
-7. **Optional Cloudflare Backend (generate it whenever the product needs APIs, persistence, uploads, jobs, schedules, or realtime behavior)**:
-   - Only when the request needs server-side endpoints, generate one import-free \`_worker.js\` using module Worker syntax: \`export default { async fetch(request, env) { ... } }\`.
-   - Route API requests inside that fetch handler and fall through to static assets with \`return env.ASSETS.fetch(request)\`.
-   - Do not generate a \`functions/\` directory.
-   - Generate \`wrangler.jsonc\` as the source of truth. Set \`main\` to \`_worker.js\`, pin \`compatibility_date\`, enable observability, and declare only resources the product actually needs.
-   - Never invent Cloudflare resource IDs. Omit optional IDs from portable source; Mini App Factory resolves them during deployment.
-   - When relational persistence is needed, use D1 through \`env.DB\`, parameterized prepared statements, explicit JSON errors, and ordered SQL under \`migrations/\`.
-   - D1 migrations must be additive and safe. Do not emit DROP TABLE, destructive data rewrites, or modifications to an earlier migration.
-   - Generate a \`package.json\` with pinned Wrangler and TypeScript dev dependencies, scripts for dev/deploy/typecheck and local/remote D1 migrations, a \`.dev.vars.example\`, and a README with local setup.
-   - Frontend calls must match real \`/api/*\` routes in \`_worker.js\`. Include \`GET /api/health\` and validate request bodies with body-size limits.
-   - Use R2 for blobs, KV for read-heavy key/value data, Queues for reliable background work, and Durable Objects for coordinated realtime state only when required.
-   - R2 uploads must enforce size and MIME limits. Prefer short-lived presigned PUT URLs and never expose R2 credentials.
-   - Queue delivery is at-least-once. Every duplicate-sensitive consumer must persist and check an idempotency key, configure bounded retries, and declare a dead-letter queue.
-   - Durable Object WebSockets must use the hibernation API, validate room access, and bound retained messages.
-   - Cron and Queue handlers must be idempotent and must not expose public HTTP administration endpoints.
-   - For a Queue consumer, cron handler, or Durable Object, generate a separate standard Worker under \`workers/<service>/index.js\` with \`workers/<service>/wrangler.jsonc\`. Declare its queue consumers, cron triggers, Durable Object bindings, migrations, and observability in that companion Wrangler file. Keep the root \`wrangler.jsonc\` for the frontend/API Worker.
-   - If user accounts are required, generate an OIDC/OAuth extension point with secure, HTTP-only, SameSite cookies, CSRF protection for cookie-authenticated writes, and server-side authorization. Never generate custom password hashing or browser-stored long-lived bearer tokens.
-   - Apply security headers, explicit method checks, consistent JSON error shapes, output escaping, and restrictive CORS by default.
-   - Never put credentials in generated files; read configured secrets from \`env\`.
-
-You can also create sub-pages (e.g. about.html, gallery.html).
 Return ONLY code blocks. No explanations.`;
 
     const htmlSession = await client.createSession({
@@ -236,10 +238,15 @@ Return ONLY code blocks. No explanations.`;
 
       try {
         const mainPrompt = buildMainPrompt(finalPrompt);
-        const htmlResp = await htmlSession.sendAndWait({
-          prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`,
-          maxOutputTokens: 8000,
-        }, 120000);
+        const htmlResp = await waitWithProgress(
+          htmlSession.sendAndWait({
+            prompt: `${mainPrompt}\n\nDesign Spec:\n${designSpec}`,
+            maxOutputTokens: 8000,
+          }, 120000),
+          onProgress,
+          'generating',
+          'Generating the project files',
+        );
         if (sessionError) throw sessionError;
         
         const content = htmlResp?.data?.content || '';
@@ -359,7 +366,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Authentication required', code: 'UNAUTHORIZED', requestId }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit({ key: `${user.id}:generate`, limit: 10, windowMs: 60_000 });
+    const rateLimit = await consumeRateLimit('generate', user.id);
     if (!rateLimit.allowed) {
       const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
       return Response.json(
@@ -473,7 +480,21 @@ export async function POST(request: Request) {
             const messageId = await appendProjectMessage(projectName, 'assistant', `Built the initial project with ${result.files.length} files.`, 'completed', JSON.stringify({ files: result.files.map((file) => file.path) }));
             await createProjectVersion(projectName, 'Initial build', JSON.stringify(result.files), messageId);
             if (!sse.isClosed()) {
-              sse.write({ status: 'completed', html: result.html, files: result.files, requestId, runId });
+              // Keep the SSE payload small. Huge file bodies used to stall the
+              // browser parser and leave the UI stuck on the last progress event.
+              // The editor loads files from Convex after status flips to completed.
+              sse.write({
+                status: 'completed',
+                html: result.html?.slice(0, 2000) || '',
+                files: result.files.map((file) => ({
+                  path: file.path,
+                  language: file.language,
+                  fileType: file.fileType,
+                  content: '',
+                })),
+                requestId,
+                runId,
+              });
             }
           }
         })()

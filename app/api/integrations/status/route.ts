@@ -1,5 +1,6 @@
 import { stackServerApp } from "@/stack/server";
 import { getIntegrationStatus } from "@/lib/integrations";
+import { isCloudflareOAuthConfigured } from "@/lib/cloudflare-oauth";
 
 export async function GET() {
   const user = await stackServerApp.getUser();
@@ -8,5 +9,8 @@ export async function GET() {
   }
 
   const status = await getIntegrationStatus();
-  return Response.json(status);
+  return Response.json({
+    ...status,
+    cloudflareOAuthConfigured: isCloudflareOAuthConfigured(),
+  });
 }

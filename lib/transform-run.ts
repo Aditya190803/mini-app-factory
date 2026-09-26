@@ -1,4 +1,4 @@
-import { buildPolishPrompt, stripCodeFence } from '@/lib/utils';
+import { stripCodeFence } from '@/lib/utils';
 import { getAIClient } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import { executeTool } from '@/lib/tool-executor';
@@ -12,13 +12,13 @@ import {
 } from '@/lib/edit-intent/context';
 import { withRetry } from '@/lib/ai-retry';
 import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
-import { resolveOpenRouterModel } from '@/lib/openrouter-models';
 import { resolveOpenCodeModel } from '@/lib/opencode-models';
+import { resolveGatewayModel } from '@/lib/gateway-models';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import type { TransformStreamEvent } from '@/lib/transform-stream';
 import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-project-validation';
 
-export const MAX_TRANSFORM_CONTEXT_CHARS = 120_000;
+const MAX_TRANSFORM_CONTEXT_CHARS = 120_000;
 
 /**
  * How many times the model is given its own tool failures and asked to correct them.
@@ -40,7 +40,6 @@ export type TransformWorkInput = {
   prompt?: string;
   projectInstructions?: string;
   activeFile?: string;
-  polishDescription?: string;
   modelId?: string;
   providerId?: string;
   finalFiles: ProjectFile[];
@@ -184,7 +183,6 @@ export async function runTransformWork(input: TransformWorkInput) {
     prompt,
     projectInstructions,
     activeFile,
-    polishDescription,
     modelId,
     providerId,
     finalFiles: initialFiles,
@@ -203,7 +201,7 @@ export async function runTransformWork(input: TransformWorkInput) {
     if (match) targetElementPath = match[1];
   }
 
-  const intentPrompt = (polishDescription && !prompt ? polishDescription : prompt) || '';
+  const intentPrompt = prompt || '';
   const fileSelection = selectFilesForHtmlEdit(intentPrompt, finalFiles, {
     activeFile,
     targetElementPath,
@@ -224,77 +222,47 @@ export async function runTransformWork(input: TransformWorkInput) {
 
   const client = await getAIClient(runtimeConfig);
   const requested = resolveSelectedAIModel(modelId, providerId);
-  const effectiveModelId = requested?.providerId === 'openrouter'
-    ? await resolveOpenRouterModel(requested?.model)
+  const effectiveModelId = requested?.providerId === 'gateway'
+    ? await resolveGatewayModel(requested.model)
     : requested?.providerId === 'opencode'
-      ? await resolveOpenCodeModel(requested?.model)
+      ? await resolveOpenCodeModel(requested.model)
       : requested?.model;
   const effectiveProviderId = requested?.providerId;
 
-  const systemMessage = `You are an expert web developer specializing in precise, tool-based site modifications. 
-You will be given the complete project context comprising all files.
+  const systemMessage = `You are an expert product engineer editing an existing working web application.
 
-Your modifications MUST maintain consistency across the entire project. For example, if you change a class name in styles.css, you must update it in all relevant HTML files.
-For Cloudflare backends, keep request routing in a single import-free \`_worker.js\`, use \`env.ASSETS.fetch(request)\` for static fallthrough, access D1 through \`env.DB\`, put additive versioned SQL in \`migrations/\`, and keep \`wrangler.jsonc\` synchronized as the deployment source of truth.
+Keep it an application people use — forms, lists, charts, CRUD, filters — not a marketing landing page.
+Always keep (or create if missing) non-empty styles.css and script.js. Do not inline CSS or JS in HTML.
 
-**Target Element Context**:
-- If the user prompt mentions a "Target element", prioritize modifications to that specific piece of code.
-- Ensure any changes to the target element are reflected correctly using the tools provided.
-- If you use a selector, make it as specific as possible (e.g. use classes, IDs, or :contains() logic) to ensure only the intended element is changed.
+Your modifications MUST stay consistent across files. If you change a class in styles.css, update every HTML file that uses it.
+For Cloudflare backends, keep routing in a single import-free \`_worker.js\`, fall through with \`env.ASSETS.fetch(request)\`, access D1 through \`env.DB\`, put additive SQL in \`migrations/\`, and keep \`wrangler.jsonc\` in sync. Never invent resource IDs or embed secrets.
 
-**Shared Partials (CRITICAL)**:
-- If a project has multiple pages, you MUST ensure there is a \`header.html\` (and \`footer.html\` if applicable).
-- DO NOT allow duplicate header/footer code in individual pages. 
-- If you see duplication, use the \`createFile\` tool to make a partial and replace the duplicate code in all pages with \`<!-- include:header.html -->\`.
-- Any shared navigation or branding MUST live in a partial.
+**Target element**: If the prompt names a target element, change that first. Selectors must be specific.
 
-**Converting Single-Page to Multi-Page (CRITICAL)**:
-- When adding new pages (e.g., work.html) to an existing single-page site:
-  1. FIRST create the partial (e.g., header.html) with the shared navigation/header content
-  2. THEN use \`replaceElement\` or \`deleteContent\` to REMOVE the old inline header/nav from index.html
-  3. THEN use \`insertContent\` to add \`<!-- include:header.html -->\` where the header was
-- NEVER leave both the old inline header AND the include directive in the same file
-- The include directive REPLACES the inline content, it does not supplement it
+**Partials**: Use header.html / footer.html only when there are multiple pages sharing chrome. Do not split a working single-view app into empty About/Pricing pages.
 
-When backend capabilities change, update \`wrangler.jsonc\` together with Worker source and migrations. Queue consumers, cron handlers, and Durable Objects use standard companion projects at \`workers/<service>/index.js\` plus \`workers/<service>/wrangler.jsonc\`. Never invent resource IDs or embed secrets.
-
-You MUST use structured tool calls to modify files. 
+You MUST return structured tool calls only.
 Available tools:
-1. replaceContent(file, selector, oldContent, newContent) - Use for precise HTML changes. newContent is the INNER html.
-2. replaceElement(file, selector, newContent) - Replace the matching element ENTIRELY with newContent.
-3. insertContent(file, position, selector, content) - position: before, after, prepend, append.
-4. deleteContent(file, selector) - Remove an element.
-5. createFile(path, content, fileType) - Create a page, partial, style, script, Cloudflare worker, D1 migration, or Cloudflare config.
-6. deleteFile(path) - Remove a file.
-7. updateStyle(selector, properties, action) - For precise CSS rule changes. Action: "replace" (default) or "merge".
-8. updateFile(file, content) - Replace an entire file when changes are too complex for other tools.
+1. replaceContent(file, selector, oldContent, newContent) — INNER html of the match
+2. replaceElement(file, selector, newContent) — replace the whole element
+3. insertContent(file, position, selector, content) — before, after, prepend, append
+4. deleteContent(file, selector)
+5. createFile(path, content, fileType)
+6. deleteFile(path)
+7. updateStyle(selector, properties, action) — action: replace (default) or merge
+8. updateFile(file, content) — full file rewrite when surgical tools are not enough
 
-FORMAT: Return your changes ONLY as a JSON array of tool calls:
+FORMAT: a JSON array only:
 [
-  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello World" } },
-  ...
+  { "tool": "replaceContent", "args": { "file": "index.html", "selector": "h1", "newContent": "Hello World" } }
 ]
 
-If a change is too complex for tools, or you need to rewrite a file completely, use:
-{ "tool": "updateFile", "args": { "file": "path/to/file", "content": "FULL_CONTENT" } }
+**Links**: No dead \`#\` links except the logo. Only link to files that exist or that you also createFile. Relative paths (about.html), never /about.html.
+Active file focus is: ${targetFile || 'index.html'}.
 
-**Link Integrity Rules (STRICT)**:
-- **No Dead Links**: Keep links valid. DO NOT use \`#\` (except for the logo).
-- **Page Existence Check**: Before adding a link to any file (e.g., \`about.html\`), CHECK the "Project Files" list in the context. If the file is not listed, you MUST use the \`createFile\` tool to generate it.
-- **Relative Paths**: Use relative filenames (e.g., \`about.html\`), never absolute paths (e.g., \`/about.html\`).
-- **Footer Policy**: Do not add links to Privacy/Terms pages unless you are actually creating those files. 
-- **Consistency**: If you rename or delete a file, you MUST update all links in all other files using the appropriate tools.
-- Active file focus is: ${targetFile || 'index.html'}.
+Only return the JSON array. No explanations.`;
 
-Only return changes. No explanations.`;
-
-  let userMessage: string;
-  if (polishDescription && !prompt) {
-    const polishPrompt = buildPolishPrompt(polishDescription);
-    userMessage = `${intentBlock}${projectInstructions ? `\n\nPersistent project instructions:\n${projectInstructions}` : ''}\n\n${polishPrompt}\n\nProject Context:\n\n${projectContext}`;
-  } else {
-    userMessage = `${intentBlock}${projectInstructions ? `\n\nPersistent project instructions:\n${projectInstructions}` : ''}\n\nProject Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
-  }
+  const userMessage = `${intentBlock}${projectInstructions ? `\n\nPersistent project instructions:\n${projectInstructions}` : ''}\n\nProject Context:\n\n${projectContext}\n\nModification Request:\n\n${prompt || ''}`;
 
   const session = await client.createSession({
     model: effectiveModelId,
@@ -310,10 +278,20 @@ Only return changes. No explanations.`;
   try {
     throwIfAborted(signal);
     onEvent({ status: 'generating', message: 'Waiting for model…' });
-    const response = await withRetry(
-      () => session.sendAndWait({ prompt: userMessage }, 150000),
-      { maxAttempts: 3, baseDelayMs: 800, signal }
-    );
+    let ticks = 0;
+    const tick = setInterval(() => {
+      ticks += 1;
+      onEvent({ status: 'generating', message: `Waiting for model… (${ticks * 5}s)` });
+    }, 5_000);
+    let response: { data: { content: string } };
+    try {
+      response = await withRetry(
+        () => session.sendAndWait({ prompt: userMessage }, 150000),
+        { maxAttempts: 2, baseDelayMs: 800, signal }
+      );
+    } finally {
+      clearInterval(tick);
+    }
     content = response?.data?.content || '';
     throwIfAborted(signal);
 

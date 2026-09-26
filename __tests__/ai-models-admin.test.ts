@@ -27,10 +27,10 @@ describe('GET /api/ai/models admin guard', () => {
     });
     (getGlobalAdminModelConfig as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       providers: {
+        gateway: { enabled: false, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] },
         opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] },
-        openrouter: { enabled: true, defaultModel: 'openrouter/free', customModels: [], visibleModels: [] },
       },
-      providerOrder: ['opencode', 'openrouter'],
+      providerOrder: ['gateway', 'opencode'],
     });
     (getPersistedAISettings as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       adminConfig: {},
@@ -41,7 +41,7 @@ describe('GET /api/ai/models admin guard', () => {
     const maliciousHeader = toBase64JSON({
       providers: {
         opencode: { enabled: false, defaultModel: 'x', customModels: [] },
-        openrouter: { enabled: false, defaultModel: 'x', customModels: [] },
+        gateway: { enabled: false, defaultModel: 'x', customModels: [] },
       },
     });
 
@@ -56,5 +56,26 @@ describe('GET /api/ai/models admin guard', () => {
     const body = await res.json();
     expect(Array.isArray(body.models)).toBe(true);
     expect(body.models.some((m: { providerId: string }) => m.providerId === 'opencode')).toBe(true);
+  });
+
+  test('unauthenticated visitors still get the model list', async () => {
+    const { GET } = await import('@/app/api/ai/models/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getGlobalAdminModelConfig } = await import('@/lib/ai-settings-store');
+
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+    (getGlobalAdminModelConfig as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      providers: {
+        gateway: { enabled: false, defaultModel: 'claude-sonnet-4-6', customModels: [], visibleModels: [] },
+        opencode: { enabled: true, defaultModel: 'deepseek-v4-flash-free', customModels: [], visibleModels: [] },
+      },
+      providerOrder: ['gateway', 'opencode'],
+    });
+
+    const res = await GET(new Request('http://localhost/api/ai/models'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.models)).toBe(true);
+    expect(body.models.length).toBeGreaterThan(0);
   });
 });

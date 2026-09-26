@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { getServerEnv } from '@/lib/env';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 import { fetchExaUrlContext } from '@/lib/exa-url-context';
 import { normalizeReferenceUrl } from '@/lib/url-reference';
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
   }
 
-  const rateLimit = checkRateLimit({ key: `${user.id}:url-context`, limit: 15, windowMs: 60_000 });
+  const rateLimit = await consumeRateLimit('url-context', user.id);
   if (!rateLimit.allowed) {
     const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
     return Response.json(

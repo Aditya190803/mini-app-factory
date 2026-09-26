@@ -14,6 +14,18 @@ export function validateGeneratedProject(files: ProjectFile[], projectName: stri
   errors.push(...structure.errors);
 
   const paths = new Set(files.map((file) => file.path));
+  const hasIndex = paths.has('index.html');
+  if (hasIndex) {
+    const styles = files.find((file) => file.path === 'styles.css' || file.path.endsWith('/styles.css'));
+    const script = files.find((file) => file.path === 'script.js' || file.path.endsWith('/script.js'));
+    if (!styles || !styles.content.trim()) {
+      errors.push('styles.css is required and must not be empty');
+    }
+    if (!script || !script.content.trim()) {
+      warnings.push('script.js is missing or empty — interactive apps need client logic');
+    }
+  }
+
   const wrangler = files.find((file) => file.path === 'wrangler.jsonc' || file.path === 'wrangler.json');
   const worker = files.find((file) => file.path === '_worker.js');
   if (wrangler) {
