@@ -1,11 +1,13 @@
 import React from 'react'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { StackProvider, StackTheme } from '@stackframe/stack'
+import { StackProvider } from '@stackframe/stack'
+import { StackTheme } from '@/components/stack-theme'
 import { Analytics } from '@vercel/analytics/next'
 import { stackClientApp } from '../stack/client'
 import { ConvexClientProvider } from '@/components/convex-client-provider'
 import { ThemeProvider } from '@/components/theme-provider'
+import { siteUrl } from '@/lib/site-url'
 import { TooltipProvider } from '@/components/kit'
 import { Toaster } from '@/components/kit/toaster'
 import { SiteFooter } from '@/components/shell/footer'
@@ -25,6 +27,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
   title: {
     default: `${APP_NAME}: describe an app, ship it to Cloudflare`,
     template: `%s · ${APP_NAME}`,
