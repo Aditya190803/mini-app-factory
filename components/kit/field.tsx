@@ -175,41 +175,6 @@ export const Select = React.forwardRef<
 })
 
 /**
- * A checkbox that keeps its label in the same hit target. Uses the native
- * input so indeterminate, form submission, and assistive tech all keep
- * working; only the box itself is restyled.
- */
-export function Checkbox({
-  label,
-  hint,
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<'input'> & { label: React.ReactNode; hint?: React.ReactNode }) {
-  const id = React.useId()
-  return (
-    <div className={cn('flex gap-2.5', className)}>
-      <input
-        id={id}
-        type="checkbox"
-        className={cn(
-          'mt-0.5 size-4 shrink-0 cursor-pointer rounded-[4px] border border-[var(--rule-strong)] bg-[var(--surface-1)]',
-          'accent-[var(--primary)]',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]',
-          'disabled:cursor-not-allowed disabled:opacity-50'
-        )}
-        {...props}
-      />
-      <div className="min-w-0">
-        <label htmlFor={id} className="cursor-pointer text-sm text-[var(--foreground)]">
-          {label}
-        </label>
-        {hint && <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{hint}</p>}
-      </div>
-    </div>
-  )
-}
-
-/**
  * A segmented control. Radio semantics, not buttons, because exactly one
  * option is always chosen and arrow keys should move between them.
  */

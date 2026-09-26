@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
  * Drawn on a 24 grid with 1.5 strokes so it stays legible at 16px, where most
  * of its life is spent.
  */
-export function Mark({ size = 24, className, ...props }: React.SVGProps<SVGSVGElement> & { size?: number }) {
+function Mark({ size = 24, className, ...props }: React.SVGProps<SVGSVGElement> & { size?: number }) {
   return (
     <svg
       width={size}

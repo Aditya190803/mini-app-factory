@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const projectRecordSchema = z.object({
+const projectRecordSchema = z.object({
   projectName: z.string(),
   prompt: z.string(),
   createdAt: z.coerce.number(),

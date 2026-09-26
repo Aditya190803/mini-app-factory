@@ -79,30 +79,6 @@ export function SpecTable({
 }
 
 /**
- * A single labelled fact, for when one value needs to sit inline rather than
- * in a table. Label above, value below, both aligned to the same left edge.
- */
-export function Stat({
-  label,
-  value,
-  hint,
-  className,
-}: {
-  label: React.ReactNode
-  value: React.ReactNode
-  hint?: React.ReactNode
-  className?: string
-}) {
-  return (
-    <div className={cn('min-w-0', className)}>
-      <p className="key">{label}</p>
-      <p className="tabular mt-1 truncate text-lg font-medium">{value}</p>
-      {hint && <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">{hint}</p>}
-    </div>
-  )
-}
-
-/**
  * A value the user will want to paste elsewhere. Shows the text and copies it,
  * confirming in place rather than through a toast, so the confirmation appears
  * where the eye already is.

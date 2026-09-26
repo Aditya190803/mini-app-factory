@@ -33,7 +33,6 @@ export function isAIProviderId(value: unknown): value is AIProviderId {
 
 export const AI_ADMIN_CONFIG_STORAGE_KEY = 'mini_app_factory_ai_admin_config_v1';
 export const AI_BYOK_STORAGE_KEY = 'mini_app_factory_ai_byok_v1';
-export const AI_USER_CUSTOM_MODELS_STORAGE_KEY = 'mini_app_factory_user_custom_models_v1';
 export const AI_SELECTED_MODEL_STORAGE_KEY = 'mini_app_factory_selected_model_v1';
 
 export const DEFAULT_PROVIDER_MODELS: Record<AIProviderId, string> = {
@@ -176,14 +175,3 @@ export function toBase64JSON(value: unknown): string {
   return Buffer.from(json, 'utf8').toString('base64');
 }
 
-export function fromBase64JSON<T>(encoded: string | null): T | null {
-  if (!encoded) return null;
-  try {
-    const raw = typeof window !== 'undefined' && typeof window.atob === 'function'
-      ? decodeURIComponent(escape(window.atob(encoded)))
-      : Buffer.from(encoded, 'base64').toString('utf8');
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}

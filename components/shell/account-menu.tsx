@@ -83,5 +83,3 @@ export function AccountMenu({
     </Menu>
   )
 }
-
-export default AccountMenu

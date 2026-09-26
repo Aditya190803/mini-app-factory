@@ -2,7 +2,7 @@ export function normalizePath(input: string) {
   return input.replace(/^\/+/, "");
 }
 
-export function toBase64(input: string) {
+function toBase64(input: string) {
   return Buffer.from(input, "utf8").toString("base64");
 }
 

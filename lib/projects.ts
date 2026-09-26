@@ -67,7 +67,7 @@ export interface PublishedProjectMetadata {
   seoData?: ProjectMetadata['seoData'];
 }
 
-export function toProjectMetadata(record: unknown): ProjectMetadata {
+function toProjectMetadata(record: unknown): ProjectMetadata {
   return normalizeProjectMetadata(record) as ProjectMetadata;
 }
 

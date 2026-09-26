@@ -60,8 +60,6 @@ export const TARGETS: Record<BuildTarget, TargetSpec> = {
   },
 }
 
-export const TARGET_ORDER: ReadonlyArray<BuildTarget> = ['static', 'edge']
-
 /**
  * Read the target off the files. A project is an edge app the moment it has a
  * Worker, a migration, or a wrangler/manifest config; otherwise it is static.
@@ -78,17 +76,14 @@ export function inferTarget(files: Pick<ProjectFile, 'path' | 'fileType'>[]): Bu
   return 'static'
 }
 
-/** The stored value wins when present; otherwise infer. */
+/** Prefer what the files say; fall back to a stored value only when there are none. */
 export function resolveTarget(
   stored: string | null | undefined,
   files: Pick<ProjectFile, 'path' | 'fileType'>[]
 ): BuildTarget {
+  if (files.length > 0) return inferTarget(files)
   if (stored === 'static' || stored === 'edge') return stored
-  return inferTarget(files)
-}
-
-export function targetSpec(target: BuildTarget): TargetSpec {
-  return TARGETS[target]
+  return 'static'
 }
 
 /**

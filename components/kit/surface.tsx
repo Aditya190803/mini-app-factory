@@ -154,11 +154,6 @@ export function Toolbar({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-/** Pushes what follows to the far end of a flex row. */
-export function Spacer() {
-  return <div className="flex-1" aria-hidden />
-}
-
 /**
  * Registration corners around a region. Marks a plate without drawing a box.
  */

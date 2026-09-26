@@ -158,22 +158,6 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
   )
 })
 
-/** Buttons that act on one thing, joined so they read as one control. */
-export function ButtonGroup({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      role="group"
-      className={cn(
-        'inline-flex items-center rounded-md',
-        '[&>*]:rounded-none [&>*:first-child]:rounded-l-md [&>*:last-child]:rounded-r-md',
-        '[&>*+*]:-ml-px',
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
 export function Spinner({ className, label }: { className?: string; label?: string }) {
   return (
     <span
@@ -201,4 +185,3 @@ export function Kbd({ children, className }: { children: React.ReactNode; classN
   )
 }
 
-export { button as buttonVariants }

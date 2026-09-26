@@ -3,8 +3,6 @@ export const APP_NAME = 'Mini App Factory'
 export const APP_DESCRIPTION =
   'Describe an application in plain language, read the files it produces, then publish it to Cloudflare.'
 
-export const APP_TAGLINE = 'Cloudflare-first app factory'
-
 export type FooterLink = { href: string; label: string }
 export type FooterGroup = { title: string; links: ReadonlyArray<FooterLink> }
 
@@ -49,14 +47,14 @@ export const APP_FOOTER_LINKS: ReadonlyArray<FooterLink> = APP_FOOTER_GROUPS.fla
  * edge examples always do, because that is the line between the two targets
  * and the examples are where most people will first notice it.
  */
-export const STATIC_STARTERS = [
+const STATIC_STARTERS = [
   'A one page site for a bike repair shop with opening hours, prices, and a map',
   'A conference schedule site with a filterable agenda and speaker pages',
   'A documentation site for a small Python library, with a sidebar and code samples',
   'A portfolio for a furniture maker: project pages, large photography, a contact form that mails me',
 ] as const
 
-export const EDGE_STARTERS = [
+const EDGE_STARTERS = [
   'A tool that tracks freelance invoices, flags the overdue ones, and charts monthly income',
   'A link shortener with a dashboard showing clicks per day and per country',
   'A reading list where I paste a URL and it saves the title, and I can tag and search later',

@@ -1,9 +1,14 @@
 import 'server-only';
 
-export type GatewayCatalogModel = {
-  id: string;
-  name: string;
-};
+import {
+  collapseGatewayEffortModels,
+  gatewayModelFamily,
+  prettifyGatewayModelName,
+  GATEWAY_DEFAULT_MODEL,
+  type GatewayCatalogModel,
+} from '@/lib/gateway-model-catalog';
+
+export type { GatewayCatalogModel };
 
 type CatalogResponse = {
   object?: string;
@@ -12,8 +17,6 @@ type CatalogResponse = {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8_000;
-
-export const GATEWAY_DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 export function getAiGatewayConfig() {
   const baseURL = (process.env.AI_GATEWAY_BASE_URL || '').trim().replace(/\/$/, '');
@@ -25,14 +28,6 @@ export function getAiGatewayConfig() {
     defaultModel,
     configured: Boolean(baseURL && apiKey),
   };
-}
-
-function prettifyName(id: string): string {
-  return id
-    .split(/[-_/]/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 let cache: { at: number; models: GatewayCatalogModel[] } | null = null;
@@ -56,18 +51,15 @@ async function loadCatalog(): Promise<GatewayCatalogModel[]> {
     if (!response.ok) return [];
     const json = (await response.json()) as CatalogResponse;
     const data = Array.isArray(json.data) ? json.data : [];
-    const models: GatewayCatalogModel[] = [];
+    const raw: GatewayCatalogModel[] = [];
     const seen = new Set<string>();
     for (const entry of data) {
       const id = (entry.id || '').trim();
       if (!id || seen.has(id)) continue;
-      // Tab-completion models are not useful as the factory's generation model.
-      if (id.startsWith('tab_')) continue;
       seen.add(id);
-      models.push({ id, name: prettifyName(id) });
+      raw.push({ id, name: prettifyGatewayModelName(id) });
     }
-    models.sort((a, b) => a.name.localeCompare(b.name));
-    return models;
+    return collapseGatewayEffortModels(raw);
   } catch {
     return [];
   } finally {
@@ -98,5 +90,9 @@ export async function resolveGatewayModel(
   }
   if (catalog.length === 0) return trimmed;
   if (catalog.some((model) => model.id === trimmed)) return trimmed;
+  // Accept a previously-stored effort variant by mapping to the collapsed family pick.
+  const family = gatewayModelFamily(trimmed);
+  const familyMatch = catalog.find((model) => gatewayModelFamily(model.id) === family);
+  if (familyMatch) return familyMatch.id;
   return catalog.some((model) => model.id === fallback) ? fallback : catalog[0].id;
 }

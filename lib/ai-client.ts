@@ -281,9 +281,6 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
             try {
               const messages: ModelMessage[] = [];
-              if (opts?.systemMessage?.content) {
-                messages.push({ role: 'system', content: opts.systemMessage.content });
-              }
 
               if (images && images.length > 0) {
                 const userContent: UserContentPart[] = [{ type: 'text', text: prompt }];
@@ -295,6 +292,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
               const result = await generateText({
                 model: step.createModel() as never,
+                system: opts?.systemMessage?.content,
                 messages,
                 maxOutputTokens,
                 maxRetries: 0,
@@ -334,15 +332,10 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
             const streamTimeout = setTimeout(() => controller.abort(), 60000);
 
             try {
-              const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-              if (opts?.systemMessage?.content) {
-                messages.push({ role: 'system', content: opts.systemMessage.content });
-              }
-              messages.push({ role: 'user', content: prompt });
-
               const result = await streamText({
                 model: step.createModel() as never,
-                messages,
+                system: opts?.systemMessage?.content,
+                messages: [{ role: 'user', content: prompt }],
                 maxRetries: 0,
                 abortSignal: controller.signal,
               });
@@ -374,32 +367,3 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
   return client;
 }
 
-export async function withSession<T>(client: AIClient, fn: (session: AIClientSession) => Promise<T>): Promise<T> {
-  const session = await client.createSession();
-  try {
-    return await fn(session);
-  } finally {
-    await session.destroy().catch(() => { });
-  }
-}
-
-export async function waitForEvent(
-  session: { on: (cb: (e: SessionEvent) => void) => () => void },
-  eventType: string
-): Promise<SessionEvent> {
-  return new Promise((resolve) => {
-    const unsubscribe = session.on((event: SessionEvent) => {
-      if (event.type === eventType) {
-        unsubscribe();
-        resolve(event);
-      }
-    });
-  });
-}
-
-export async function shutdownAIClient() {
-  if (singletonClient && 'stop' in singletonClient && singletonClient.stop) {
-    await singletonClient.stop();
-  }
-  singletonClient = null;
-}
