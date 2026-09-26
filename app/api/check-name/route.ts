@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { projectExists, reserveProjectName } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { isHttpUrl, normalizeReferenceUrl } from '@/lib/url-reference';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 
 const checkNameSchema = z
   .object({
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   // This creates a database row per call, so it needs a limit of its own.
-  const limit = checkRateLimit({ key: `check-name:${user.id}`, limit: 20, windowMs: 60_000 });
+  const limit = await consumeRateLimit('check-name', user.id);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many projects created. Try again shortly.' },

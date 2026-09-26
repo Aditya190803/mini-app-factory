@@ -285,4 +285,12 @@ export default defineSchema({
   })
     .index("by_user_time", ["userId", "createdAt"])
     .index("by_time", ["createdAt"]),
+
+  // Fixed-window request counters, one row per user per bucket. Lives here
+  // rather than in process memory so the limit holds across server instances.
+  rateLimits: defineTable({
+    key: v.string(),
+    count: v.number(),
+    resetAt: v.number(),
+  }).index("by_key", ["key"]),
 });

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { isAIProviderId, type AIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { consumeRateLimit } from '@/lib/rate-limit';
 
 /**
  * Either validate a key the user just typed (`apiKey`), or validate the one already stored for
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
   // Each call makes an outbound request to a third-party provider, so this needs a limit of its
   // own regardless of what the caller is validating.
-  const limit = checkRateLimit({ key: `validate-key:${user.id}`, limit: 10, windowMs: 60_000 });
+  const limit = await consumeRateLimit('validate-key', user.id);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many key checks. Try again shortly.' },
