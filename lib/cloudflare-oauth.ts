@@ -4,6 +4,28 @@ const AUTHORIZATION_URL = 'https://dash.cloudflare.com/oauth2/auth';
 const TOKEN_URL = 'https://dash.cloudflare.com/oauth2/token';
 const REVOKE_URL = 'https://dash.cloudflare.com/oauth2/revoke';
 
+/**
+ * Scopes the factory actually uses. Override with CLOUDFLARE_OAUTH_SCOPES if needed.
+ *
+ * Names must match Cloudflare's OAuth scope catalog exactly (the one wrangler
+ * validates against): an unknown scope fails the whole authorization. R2 has no
+ * scope of its own and is covered by `workers:write`.
+ */
+export const DEFAULT_CLOUDFLARE_OAUTH_SCOPES = [
+  'account:read',
+  'user:read',
+  'pages:write',
+  'workers:write',
+  'workers_scripts:write',
+  'workers_routes:write',
+  'workers_kv:write',
+  'd1:write',
+  'vectorize:write',
+  'queues:write',
+  'zone:read',
+  'offline_access',
+].join(' ');
+
 export type CloudflareOAuthToken = {
   accessToken: string;
   refreshToken?: string;
@@ -11,16 +33,29 @@ export type CloudflareOAuthToken = {
   scope?: string;
 };
 
+export function isCloudflareOAuthConfigured() {
+  return Boolean(process.env.CLOUDFLARE_CLIENT_ID?.trim() && process.env.CLOUDFLARE_CLIENT_SECRET?.trim());
+}
+
 function credentials() {
-  const clientId = process.env.CLOUDFLARE_CLIENT_ID;
-  const clientSecret = process.env.CLOUDFLARE_CLIENT_SECRET;
+  const clientId = process.env.CLOUDFLARE_CLIENT_ID?.trim();
+  const clientSecret = process.env.CLOUDFLARE_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) throw new Error('Cloudflare OAuth is not configured');
   return { clientId, clientSecret };
 }
 
 function parseToken(value: unknown): CloudflareOAuthToken {
-  const data = value as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string };
-  if (!data.access_token) throw new Error(data.error_description || data.error || 'Cloudflare did not return an access token');
+  const data = value as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+    error?: string;
+    error_description?: string;
+  };
+  if (!data.access_token) {
+    throw new Error(data.error_description || data.error || 'Cloudflare did not return an access token');
+  }
   const expiresIn = typeof data.expires_in === 'number' && data.expires_in > 0 ? data.expires_in : 3600;
   return {
     accessToken: data.access_token,
@@ -48,8 +83,7 @@ async function tokenRequest(params: URLSearchParams) {
 
 export function createCloudflareAuthorizationUrl(params: { state: string; redirectUri: string }) {
   const { clientId } = credentials();
-  const scopes = process.env.CLOUDFLARE_OAUTH_SCOPES?.trim();
-  if (!scopes) throw new Error('CLOUDFLARE_OAUTH_SCOPES is not configured');
+  const scopes = process.env.CLOUDFLARE_OAUTH_SCOPES?.trim() || DEFAULT_CLOUDFLARE_OAUTH_SCOPES;
   const url = new URL(AUTHORIZATION_URL);
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', params.redirectUri);
