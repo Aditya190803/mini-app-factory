@@ -26,7 +26,8 @@ These already existed before the redesign. Listed so the list is complete.
 
 ### Schema push (new, and required)
 
-The redesign adds one optional field to the `projects` table:
+The redesign adds one optional field to the `projects` table, and a
+`rateLimits` table that backs the per-user API limits:
 
 ```ts
 target: v.optional(v.union(v.literal("static"), v.literal("edge")))
@@ -77,19 +78,20 @@ in the deploy dialog, not at build time.
 | `account:read` | Listing accounts in the account picker |
 | `user:read` | Identifying the authorizing user |
 | `pages:write` | Creating the Pages project and uploading assets. **Both targets.** |
-| `workers_scripts:write` | The Worker for an edge app |
+| `workers:write` | Worker-side resources, including R2 buckets and the object browser (R2 has no scope of its own) |
+| `workers_scripts:write` | The Worker for an edge app, its secrets, and Durable Objects |
+| `workers_routes:write` | Custom domains on the Worker |
 | `d1:write` | Creating the database and applying migrations |
-| `workers_kv_storage:write` | KV namespaces |
-| `r2:write` | Buckets, plus the object browser in project settings |
+| `workers_kv:write` | KV namespaces |
+| `vectorize:write` | Vectorize indexes |
 | `queues:write` | Queue producers and consumers |
 | `zone:read` | The custom-domain zone picker |
 | `offline_access` | Refresh tokens, so the connection survives |
 
-> Decide now whether you want Vectorize and Durable Objects in the first
-> release. `lib/cloudflare-manifest.ts` already accepts both, and the landing
-> page mentions them. If you are not scoping for them, cut them from
-> `components/landing/bento.tsx` and the docs, or you are promising something
-> the deploy will refuse.
+> Scope names must match Cloudflare's OAuth catalog exactly: one unknown name
+> fails the whole consent screen. There is no `r2:write`; R2 comes with
+> `workers:write`. Durable Objects ride on `workers_scripts:write`.
+> `__tests__/cloudflare-oauth.test.ts` guards the defaults against typos.
 
 ### A test account
 
@@ -110,7 +112,6 @@ one.
 | --- | --- |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | The GitHub mirror and the sync panel are unusable |
 | `NETLIFY_CLIENT_ID` / `NETLIFY_CLIENT_SECRET` | Netlify hosting is unusable |
-| `VERCEL_CLIENT_ID` / `VERCEL_CLIENT_SECRET` | Vercel callbacks are unusable |
 | `EXA_API_KEY` | "Reference a site" in the composer does nothing useful |
 
 Redirect URIs follow the same shape:
@@ -120,46 +121,34 @@ Redirect URIs follow the same shape:
 
 ## 4. Decisions I could not make for you
 
-1. **The admin allowlist.** `lib/admin-access.ts` still hardcodes
-   `aditya.mer@somaiya.edu`. Fine for one person, wrong the moment there are
-   two. Move it to an env var or a Convex table.
-
-2. **Vectorize and Durable Objects.** See the scope note above. Promise them or
-   cut them, but do not ship the gap.
-
-3. **Cost ceilings.** Deploys now bill the user's own Cloudflare account. The
+1. **Cost ceilings.** Deploys now bill the user's own Cloudflare account. The
    terms say so plainly, and the plan gate shows what will be created, but
    there is no spend cap and no usage display. If you expect non-technical
    users, that is a real gap.
 
-4. **The Netlify path for edge apps.** Currently hidden, because Netlify cannot
+2. **The Netlify path for edge apps.** Currently hidden, because Netlify cannot
    run a Worker. That is honest. Confirm you agree rather than wanting a
    partial static export there.
 
-5. **Where the app itself is hosted.** The `.vercel` directory says Vercel.
+3. **Where the app itself is hosted.** The `.vercel` directory says Vercel.
    Nothing here forces that, but "Cloudflare-first" hosted on Vercel is a
    question a user will ask. `@vercel/analytics` is still wired into the root
    layout.
 
-6. **Whether the landing page keeps stock imagery.** The pinned scroll section
-   uses four `picsum.photos` images, heavily desaturated and treated. They are
-   placeholders. Real screenshots of the editor would be stronger, and I could
-   not take those without a running instance with real projects in it.
-
----
-
 ## 5. Things worth doing that I did not
 
 - **Visual regression.** There is no screenshot testing, so a token change can
-  silently break a surface. The build and 246 unit tests catch types and logic,
+  silently break a surface. The build and 250 unit tests catch types and logic,
   not layout.
 - **A contrast test.** The palette was designed to hit AA and the reasoning is
   in `DESIGN.md`, but nothing in CI enforces it. A test over the token values
   would.
-- **`lib/site-builder.ts`.** Still holds an in-memory job registry that predates
-  the Convex run model. It is dead weight and confusing next to
-  `lib/transform-run.ts`. Untouched here because deleting it is a behaviour
-  change, not a redesign.
+- **A full Content Security Policy.** `next.config.mjs` sets HSTS, framing,
+  referrer, and permissions headers, but only `frame-ancestors` from CSP. A
+  script policy needs nonces for the Stack Auth and Convex clients.
+- **Error reporting.** Server errors go to `console.error` only. Wire Sentry or
+  similar once there is an account for it; `/api/health` is ready for an
+  uptime monitor.
 - **Backfilling `target`.** Not required, because it is inferred. But a
   one-time backfill would let the dashboard filter on an index instead of in
   memory once there are a lot of projects.
