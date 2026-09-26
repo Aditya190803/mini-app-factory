@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
 import type { TransformCompletePayload } from '@/lib/transform-stream';
 
-export function applyFileDelta(
+function applyFileDelta(
   currentFiles: ProjectFile[],
   updates: ProjectFile[],
   deletedPaths: string[] = []
@@ -31,7 +31,10 @@ export function getTransformRecoverySuggestion(code: string) {
     return 'Server could not persist files. Retry; if it persists, check Convex connectivity.';
   }
   if (code === 'ABORTED') {
-    return 'Request was cancelled.';
+    return 'Request was cancelled. Your prompt was put back — edit and send again.';
+  }
+  if (code === 'TIMEOUT') {
+    return 'The model took too long. Retry with a smaller change, or switch models.';
   }
   if (code === 'UNAUTHORIZED') {
     return 'Sign in again, reload the editor, and retry.';

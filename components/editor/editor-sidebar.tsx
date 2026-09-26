@@ -1,8 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { ArrowUp, AtSign, History, Paperclip, Sparkles, X } from 'lucide-react'
+import { ArrowUp, AtSign, Copy, History, Paperclip, RotateCcw, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import {
   Button,
   IconButton,
@@ -24,6 +25,7 @@ type Message = {
   content: string
   status: string
   files?: string[]
+  versionId?: string
 }
 
 interface EditorSidebarProps {
@@ -34,7 +36,6 @@ interface EditorSidebarProps {
   selectedElement: { path: string; html: string; selector?: string } | null
   setSelectedElement: (val: { path: string; html: string; selector?: string } | null) => void
   runTransform: (promptOverride?: string) => void | Promise<void>
-  runPolish: () => void
   isTransforming: boolean
   transformProgress?: TransformProgressState | null
   onCancelTransform?: () => void
@@ -66,7 +67,6 @@ export default function EditorSidebar({
   selectedElement,
   setSelectedElement,
   runTransform,
-  runPolish,
   isTransforming,
   transformProgress = null,
   onCancelTransform,
@@ -144,12 +144,13 @@ export default function EditorSidebar({
         {versions.length > 0 && onRestoreVersion && (
           <Menu>
             <MenuTrigger asChild>
-              <IconButton label="Version history" size="sm">
-                <History className="size-4" />
-              </IconButton>
+              <Button size="sm">
+                <History className="size-3.5" />
+                History
+              </Button>
             </MenuTrigger>
             <MenuContent className="max-h-72 w-72 overflow-y-auto">
-              <MenuLabel>Restore a previous build</MenuLabel>
+              <MenuLabel>Undo to a previous build</MenuLabel>
               <MenuSeparator />
               {versions.map((version) => (
                 <MenuItem
@@ -189,6 +190,29 @@ export default function EditorSidebar({
                   <div key={message.id} className="anim-rise flex justify-end">
                     <div className="max-w-[92%] rounded-lg rounded-br-sm border border-[var(--rule)] bg-[var(--surface-2)] px-3 py-2 text-sm leading-relaxed">
                       <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                      <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(message.content)
+                              toast.success('Prompt copied')
+                            } catch {
+                              toast.error('Could not copy')
+                            }
+                          }}
+                        >
+                          <Copy className="size-3.5" />
+                          Copy
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setTransformPrompt(message.content)}
+                        >
+                          <RotateCcw className="size-3.5" />
+                          Reuse
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -221,6 +245,17 @@ export default function EditorSidebar({
                         </li>
                       ))}
                     </ul>
+                  ) : null}
+                  {message.versionId && onRestoreVersion ? (
+                    <div className="mt-2">
+                      <Button
+                        size="sm"
+                        onClick={() => void onRestoreVersion(message.versionId!)}
+                      >
+                        <History className="size-3.5" />
+                        Undo to this version
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               )
@@ -351,15 +386,6 @@ export default function EditorSidebar({
                   </select>
                 </label>
               )}
-
-              <IconButton
-                label="Ask for a polish pass"
-                size="sm"
-                disabled={isTransforming}
-                onClick={runPolish}
-              >
-                <Sparkles className="size-3.5" />
-              </IconButton>
             </div>
 
             <div className="flex items-center gap-1.5">

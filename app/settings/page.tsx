@@ -32,6 +32,7 @@ type IntegrationStatus = {
   githubConnected: boolean;
   netlifyConnected: boolean;
   cloudflareConnected: boolean;
+  cloudflareOAuthConfigured?: boolean;
   githubConnectedAt?: number;
   netlifyConnectedAt?: number;
   cloudflareConnectedAt?: number;
@@ -83,6 +84,7 @@ export default function SettingsPage() {
             githubConnected: !!data.githubConnected,
             netlifyConnected: !!data.netlifyConnected,
             cloudflareConnected: !!data.cloudflareConnected,
+            cloudflareOAuthConfigured: !!data.cloudflareOAuthConfigured,
             githubConnectedAt: data.githubConnectedAt,
             netlifyConnectedAt: data.netlifyConnectedAt,
             cloudflareConnectedAt: data.cloudflareConnectedAt,
@@ -352,6 +354,7 @@ export default function SettingsPage() {
               <CloudflareConnect
                 connected={status.cloudflareConnected}
                 accountName={status.cloudflareAccountName}
+                oauthConfigured={status.cloudflareOAuthConfigured}
                 onConnected={(account) =>
                   setStatus((prev) => ({
                     ...prev,

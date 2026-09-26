@@ -74,7 +74,9 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
 
   const pollForCompletion = useCallback(async () => {
     for (let attempt = 0; attempt < 60 && !completed.current; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
       const response = await fetch(`/api/project/${projectName}`).catch(() => null);
       if (!response?.ok) continue;
       const data = await response.json();
@@ -86,8 +88,24 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       }
       if (data.status === 'error') {
         setError({ message: data.error || 'Generation failed', code: data.code });
+        setActivities((current) =>
+          current.map((item, index, all) =>
+            index === all.length - 1 ? { ...item, state: 'error' } : { ...item, state: 'complete' }
+          )
+        );
         return;
       }
+    }
+    if (!completed.current) {
+      setError({
+        message: 'The build is taking too long or the connection dropped. Refresh this page or retry.',
+        code: 'POLL_TIMEOUT',
+      });
+      setActivities((current) =>
+        current.map((item, index, all) =>
+          index === all.length - 1 ? { ...item, state: 'error' } : { ...item, state: 'complete' }
+        )
+      );
     }
   }, [projectName]);
 
@@ -123,8 +141,13 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         if (data.status === 'completed') {
           completed.current = true;
           setActivities((current) => current.map((item) => ({ ...item, state: 'complete' })));
-          const result = data as { html: string; files?: ProjectFile[] };
-          setProject((current) => ({ ...current, status: 'completed', html: result.html, files: result.files || current.files }));
+          const result = data as { html?: string; files?: ProjectFile[] };
+          setProject((current) => ({
+            ...current,
+            status: 'completed',
+            html: result.html || current.html,
+            files: result.files?.length ? result.files : current.files,
+          }));
           return;
         }
         addActivity(String(data.status), String(data.message || data.status), typeof data.path === 'string' ? data.path : undefined);

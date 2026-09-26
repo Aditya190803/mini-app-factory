@@ -5,26 +5,20 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@stackframe/stack'
 import { ArrowUp, Link2, TriangleAlert, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button, IconButton, Kbd, Segmented, Callout, PlateFrame } from '@/components/kit'
+import { Button, IconButton, Kbd, Callout, PlateFrame } from '@/components/kit'
 import { ModelPicker } from '@/components/shell/model-picker'
 import { getStoredSelectedModel, setStoredSelectedModel, withAIAdminHeaders } from '@/lib/ai-admin-client'
 import { isHttpUrl } from '@/lib/url-reference'
-import { TARGETS, type BuildTarget } from '@/lib/targets'
-import { EDGE_STARTERS, STATIC_STARTERS } from '@/lib/constants'
+import { EXAMPLE_PROMPTS } from '@/lib/constants'
 
 const DRAFT_KEY = 'maf:composer-draft'
-
-type TargetChoice = BuildTarget | 'auto'
 
 /**
  * The composer.
  *
- * The one new decision here is the target. It sits above the prompt rather
- * than buried in settings because it is the difference between "a site" and
- * "a site with a database behind it", and that difference decides what gets
- * provisioned in the user's Cloudflare account later. Auto is the default and
- * is honest about what it does: the model picks, and the choice is visible in
- * the editor afterwards either way.
+ * Static vs edge is not a user choice here. The model picks from the prompt,
+ * and the editor badge reflects whatever files actually got written. That is
+ * already how `inferTarget` works after generation.
  *
  * The draft survives a trip through sign-in. Writing what someone typed into
  * session storage and restoring it is the difference between signing in and
@@ -35,7 +29,6 @@ export function Composer({ className }: { className?: string }) {
   const user = useUser()
 
   const [prompt, setPrompt] = React.useState('')
-  const [target, setTarget] = React.useState<TargetChoice>('auto')
   const [referenceUrl, setReferenceUrl] = React.useState('')
   const [showReference, setShowReference] = React.useState(false)
   const [model, setModel] = React.useState({ id: '', providerId: '' })
@@ -52,9 +45,8 @@ export function Composer({ className }: { className?: string }) {
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY)
       if (raw) {
-        const draft = JSON.parse(raw) as { prompt?: string; referenceUrl?: string; target?: TargetChoice }
+        const draft = JSON.parse(raw) as { prompt?: string; referenceUrl?: string }
         if (draft.prompt) setPrompt(draft.prompt)
-        if (draft.target) setTarget(draft.target)
         if (draft.referenceUrl) {
           setReferenceUrl(draft.referenceUrl)
           setShowReference(true)
@@ -76,17 +68,7 @@ export function Composer({ className }: { className?: string }) {
     setStoredSelectedModel(model)
   }, [model, modelReady])
 
-  /**
-   * Starters follow the chosen target. On "Decide for me" they alternate, so
-   * the list itself demonstrates that both shapes come from the same box
-   * rather than leaving a first-time visitor with no examples at all.
-   */
-  const starters =
-    target === 'edge'
-      ? EDGE_STARTERS.slice(0, 4)
-      : target === 'static'
-        ? STATIC_STARTERS.slice(0, 4)
-        : [STATIC_STARTERS[0], EDGE_STARTERS[0], STATIC_STARTERS[1], EDGE_STARTERS[1]]
+  const starters = EXAMPLE_PROMPTS.slice(0, 4)
 
   const start = async () => {
     setError('')
@@ -100,7 +82,7 @@ export function Composer({ className }: { className?: string }) {
 
     if (!user) {
       try {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ prompt, referenceUrl, target }))
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ prompt, referenceUrl }))
       } catch {
         // See above.
       }
@@ -127,7 +109,6 @@ export function Composer({ className }: { className?: string }) {
             referenceUrl: reference || undefined,
             selectedModel: model.id || undefined,
             providerId: model.providerId || undefined,
-            target: target === 'auto' ? undefined : target,
           }),
         })
 
@@ -170,25 +151,6 @@ export function Composer({ className }: { className?: string }) {
 
       <PlateFrame>
       <div className="composer">
-        <div className="flex items-center gap-2 border-b border-[var(--rule)] px-2.5 py-2">
-          <Segmented
-            label="What are you building"
-            value={target}
-            onChange={setTarget}
-            size="sm"
-            options={[
-              { value: 'auto', label: 'Decide for me' },
-              { value: 'static', label: TARGETS.static.label, title: TARGETS.static.summary },
-              { value: 'edge', label: TARGETS.edge.label, title: TARGETS.edge.summary },
-            ]}
-          />
-          <p className="hidden min-w-0 truncate text-xs text-[var(--muted-foreground)] sm:block">
-            {target === 'auto'
-              ? 'A database is added only if the app needs one.'
-              : TARGETS[target].summary}
-          </p>
-        </div>
-
         <label htmlFor={promptId} className="sr-only">
           Describe the application you want
         </label>

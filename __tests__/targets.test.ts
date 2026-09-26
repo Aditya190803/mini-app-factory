@@ -48,8 +48,9 @@ describe('inferTarget', () => {
 })
 
 describe('resolveTarget', () => {
-  it('prefers the stored value', () => {
-    expect(resolveTarget('edge', [file('index.html', 'page')])).toBe('edge')
+  it('reads the files even when a stored target disagrees', () => {
+    expect(resolveTarget('static', [file('_worker.js', 'worker')])).toBe('edge')
+    expect(resolveTarget('edge', [file('index.html', 'page')])).toBe('static')
   })
 
   it('falls back to inference for rows written before targets existed', () => {
@@ -57,7 +58,12 @@ describe('resolveTarget', () => {
     expect(resolveTarget(null, [file('index.html', 'page')])).toBe('static')
   })
 
-  it('ignores a stored value that is not a target', () => {
+  it('uses the stored value only when there are no files to read', () => {
+    expect(resolveTarget('edge', [])).toBe('edge')
+    expect(resolveTarget('nonsense', [])).toBe('static')
+  })
+
+  it('ignores a stored value that is not a target when files are present', () => {
     expect(resolveTarget('nonsense', [file('_worker.js', 'worker')])).toBe('edge')
   })
 })

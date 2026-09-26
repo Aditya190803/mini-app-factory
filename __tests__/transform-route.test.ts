@@ -44,6 +44,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const baseProjectFiles = [
+  { path: 'index.html', content: '<html><head><link rel="stylesheet" href="styles.css"></head><body><h1>Old</h1><script src="script.js"></script></body></html>', language: 'html' as const, fileType: 'page' as const },
+  { path: 'styles.css', content: 'body { color: #111; }', language: 'css' as const, fileType: 'style' as const },
+  { path: 'script.js', content: 'console.log("ok")', language: 'javascript' as const, fileType: 'script' as const },
+];
+
 describe('POST /api/transform', () => {
   test('returns 401 when unauthenticated', async () => {
     const { POST } = await import('@/app/api/transform/route');
@@ -109,9 +115,7 @@ describe('POST /api/transform', () => {
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(orphan);
     (claimProjectOrphan as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       createSession: vi.fn().mockResolvedValue({
@@ -163,9 +167,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       createSession: vi.fn().mockResolvedValue({
@@ -218,9 +220,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ createSession });
 
@@ -254,9 +254,7 @@ describe('POST /api/transform', () => {
       userId: 'user_123',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { path: 'index.html', content: '<html><body><h1>Old</h1></body></html>', language: 'html', fileType: 'page' },
-    ]);
+    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
 
     const sendAndWait = vi

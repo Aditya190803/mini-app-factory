@@ -18,7 +18,6 @@ import {
   ModalContent,
   SpecTable,
   Spinner,
-  Textarea,
 } from '@/components/kit';
 import { Search, X } from 'lucide-react';
 import { resolveTarget } from '@/lib/targets';
@@ -85,7 +84,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const filesVersionRef = useRef<number | null>(null);
   const savingRef = useRef(false);
   const pendingSaveRef = useRef<ProjectFile[] | null>(null);
-  const [isPolishDialogOpen, setIsPolishDialogOpen] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
@@ -100,7 +98,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [newFileInFolderPath, setNewFileInFolderPath] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ path: string, type: 'file' | 'folder' } | null>(null);
-  const [polishDescription, setPolishDescription] = useState('typography, animations, mobile responsiveness');
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isExplorerVisible, setIsExplorerVisible] = useState(false);
   const [isRightSidebarVisible, setIsRightSidebarVisible] = useState(true);
@@ -436,7 +433,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     });
   };
 
-  const { isTransforming, transformProgress, runTransform, runPolish, cancelTransform } = useProjectTransform({
+  const { isTransforming, transformProgress, runTransform, cancelTransform } = useProjectTransform({
     projectName,
     activeFilePath,
     files,
@@ -487,6 +484,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const runDiscussion = useCallback(async (promptOverride?: string) => {
     const prompt = promptOverride?.trim() || transformPrompt.trim();
     if (!prompt || isDiscussing) return;
+    setTransformPrompt('');
     setIsDiscussing(true);
     try {
       const response = await fetch('/api/discuss', {
@@ -501,13 +499,13 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Discussion failed');
-      setTransformPrompt('');
     } catch (error) {
+      setTransformPrompt(prompt);
       toast.error(error instanceof Error ? error.message : 'Discussion failed');
     } finally {
       setIsDiscussing(false);
     }
-  }, [isDiscussing, projectName, selectedModel, transformPrompt]);
+  }, [isDiscussing, projectName, selectedModel, transformPrompt, setTransformPrompt]);
 
   const deployLivePreview = useCallback(async () => {
     setIsDeployingPreview(true);
@@ -887,11 +885,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     persistFiles(result);
   };
 
-  const onPolishSubmit = async () => {
-    setIsPolishDialogOpen(false);
-    await runPolish(polishDescription);
-  };
-
   const downloadZip = async () => {
     setIsExporting(true);
     try {
@@ -1077,13 +1070,16 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               selectedElement={selectedElement}
               setSelectedElement={setSelectedElement}
               runTransform={chatMode === 'build' ? runTransform : runDiscussion}
-              runPolish={() => setIsPolishDialogOpen(true)}
               isTransforming={isTransforming || isDiscussing}
               transformProgress={transformProgress}
               onCancelTransform={cancelTransform}
               mode={chatMode}
               onModeChange={setChatMode}
               filePaths={files.map((file) => file.path)}
+              versions={(projectVersions || []).map((version) => ({
+                id: version._id,
+                summary: version.summary,
+              }))}
               messages={[
                 ...((projectMessages?.length || 0) === 0
                   ? [
@@ -1095,24 +1091,26 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
                       },
                     ]
                   : []),
-                ...(projectMessages || []).map((message) => ({
-                  id: message._id,
-                  role: message.role,
-                  content: message.content,
-                  status: message.status,
-                  files: (() => {
-                    try {
-                      return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || [];
-                    } catch {
-                      return [];
-                    }
-                  })(),
-                })),
+                ...(projectMessages || []).map((message) => {
+                  const linkedVersion = (projectVersions || []).find(
+                    (version) => version.messageId === message._id
+                  );
+                  return {
+                    id: message._id,
+                    role: message.role,
+                    content: message.content,
+                    status: message.status,
+                    versionId: linkedVersion?._id,
+                    files: (() => {
+                      try {
+                        return (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || [];
+                      } catch {
+                        return [];
+                      }
+                    })(),
+                  };
+                }),
               ]}
-              versions={(projectVersions || []).map((version) => ({
-                id: version._id,
-                summary: version.summary,
-              }))}
               onRestoreVersion={async (versionId) => {
                 if (!projectData?._id) return;
                 const restored = await restoreVersion({
@@ -1216,37 +1214,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           )}
         </main>
       </div>
-
-      <Modal open={isPolishDialogOpen} onOpenChange={setIsPolishDialogOpen}>
-        <ModalContent
-          size="sm"
-          title="Polish pass"
-          description="One request covering the finishing work. It edits files like any other build request, and the result is a restorable version."
-          footer={
-            <>
-              <Button onClick={() => setIsPolishDialogOpen(false)}>Cancel</Button>
-              <Button intent="primary" onClick={onPolishSubmit}>
-                Run the pass
-              </Button>
-            </>
-          }
-        >
-          <Field label="What should it focus on" hint="Ctrl and Enter runs it.">
-            <Textarea
-              autoFocus
-              value={polishDescription}
-              onChange={(event) => setPolishDescription(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                  event.preventDefault();
-                  void onPolishSubmit();
-                }
-              }}
-              className="min-h-24"
-            />
-          </Field>
-        </ModalContent>
-      </Modal>
 
       <Modal open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen}>
         <ModalContent

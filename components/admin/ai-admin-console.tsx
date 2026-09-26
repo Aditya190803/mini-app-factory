@@ -179,13 +179,29 @@ export default function AIAdminConsole() {
       <main id="main" className="mx-auto w-full max-w-5xl flex-1 space-y-8 px-4 py-10 sm:px-6">
         <div className="ticked flex flex-wrap items-end justify-between gap-4 pb-3">
           <div>
-            <h1 className="text-2xl font-medium tracking-[-0.024em]">AI console</h1>
+            <h1 className="text-2xl font-medium tracking-[-0.024em]">Admin</h1>
             <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              Provider defaults for this deployment. Every change here is audit logged.
+              Models, provider fallback, and deployment identity for Mini App Factory.
             </p>
           </div>
-          <Button onClick={() => router.push('/admin/models')}>Model visibility</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => router.push('/admin/models')}>Model visibility</Button>
+            <Button onClick={() => router.push('/settings')}>Account settings</Button>
+          </div>
         </div>
+
+        <section className="border border-[var(--rule)] bg-[var(--surface-1)] p-6 space-y-3">
+          <h2 className="text-xs font-mono uppercase tracking-[0.08em] text-[var(--muted-foreground)]">Factory identity</h2>
+          <p className="text-sm text-[var(--foreground)]">
+            Product name and copy come from <code className="font-mono text-xs">lib/constants.ts</code>
+            (<span className="font-mono text-xs">APP_NAME</span>, <span className="font-mono text-xs">APP_TAGLINE</span>).
+            Admins are granted via <span className="font-mono text-xs">MAF_ADMIN_EMAILS</span>.
+          </p>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            AI Gateway effort variants (low / medium / high) are collapsed to one model each in the
+            picker. Open Model visibility to hide anything that should not appear for users.
+          </p>
+        </section>
 
         <section className="border border-[var(--rule)] bg-[var(--surface-1)] p-6 space-y-4">
           <div className="flex items-center gap-2 text-[var(--foreground)]">

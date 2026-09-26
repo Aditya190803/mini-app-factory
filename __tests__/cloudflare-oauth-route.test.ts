@@ -11,6 +11,7 @@ vi.mock('@/lib/oauth', () => ({
 vi.mock('@/lib/cloudflare-oauth', () => ({
   createCloudflareAuthorizationUrl: vi.fn(),
   exchangeCloudflareCode: vi.fn(),
+  isCloudflareOAuthConfigured: vi.fn(() => true),
 }));
 vi.mock('@/lib/cloudflare', () => ({ listCloudflareAccounts: vi.fn() }));
 vi.mock('@/lib/integrations', () => ({
@@ -37,6 +38,16 @@ describe('Cloudflare OAuth routes', () => {
     const response = await GET(new Request('https://factory.example/api/integrations/cloudflare/start?returnTo=%2Fsettings'));
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toContain('dash.cloudflare.com/oauth2/auth');
+  });
+
+  test('sends the user back to settings when OAuth is not configured', async () => {
+    const cloudflareOAuth = await import('@/lib/cloudflare-oauth');
+    const { GET } = await import('@/app/api/integrations/cloudflare/start/route');
+    (cloudflareOAuth.isCloudflareOAuthConfigured as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+
+    const response = await GET(new Request('https://factory.example/api/integrations/cloudflare/start?returnTo=%2Fsettings'));
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://factory.example/settings?cloudflareError=oauth-unconfigured');
   });
 
   test('exchanges the callback code and stores encrypted integration inputs', async () => {

@@ -30,9 +30,23 @@ beforeEach(() => {
 
 const HOME = {
   path: 'index.html',
-  content: '<html><body><h1>Original</h1></body></html>',
+  content: '<html><head><link rel="stylesheet" href="styles.css"></head><body><h1>Original</h1><script src="script.js"></script></body></html>',
   language: 'html' as const,
   fileType: 'page' as const,
+};
+
+const STYLES = {
+  path: 'styles.css',
+  content: 'body { color: #111; }',
+  language: 'css' as const,
+  fileType: 'style' as const,
+};
+
+const SCRIPT = {
+  path: 'script.js',
+  content: 'console.log("ok")',
+  language: 'javascript' as const,
+  fileType: 'script' as const,
 };
 
 /** Queue up one model response per sendAndWait call. */
@@ -65,7 +79,7 @@ async function run(responses: string[]) {
     requestId: 'req_test',
     projectName: 'demo-project',
     prompt: 'Change the heading',
-    finalFiles: [{ ...HOME }],
+    finalFiles: [{ ...HOME }, { ...STYLES }, { ...SCRIPT }],
     runtimeConfig: { adminConfig: {}, byokConfig: {} } as never,
     onEvent: (event) => events.push(event),
   });

@@ -15,7 +15,6 @@ export type RunTransformBody = {
   projectName: string;
   activeFile: string;
   prompt?: string;
-  polishDescription?: string;
   modelId?: string;
   providerId?: string;
 };
@@ -62,6 +61,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
   const [isTransforming, setIsTransforming] = useState(false);
   const [transformProgress, setTransformProgress] = useState<TransformProgressState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const runGenerationRef = useRef(0);
   const filesRef = useRef(files);
   const selectedModelRef = useRef(selectedModel);
   useEffect(() => {
@@ -81,6 +81,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
+      const generation = ++runGenerationRef.current;
       setIsTransforming(true);
       setTransformProgress(null);
       try {
@@ -92,6 +93,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         });
 
         const result = await consumeTransformStream(response, (event) => {
+          if (runGenerationRef.current !== generation) return;
           void onRunEvent?.(event);
           const next = transformEventToProgress(event);
           if (next) setTransformProgress(next);
@@ -125,7 +127,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         toast.error(message, { description: requestId ? `${suggestion} (request: ${requestId})` : suggestion });
         throw err;
       } finally {
-        if (abortRef.current === ac) {
+        if (runGenerationRef.current === generation) {
           abortRef.current = null;
           setIsTransforming(false);
           setTransformProgress(null);
@@ -138,6 +140,8 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
   const runTransform = useCallback(async (promptOverride?: string) => {
     const requestedPrompt = promptOverride?.trim() || transformPrompt.trim();
     if (!requestedPrompt) return;
+    // Clear immediately so a long run does not look like the prompt is still pending.
+    setTransformPrompt('');
     let finalPrompt = requestedPrompt;
     if (selectedElement) {
       const cleanHtml = selectedElement.html
@@ -155,7 +159,11 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         modelId: selectedModelRef.current.id || undefined,
         providerId: selectedModelRef.current.providerId || undefined,
       });
-      if (!result) return;
+      if (!result) {
+        // Cancelled — put the prompt back so the user can edit and resend.
+        setTransformPrompt(requestedPrompt);
+        return;
+      }
       const nextFiles = result.full && result.files
         ? result.files
         : filesRef.current
@@ -163,11 +171,11 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
             .map((file) => result.files?.find((updated) => updated.path === file.path) || file)
             .concat((result.files || []).filter((updated) => !filesRef.current.some((file) => file.path === updated.path)));
       await onRunCompleted?.(requestedPrompt, nextFiles);
-      setTransformPrompt('');
       setSelectedElement(null);
     } catch (error) {
+      // Put the prompt back so the user can edit and retry after a failure.
+      setTransformPrompt(requestedPrompt);
       await onRunFailed?.(requestedPrompt, error instanceof Error ? error.message : 'Build failed');
-      /* toast handled in postTransform */
     }
   }, [
     transformPrompt,
@@ -182,28 +190,10 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     onRunFailed,
   ]);
 
-  const runPolish = useCallback(
-    async (polishDescription: string) => {
-      try {
-        await postTransform({
-          projectName,
-          activeFile: activeFilePath,
-          polishDescription,
-          modelId: selectedModelRef.current.id || undefined,
-          providerId: selectedModelRef.current.providerId || undefined,
-        });
-      } catch {
-        /* toast in postTransform */
-      }
-    },
-    [postTransform, projectName, activeFilePath]
-  );
-
   return {
     isTransforming,
     transformProgress,
     runTransform,
-    runPolish,
     cancelTransform,
   };
 }

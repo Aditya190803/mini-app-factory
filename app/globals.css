@@ -184,6 +184,54 @@
   --shadow-lg: 0 20px 48px -16px oklch(0 0 0 / 0.7);
 }
 
+/* Stack Auth components use hsl(var(--token)) under .stack-scope. Isolated so
+   the rest of the app can keep oklch tokens. */
+.stack-scope {
+  --background: 40 14% 97%;
+  --foreground: 30 8% 12%;
+  --card: 40 20% 99%;
+  --card-foreground: 30 8% 12%;
+  --popover: 40 20% 99%;
+  --popover-foreground: 30 8% 12%;
+  --primary: 18 57% 38%;
+  --primary-foreground: 40 20% 99%;
+  --secondary: 40 10% 94%;
+  --secondary-foreground: 30 8% 16%;
+  --muted: 40 10% 94%;
+  --muted-foreground: 30 6% 40%;
+  --accent: 40 10% 91%;
+  --accent-foreground: 30 8% 14%;
+  --destructive: 16 62% 42%;
+  --destructive-foreground: 40 20% 99%;
+  --border: 36 6% 86%;
+  --input: 32 6% 76%;
+  --ring: 18 57% 38%;
+  --radius: 0.375rem;
+}
+
+.dark .stack-scope,
+html:has(head > [data-stack-theme='dark']) .stack-scope {
+  --background: 30 8% 9%;
+  --foreground: 40 12% 95%;
+  --card: 30 8% 12%;
+  --card-foreground: 40 12% 95%;
+  --popover: 30 7% 15%;
+  --popover-foreground: 40 12% 95%;
+  --primary: 20 62% 42%;
+  --primary-foreground: 40 20% 99%;
+  --secondary: 30 7% 15%;
+  --secondary-foreground: 40 12% 95%;
+  --muted: 30 7% 15%;
+  --muted-foreground: 36 6% 62%;
+  --accent: 30 6% 18%;
+  --accent-foreground: 40 12% 95%;
+  --destructive: 16 55% 42%;
+  --destructive-foreground: 40 20% 99%;
+  --border: 30 6% 20%;
+  --input: 30 6% 26%;
+  --ring: 22 48% 58%;
+}
+
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

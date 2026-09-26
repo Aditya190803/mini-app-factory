@@ -183,6 +183,7 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
                 <CloudflareConnect
                   connected={integrationStatus.cloudflareConnected}
                   accountName={integrationStatus.cloudflareAccountName}
+                  oauthConfigured={integrationStatus.cloudflareOAuthConfigured}
                   onConnected={markCloudflareConnected}
                 />
               </div>

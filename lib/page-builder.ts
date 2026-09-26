@@ -52,7 +52,7 @@ export function assembleFullPage(
     $('body').attr('data-source-file', pagePath);
   }
 
-  if (projectName) {
+    if (projectName && !isEditorPreview) {
     const baseHref = `/results/${projectName}/`;
     if ($('head').length === 0 && $('body').length > 0) {
       $('body').before('<head></head>');
@@ -123,29 +123,75 @@ export function assembleFullPage(
 
   const styleFiles = files.filter(f => f.fileType === 'style');
   styleFiles.forEach(styleFile => {
-    const selector = `link[rel="stylesheet"][href="${styleFile.path}"]`;
-    const styleElement = `<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`;
-    
-    if ($(selector).length > 0) {
-      $(selector).replaceWith(styleElement);
-    } else if (styleFile.path === 'styles.css') {
-      if ($('head').length > 0) $('head').append(styleElement);
-      else $.root().append(styleElement);
+    const hrefs = [styleFile.path, `./${styleFile.path}`, `/${styleFile.path}`];
+    let replaced = false;
+    for (const href of hrefs) {
+      const selector = `link[rel="stylesheet"][href="${href}"]`;
+      if ($(selector).length > 0) {
+        $(selector).replaceWith(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
+        replaced = true;
+      }
+    }
+    // Match bare filenames even when the HTML used a different relative form.
+    if (!replaced) {
+      const basename = styleFile.path.split('/').pop() || styleFile.path;
+      $(`link[rel="stylesheet"]`).each((_, el) => {
+        const href = ($(el).attr('href') || '').split('?')[0].replace(/^\.\//, '');
+        if (href === styleFile.path || href === basename || href.endsWith(`/${basename}`)) {
+          $(el).replaceWith(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
+          replaced = true;
+        }
+      });
+    }
+    if (!replaced && (styleFile.path === 'styles.css' || styleFile.path.endsWith('/styles.css'))) {
+      if ($('head').length > 0) $('head').append(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
+      else $.root().append(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
     }
   });
+
+  // Editor preview uses srcDoc — leftover relative CSS/JS hits /edit/*.css and 404s.
+  if (isEditorPreview) {
+    $('link[rel="stylesheet"][href]').each((_, el) => {
+      const href = ($(el).attr('href') || '').trim();
+      if (!href || href.startsWith('http') || href.startsWith('data:')) return;
+      $(el).remove();
+    });
+  }
 
   const scriptFiles = files.filter(f => f.fileType === 'script');
   scriptFiles.forEach(scriptFile => {
-    const selector = `script[src="${scriptFile.path}"]`;
-    const scriptElement = `<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`;
-
-    if ($(selector).length > 0) {
-      $(selector).replaceWith(scriptElement);
-    } else if (scriptFile.path === 'script.js') {
-      if ($('body').length > 0) $('body').append(scriptElement);
-      else $.root().append(scriptElement);
+    const hrefs = [scriptFile.path, `./${scriptFile.path}`, `/${scriptFile.path}`];
+    let replaced = false;
+    for (const href of hrefs) {
+      const selector = `script[src="${href}"]`;
+      if ($(selector).length > 0) {
+        $(selector).replaceWith(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      const basename = scriptFile.path.split('/').pop() || scriptFile.path;
+      $('script[src]').each((_, el) => {
+        const src = ($(el).attr('src') || '').split('?')[0].replace(/^\.\//, '');
+        if (src === scriptFile.path || src === basename || src.endsWith(`/${basename}`)) {
+          $(el).replaceWith(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
+          replaced = true;
+        }
+      });
+    }
+    if (!replaced && (scriptFile.path === 'script.js' || scriptFile.path.endsWith('/script.js'))) {
+      if ($('body').length > 0) $('body').append(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
+      else $.root().append(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
     }
   });
+
+  if (isEditorPreview) {
+    $('script[src]').each((_, el) => {
+      const src = ($(el).attr('src') || '').trim();
+      if (!src || src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:')) return;
+      $(el).remove();
+    });
+  }
 
   if (isEditorPreview) {
     const bridgeScript = `

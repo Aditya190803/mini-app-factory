@@ -72,6 +72,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     githubConnected: false,
     netlifyConnected: false,
     cloudflareConnected: false,
+    cloudflareOAuthConfigured: false,
     cloudflareAccountName: undefined as string | undefined,
   });
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
@@ -133,7 +134,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       githubConnected: false,
       netlifyConnected: false,
       cloudflareConnected: false,
-      cloudflareAccountName: undefined,
+      cloudflareOAuthConfigured: false,
+      cloudflareAccountName: undefined as string | undefined,
     };
     try {
       const resp = await fetch('/api/integrations/status');
@@ -146,6 +148,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         githubConnected: !!data.githubConnected,
         netlifyConnected: !!data.netlifyConnected,
         cloudflareConnected: !!data.cloudflareConnected,
+        cloudflareOAuthConfigured: !!data.cloudflareOAuthConfigured,
         cloudflareAccountName: data.cloudflareAccountName,
       });
     } catch {
