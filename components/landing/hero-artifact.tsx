@@ -107,6 +107,9 @@ export function HeroArtifact({ className }: { className?: string }) {
                   {index + 1}
                 </span>
                 <code
+                  // `truncate` sets nowrap, which collapses the leading spaces
+                  // that carry the indentation. `pre` keeps them.
+                  style={{ whiteSpace: 'pre' }}
                   className={cn(
                     'truncate font-mono text-[11px]',
                     line.c === 'string' ? 'text-[var(--signal-text)]' : 'text-[var(--foreground)]'
@@ -119,7 +122,7 @@ export function HeroArtifact({ className }: { className?: string }) {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--rule)] bg-[var(--surface-2)] px-3 py-2 font-mono text-[10px] text-[var(--muted-foreground)]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--rule)] bg-[var(--surface-2)] px-3 pb-6 pt-2 font-mono text-[10px] text-[var(--muted-foreground)]">
           <span>D1 DB</span>
           <span>KV CACHE</span>
           <span>R2 FILES</span>
@@ -128,7 +131,7 @@ export function HeroArtifact({ className }: { className?: string }) {
       </div>
 
       <div className="absolute -bottom-3 left-6 rounded-md border border-[var(--rule-strong)] bg-[var(--background)] px-2.5 py-1 font-mono text-[10px] tracking-[0.04em] text-[var(--muted-foreground)] shadow-[var(--shadow-sm)]">
-        8 files, 1 worker, 1 database
+        7 files, 1 worker, 1 database
       </div>
     </div>
   )

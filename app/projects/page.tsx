@@ -47,8 +47,9 @@ import { TARGETS, type BuildTarget } from '@/lib/targets'
 
 type Project = NonNullable<ReturnType<typeof useProjects>>[number]
 
-function useProjects() {
-  return useQuery(api.projects.getUserProjects, {})
+function useProjects(signedIn: boolean) {
+  // Signed out, the query throws rather than returning nothing, so it must be skipped.
+  return useQuery(api.projects.getUserProjects, signedIn ? {} : 'skip')
 }
 
 type StatusFilter = 'all' | 'live' | 'draft'
@@ -67,7 +68,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { confirm, confirmDialog } = useConfirm()
 
-  const projects = useProjects()
+  const projects = useProjects(Boolean(user))
   const deleteProject = useMutation(api.projects.deleteProject)
   const remixProject = useMutation(api.projects.remixPublishedProject)
 
@@ -150,6 +151,27 @@ export default function DashboardPage() {
     </>
   )
 
+  if (!user) {
+    return (
+      <div className="flex min-h-dvh flex-col">
+        <TopBar>{chrome}</TopBar>
+        <main className="mx-auto flex w-full max-w-md flex-1 items-center px-6">
+          <EmptyState title="Sign in to see your projects" className="w-full">
+            <p>Projects are tied to your account, so there is nothing to show until you sign in.</p>
+            <div className="mt-5 flex justify-center gap-2">
+              <Button intent="primary" onClick={() => router.push('/handler/sign-in')}>
+                Sign in
+              </Button>
+              <Button asChild>
+                <Link href="/">Back to the composer</Link>
+              </Button>
+            </div>
+          </EmptyState>
+        </main>
+      </div>
+    )
+  }
+
   if (projects === undefined) {
     return (
       <div className="flex min-h-dvh flex-col">
@@ -173,27 +195,6 @@ export default function DashboardPage() {
         <span role="status" className="sr-only">
           Loading your projects
         </span>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="flex min-h-dvh flex-col">
-        <TopBar>{chrome}</TopBar>
-        <main className="mx-auto flex w-full max-w-md flex-1 items-center px-6">
-          <EmptyState title="Sign in to see your projects" className="w-full">
-            <p>Projects are tied to your account, so there is nothing to show until you sign in.</p>
-            <div className="mt-5 flex justify-center gap-2">
-              <Button intent="primary" onClick={() => router.push('/handler/sign-in')}>
-                Sign in
-              </Button>
-              <Button asChild>
-                <Link href="/">Back to the composer</Link>
-              </Button>
-            </div>
-          </EmptyState>
-        </main>
       </div>
     )
   }

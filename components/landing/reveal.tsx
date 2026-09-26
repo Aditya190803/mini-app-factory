@@ -34,7 +34,9 @@ export function Reveal({
           observer.disconnect()
         }
       },
-      { threshold: 0.18 }
+      // Fire on the leading edge, not a visibility ratio: a stacked section on a
+      // phone can be taller than the ratio allows, and would then never show.
+      { rootMargin: '0px 0px -12% 0px' }
     )
     observer.observe(node)
     return () => observer.disconnect()
