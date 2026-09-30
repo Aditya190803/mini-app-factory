@@ -4,10 +4,11 @@ import { projectExists, reserveProjectName } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 import { isHttpUrl, normalizeReferenceUrl } from '@/lib/url-reference';
 import { consumeRateLimit } from '@/lib/rate-limit';
+import { MAX_PROJECT_NAME_LENGTH, validateProjectName } from '@/lib/deploy-shared';
 
 const checkNameSchema = z
   .object({
-    name: z.string().trim().min(1).max(120),
+    name: z.string().trim().min(1).max(MAX_PROJECT_NAME_LENGTH),
     prompt: z.string().trim().max(20_000).optional(),
     selectedModel: z.string().max(200).optional(),
     providerId: z.string().max(60).optional(),
@@ -39,9 +40,9 @@ export async function POST(req: NextRequest) {
 
   const normalizedName = name.trim().toLowerCase();
 
-  // Validation for project name (alphanumeric and dashes)
-  if (!/^[a-z0-9-]+$/.test(normalizedName)) {
-    return NextResponse.json({ error: 'Project name can only contain letters, numbers, and dashes' }, { status: 400 });
+  const nameError = validateProjectName(normalizedName);
+  if (nameError) {
+    return NextResponse.json({ error: nameError }, { status: 400 });
   }
 
   if (!prompt) {

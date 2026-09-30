@@ -180,7 +180,10 @@ export async function executeTool(
   args: Record<string, unknown>,
   files: ProjectFile[]
 ): Promise<ToolResult> {
-  const fileList = [...files];
+  // Copy the file objects, not just the array: several handlers assign `file.content` in place,
+  // so a failing batchEdit used to leave its earlier steps applied to the caller's files, and the
+  // retry then applied them twice.
+  const fileList = files.map((file) => ({ ...file }));
 
   const validated = validateToolCall(toolName, args);
   if (!validated.success) {

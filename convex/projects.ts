@@ -17,6 +17,9 @@ import {
  * to every member let a viewer paste it into their own project and have it decrypted there.
  * The Next.js server reads it through `getProjectCloudflareEnvVars`, which is owner-only.
  */
+/** Mirrors PROJECT_NAME_PATTERN in lib/deploy-shared.ts (Convex cannot import from lib/). */
+const PROJECT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,57}$/;
+
 function toClientProject(project: Doc<"projects">) {
   const { cloudflareEnvVarsEncrypted, ...rest } = project;
   return { ...rest, hasCloudflareEnvVars: Boolean(cloudflareEnvVarsEncrypted) };
@@ -188,6 +191,8 @@ export const reserveProjectName = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    // Same rule as lib/deploy-shared.ts, enforced here because this mutation is callable directly.
+    if (!PROJECT_NAME_PATTERN.test(args.projectName)) throw new Error("Invalid project name");
 
     const existing = await ctx.db
       .query("projects")
@@ -285,7 +290,7 @@ export const remixPublishedProject = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const projectName = args.projectName.trim().toLowerCase();
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(projectName)) throw new Error("Use 1–63 lowercase letters, numbers, or hyphens");
+    if (!PROJECT_NAME_PATTERN.test(projectName)) throw new Error("Use up to 58 lowercase letters, numbers, and single hyphens");
     const [source, target] = await Promise.all([
       ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", args.sourceProjectName)).first(),
       ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", projectName)).first(),
