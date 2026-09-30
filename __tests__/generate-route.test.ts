@@ -178,7 +178,7 @@ describe('POST /api/generate', () => {
 
     (saveProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
       name: 'monkey-type',
       prompt: 'Build a typing test',
       status: 'error',
@@ -214,6 +214,44 @@ describe('POST /api/generate', () => {
       selectedModel: 'claude-sonnet-4-6',
       providerId: 'gateway',
     }));
+    // Files are saved before the project is marked completed, so a failed save can never be
+    // reported as a successful build.
+    const saveProjectMock = saveProject as ReturnType<typeof vi.fn>;
+    const lastSave = saveProjectMock.mock.calls.length - 1;
+    expect(saveProjectMock.mock.calls[lastSave][0]).toMatchObject({ status: 'completed' });
+    expect((saveFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+      .toBeLessThan(saveProjectMock.mock.invocationCallOrder[lastSave]);
+  });
+
+  test('reports a failed file save as a failed build', async () => {
+    const { runGeneration } = await import('@/lib/generate-run');
+    const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
+    const session = (content: string) => ({
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content } }),
+      on: vi.fn(() => () => {}),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    });
+    (saveProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (saveFiles as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Convex is down'));
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({ name: 'broken', prompt: 'p', status: 'pending' });
+    aiMocks.createSession
+      .mockResolvedValueOnce(session('Spec'))
+      .mockResolvedValueOnce(session([
+        '```html:index.html',
+        '<link rel="stylesheet" href="styles.css"><main>Hi</main><script src="script.js" defer></script>',
+        '```',
+        '```css:styles.css',
+        'body{}',
+        '```',
+        '```javascript:script.js',
+        'console.log(1);',
+        '```',
+      ].join('\n')));
+
+    const result = await runGeneration({ projectName: 'broken', prompt: 'p', signal: new AbortController().signal });
+
+    expect('error' in result && result.error).toMatch(/Failed to save/);
+    expect(saveProject).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
 
   test('ignores an unknown provider selection so the default chain can run', async () => {
@@ -227,7 +265,7 @@ describe('POST /api/generate', () => {
 
     (saveProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
       name: 'paid-model',
       prompt: 'Build a landing page',
       status: 'pending',

@@ -12,5 +12,7 @@ const PAGES: Array<{ path: string; priority: number }> = [
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteUrl()
-  return PAGES.map(({ path, priority }) => ({ url: `${base}${path}`, priority }))
+  // The sitemap is generated at build time, and these pages only change with a deploy.
+  const lastModified = new Date()
+  return PAGES.map(({ path, priority }) => ({ url: `${base}${path}`, priority, lastModified }))
 }

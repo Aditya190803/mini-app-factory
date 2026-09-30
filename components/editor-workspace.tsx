@@ -256,20 +256,12 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }).catch(() => { });
   }, [projectData, projectName, initialPrompt, saveProject]);
 
-  useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      if (e.data.type === 'navigate') {
-        const path = e.data.path.startsWith('/') ? e.data.path.slice(1) : e.data.path;
-        if (files.some(f => f.path === path)) {
-          setActiveFilePath(path);
-        } else if (path === '' && files.some(f => f.path === 'index.html')) {
-          setActiveFilePath('index.html');
-        }
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [files]);
+  /** A link clicked inside the preview; the panel checks the message came from its own frame. */
+  const handlePreviewNavigate = useCallback((path: string) => {
+    const current = filesRef.current;
+    if (current.some((f) => f.path === path)) setActiveFilePath(path);
+    else if (path === '' && current.some((f) => f.path === 'index.html')) setActiveFilePath('index.html');
+  }, []);
 
   const handleReset = () => {
     setIsResetDialogOpen(true);
@@ -1211,6 +1203,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         <main id="main" className="flex min-w-0 flex-1 overflow-hidden">
           {activeTab === 'preview' && (
             <PreviewPanel
+              onNavigate={handlePreviewNavigate}
               previewHtml={previewHtml}
               files={files}
               onOpenInNewTab={handleOpenPreviewInNewTab}
@@ -1253,6 +1246,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
                 <PreviewPanel
+                  onNavigate={handlePreviewNavigate}
                   previewHtml={previewHtml}
                   files={files}
                   onOpenInNewTab={handleOpenPreviewInNewTab}

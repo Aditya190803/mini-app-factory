@@ -32,7 +32,10 @@ export function userContentHeaders(
 ): Record<string, string> {
   return {
     'Content-Type': contentType,
-    'Content-Security-Policy': `sandbox ${SANDBOX}`,
+    // frame-ancestors: only this app may embed user content. Without it any site could frame a
+    // published page under this domain, which is the setup a phishing page wants.
+    'Content-Security-Policy': `sandbox ${SANDBOX}; frame-ancestors 'self'`,
+    'X-Robots-Tag': 'noindex, nofollow',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     ...extra,

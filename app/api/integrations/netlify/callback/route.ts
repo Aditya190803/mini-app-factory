@@ -45,8 +45,9 @@ export async function GET(req: Request) {
   });
 
   if (!tokenResp.ok) {
-    const errorText = await tokenResp.text();
-    return Response.json({ error: "Netlify token exchange failed", details: errorText }, { status: 500 });
+    // Log, don't return: the upstream body can echo request details.
+    console.error("Netlify token exchange failed:", tokenResp.status, await tokenResp.text().catch(() => ""));
+    return Response.json({ error: "Netlify token exchange failed" }, { status: 502 });
   }
 
   const tokenData = (await tokenResp.json()) as { access_token?: string };

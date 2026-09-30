@@ -81,7 +81,7 @@ async function tokenRequest(params: URLSearchParams) {
   return parseToken(data);
 }
 
-export function createCloudflareAuthorizationUrl(params: { state: string; redirectUri: string }) {
+export function createCloudflareAuthorizationUrl(params: { state: string; redirectUri: string; codeChallenge: string }) {
   const { clientId } = credentials();
   const scopes = process.env.CLOUDFLARE_OAUTH_SCOPES?.trim() || DEFAULT_CLOUDFLARE_OAUTH_SCOPES;
   const url = new URL(AUTHORIZATION_URL);
@@ -90,14 +90,17 @@ export function createCloudflareAuthorizationUrl(params: { state: string; redire
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', scopes);
   url.searchParams.set('state', params.state);
+  url.searchParams.set('code_challenge', params.codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
   return url;
 }
 
-export function exchangeCloudflareCode(params: { code: string; redirectUri: string }) {
+export function exchangeCloudflareCode(params: { code: string; redirectUri: string; codeVerifier?: string }) {
   return tokenRequest(new URLSearchParams({
     grant_type: 'authorization_code',
     code: params.code,
     redirect_uri: params.redirectUri,
+    ...(params.codeVerifier ? { code_verifier: params.codeVerifier } : {}),
   }));
 }
 

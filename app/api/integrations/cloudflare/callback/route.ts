@@ -2,7 +2,7 @@ import { stackServerApp } from '@/stack/server';
 import { listCloudflareAccounts } from '@/lib/cloudflare';
 import { exchangeCloudflareCode } from '@/lib/cloudflare-oauth';
 import { upsertIntegrationTokens } from '@/lib/integrations';
-import { consumeOAuthStateCookie, getBaseUrl } from '@/lib/oauth';
+import { consumeOAuthState, getBaseUrl } from '@/lib/oauth';
 
 const COOKIE_NAME = 'oauth_cloudflare_state';
 
@@ -17,12 +17,13 @@ export async function GET(req: Request) {
   if (providerError) return Response.json({ error: 'Cloudflare authorization was denied' }, { status: 400 });
   if (!state || !code) return Response.json({ error: 'Missing code or state' }, { status: 400 });
 
-  const returnTo = await consumeOAuthStateCookie(COOKIE_NAME, state);
-  if (!returnTo) return Response.json({ error: 'Invalid or expired OAuth state' }, { status: 400 });
+  const oauthState = await consumeOAuthState(COOKIE_NAME, state);
+  if (!oauthState) return Response.json({ error: 'Invalid or expired OAuth state' }, { status: 400 });
+  const { returnTo, codeVerifier } = oauthState;
 
   try {
     const baseUrl = await getBaseUrl();
-    const token = await exchangeCloudflareCode({ code, redirectUri: `${baseUrl}/api/integrations/cloudflare/callback` });
+    const token = await exchangeCloudflareCode({ code, redirectUri: `${baseUrl}/api/integrations/cloudflare/callback`, codeVerifier });
     const accounts = await listCloudflareAccounts(token.accessToken);
     if (!accounts.length) return Response.json({ error: 'No Cloudflare account was authorized' }, { status: 400 });
     const account = accounts[0];
