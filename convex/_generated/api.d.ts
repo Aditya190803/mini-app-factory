@@ -13,12 +13,12 @@ import type * as auth from "../auth.js";
 import type * as collaboration from "../collaboration.js";
 import type * as components_ from "../components.js";
 import type * as conversations from "../conversations.js";
+import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
 import type * as files from "../files.js";
 import type * as integrations from "../integrations.js";
 import type * as projects from "../projects.js";
 import type * as rateLimits from "../rateLimits.js";
-import type * as uploads from "../uploads.js";
 
 import type {
   ApiFromModules,
@@ -32,12 +32,12 @@ declare const fullApi: ApiFromModules<{
   collaboration: typeof collaboration;
   components: typeof components_;
   conversations: typeof conversations;
+  crons: typeof crons;
   deployments: typeof deployments;
   files: typeof files;
   integrations: typeof integrations;
   projects: typeof projects;
   rateLimits: typeof rateLimits;
-  uploads: typeof uploads;
 }>;
 
 /**

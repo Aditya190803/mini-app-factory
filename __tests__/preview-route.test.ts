@@ -72,7 +72,7 @@ describe('GET /preview/[projectName]', () => {
     const { stackServerApp } = await import('@/stack/server');
     const { getProject, getFile, getFiles } = await import('@/lib/projects');
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ userId: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ accessRole: 'owner', userId: 'user_123' });
     (getFile as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       path: 'index.html',
       content: '<h1>Demo</h1>',

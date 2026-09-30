@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { stackServerApp } from '@/stack/server';
 import { configureCloudflarePagesProject } from '@/lib/cloudflare';
-import { readCloudflareEnvVars } from '@/lib/cloudflare-deploy';
+import { cloudflareEnvVarsContext, readCloudflareEnvVars } from '@/lib/cloudflare-deploy';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getFiles, getProject, updateCloudflareProjectConfig } from '@/lib/projects';
+import { getFiles, getProjectCloudflareEnvVars, updateCloudflareProjectConfig } from '@/lib/projects';
+import { requireProjectRole } from '@/lib/project-access';
 import { encryptSecret } from '@/lib/secret-box';
-import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
+import { parseCloudflareResourceState, resolveCloudflareManifest } from '@/lib/cloudflare-manifest';
 import { buildCloudflarePagesConfig } from '@/lib/cloudflare-resources';
 import { configureCloudflareWorkerSecrets } from '@/lib/cloudflare-workers';
 
@@ -17,18 +17,16 @@ const secretSchema = z.object({
 }).strict();
 
 export async function GET(req: Request) {
-  const user = await stackServerApp.getUser();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
   const projectName = new URL(req.url).searchParams.get('projectName') ?? '';
   if (!projectNameSchema.safeParse(projectName).success) {
     return Response.json({ error: 'Invalid project name' }, { status: 400 });
   }
-  const project = await getProject(projectName);
-  if (!project) return Response.json({ error: 'Project not found' }, { status: 404 });
+  const access = await requireProjectRole(projectName, 'owner');
+  if (!access.ok) return access.response;
+  const { project } = access;
 
   return Response.json({
-    names: Object.keys(readCloudflareEnvVars(project.cloudflareEnvVarsEncrypted)).sort(),
+    names: Object.keys(readCloudflareEnvVars(await getProjectCloudflareEnvVars(projectName), projectName)).sort(),
     cloudflareProjectName: project.cloudflareProjectName,
     d1DatabaseName: project.cloudflareD1DatabaseName,
     customDomain: project.cloudflareCustomDomain,
@@ -36,20 +34,19 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const user = await stackServerApp.getUser();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = secretSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid secret' }, { status: 400 });
 
-  const project = await getProject(parsed.data.projectName);
-  if (!project) return Response.json({ error: 'Project not found' }, { status: 404 });
-  const envVars = readCloudflareEnvVars(project.cloudflareEnvVarsEncrypted);
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
+  const { project } = access;
+  const envVars = readCloudflareEnvVars(await getProjectCloudflareEnvVars(project.name), project.name);
   if (parsed.data.value === null) delete envVars[parsed.data.name];
   else envVars[parsed.data.name] = parsed.data.value;
 
   await updateCloudflareProjectConfig({
     projectName: parsed.data.projectName,
-    cloudflareEnvVarsEncrypted: encryptSecret(JSON.stringify(envVars)),
+    cloudflareEnvVarsEncrypted: encryptSecret(JSON.stringify(envVars), cloudflareEnvVarsContext(project.name)),
   });
 
   if (project.cloudflareProjectName) {
@@ -58,7 +55,8 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Secret saved, but Cloudflare must be reconnected to sync it' }, { status: 409 });
     }
     const files = await getFiles(parsed.data.projectName);
-    const manifest = parseCloudflareManifest(files, project.cloudflareProjectName);
+    const state = parseCloudflareResourceState(project.cloudflareResourcesJson);
+    const manifest = resolveCloudflareManifest(files, project.cloudflareProjectName, state);
     const secrets = {
       ...envVars,
       ...(parsed.data.value === null ? { [parsed.data.name]: null } : {}),
@@ -68,7 +66,7 @@ export async function POST(req: Request) {
       accountId: integration.cloudflareAccountId,
       projectName: project.cloudflareProjectName,
       bindings: manifest
-        ? buildCloudflarePagesConfig(manifest, parseCloudflareResourceState(project.cloudflareResourcesJson))
+        ? buildCloudflarePagesConfig(manifest, state)
         : undefined,
       envVars: secrets,
     });

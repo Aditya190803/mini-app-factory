@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { canReadProject, getUserId, requireProjectAccessById, requireUserId } from "./auth";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { getProjectRole, getUserId, requireProjectAccessById, requireUserId } from "./auth";
 
 /**
  * Project file contents.
@@ -13,13 +15,34 @@ import { canReadProject, getUserId, requireProjectAccessById, requireUserId } fr
  * database IDs, ownership, or timestamps.
  */
 
-/** Full records are available only to the project owner. */
+/**
+ * Size caps. The Next.js routes validate too, but these mutations are callable directly with a
+ * user's token, so the limits have to hold here. A single file must also stay under Convex's
+ * 1 MiB document limit.
+ */
+export const MAX_FILES_PER_PROJECT = 300;
+export const MAX_FILE_BYTES = 800_000;
+export const MAX_PROJECT_BYTES = 8_000_000;
+
+function assertFileSize(path: string, content: string) {
+  if (path.length > 500) throw new Error("File path is too long");
+  if (content.length > MAX_FILE_BYTES) throw new Error(`${path} is too large (limit ${MAX_FILE_BYTES} bytes)`);
+}
+
+async function bumpFilesVersion(ctx: MutationCtx, projectId: Id<"projects">, patch: { pageCount?: number } = {}) {
+  const project = await ctx.db.get(projectId);
+  if (!project) return 0;
+  const filesVersion = (project.filesVersion ?? 0) + 1;
+  await ctx.db.patch(projectId, { ...patch, filesVersion, updatedAt: Date.now() });
+  return filesVersion;
+}
+
+/** Full records are available to any project member. */
 export const getFilesByProject = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
-    const userId = await getUserId(ctx);
-    if (!(await canReadProject(ctx, project, userId))) return [];
+    if (!(await getProjectRole(ctx, project, await getUserId(ctx)))) return [];
 
     return await ctx.db
       .query("projectFiles")
@@ -28,12 +51,28 @@ export const getFilesByProject = query({
   },
 });
 
+/**
+ * Files and the version they belong to, read in one transaction. Server-side writers (the
+ * transform) save against this version, so edits that land while they run are not overwritten.
+ */
+export const getFilesSnapshot = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project || !(await getProjectRole(ctx, project, await getUserId(ctx)))) return null;
+    const files = await ctx.db
+      .query("projectFiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    return { files, filesVersion: project.filesVersion ?? 0 };
+  },
+});
+
 export const getFileByPath = query({
   args: { projectId: v.id("projects"), path: v.string() },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
-    const userId = await getUserId(ctx);
-    if (!(await canReadProject(ctx, project, userId))) return null;
+    if (!(await getProjectRole(ctx, project, await getUserId(ctx)))) return null;
 
     return await ctx.db
       .query("projectFiles")
@@ -115,7 +154,8 @@ export const saveFile = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    const project = await requireProjectAccessById(ctx, args.projectId);
+    assertFileSize(args.path, args.content);
 
     const normalizedFileType = args.fileType === "html" ? "page" : args.fileType;
     const existing = await ctx.db
@@ -126,6 +166,7 @@ export const saveFile = mutation({
       .first();
 
     const now = Date.now();
+    let fileId = existing?._id;
     if (existing) {
       await ctx.db.patch(existing._id, {
         content: args.content,
@@ -133,9 +174,8 @@ export const saveFile = mutation({
         fileType: normalizedFileType,
         updatedAt: now,
       });
-      return existing._id;
     } else {
-      const fileId = await ctx.db.insert("projectFiles", {
+      fileId = await ctx.db.insert("projectFiles", {
         projectId: args.projectId,
         path: args.path,
         content: args.content,
@@ -144,19 +184,12 @@ export const saveFile = mutation({
         createdAt: now,
         updatedAt: now,
       });
-
-      // Update project updated time and page count if it's a page
-      const project = await ctx.db.get(args.projectId);
-      if (project) {
-        const patch: { updatedAt: number; pageCount?: number } = { updatedAt: now };
-        if (normalizedFileType === "page") {
-          patch.pageCount = (project.pageCount || 0) + 1;
-        }
-        await ctx.db.patch(args.projectId, patch);
-      }
-
-      return fileId;
     }
+    // Bump the version on every write, not just inserts: a tab holding the old version must not
+    // be able to overwrite this change with a stale snapshot.
+    const pageCount = !existing && normalizedFileType === "page" ? (project.pageCount || 0) + 1 : undefined;
+    const filesVersion = await bumpFilesVersion(ctx, args.projectId, pageCount === undefined ? {} : { pageCount });
+    return { fileId, filesVersion };
   },
 });
 
@@ -197,6 +230,13 @@ export const saveFiles = mutation({
   },
   handler: async (ctx, args) => {
     const project = await requireProjectAccessById(ctx, args.projectId);
+    if (args.files.length > MAX_FILES_PER_PROJECT) throw new Error(`Projects are limited to ${MAX_FILES_PER_PROJECT} files`);
+    let totalBytes = 0;
+    for (const file of args.files) {
+      assertFileSize(file.path, file.content);
+      totalBytes += file.content.length;
+    }
+    if (totalBytes > MAX_PROJECT_BYTES) throw new Error(`Projects are limited to ${MAX_PROJECT_BYTES} bytes of files`);
 
     const currentVersion = project.filesVersion ?? 0;
     if (args.expectedVersion !== undefined && args.expectedVersion !== currentVersion) {
@@ -369,7 +409,7 @@ export const recordEdit = mutation({
 export const deleteFile = mutation({
   args: { projectId: v.id("projects"), path: v.string() },
   handler: async (ctx, args) => {
-    await requireProjectAccessById(ctx, args.projectId);
+    const project = await requireProjectAccessById(ctx, args.projectId);
 
     const existing = await ctx.db
       .query("projectFiles")
@@ -378,16 +418,13 @@ export const deleteFile = mutation({
       )
       .first();
 
-    if (existing) {
-      await ctx.db.delete(existing._id);
-
-      const project = await ctx.db.get(args.projectId);
-      if (project && existing.fileType === "page") {
-        await ctx.db.patch(args.projectId, {
-          pageCount: Math.max(0, (project.pageCount || 1) - 1),
-          updatedAt: Date.now(),
-        });
-      }
-    }
+    if (!existing) return { filesVersion: project.filesVersion ?? 0 };
+    await ctx.db.delete(existing._id);
+    const filesVersion = await bumpFilesVersion(
+      ctx,
+      args.projectId,
+      existing.fileType === "page" ? { pageCount: Math.max(0, (project.pageCount || 1) - 1) } : {}
+    );
+    return { filesVersion };
   },
 });

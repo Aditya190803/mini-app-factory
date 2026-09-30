@@ -51,6 +51,11 @@ type UseEditorDeployArgs = {
   addDeploymentHistory: (
     args: FunctionArgs<typeof api.deployments.addDeploymentHistory>
   ) => Promise<unknown>;
+  /**
+   * Save any unsaved editor changes. Deploys read the stored files, so without this the last
+   * couple of seconds of typing (the autosave debounce) silently missed the deploy.
+   */
+  flushSave?: () => Promise<void>;
 };
 
 export function useEditorDeploy(args: UseEditorDeployArgs) {
@@ -63,6 +68,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     saveProject,
     publishProject,
     addDeploymentHistory,
+    flushSave,
   } = args;
 
   const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
@@ -225,16 +231,22 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setResourcePlan(null);
   }, [deployOption]);
 
+  // Seed the result from the stored deployment when the dialog opens. It depended on the whole
+  // projectData object, so every unrelated Convex update (an autosave bumping updatedAt) replaced
+  // a fresh result, deployment id and preview URL included, with the stored subset.
+  const storedRepoUrl = projectData?.repoUrl;
+  const storedDeploymentUrl = projectData?.deploymentUrl;
+  const storedNetlifySiteName = projectData?.netlifySiteName;
   useEffect(() => {
-    if (!isDeployDialogOpen || !projectData) return;
-    if (projectData.repoUrl || projectData.deploymentUrl || projectData.netlifySiteName) {
-      setDeployResult({
-        repoUrl: projectData.repoUrl ?? undefined,
-        deploymentUrl: projectData.deploymentUrl ?? undefined,
-        netlifySiteName: projectData.netlifySiteName ?? undefined,
+    if (!isDeployDialogOpen) return;
+    if (storedRepoUrl || storedDeploymentUrl || storedNetlifySiteName) {
+      setDeployResult((prev) => prev ?? {
+        repoUrl: storedRepoUrl ?? undefined,
+        deploymentUrl: storedDeploymentUrl ?? undefined,
+        netlifySiteName: storedNetlifySiteName ?? undefined,
       });
     }
-  }, [isDeployDialogOpen, projectData?.repoUrl, projectData?.deploymentUrl, projectData?.netlifySiteName, projectData]);
+  }, [isDeployDialogOpen, storedRepoUrl, storedDeploymentUrl, storedNetlifySiteName]);
 
   useEffect(() => {
     if (!repoValidation.valid) {
@@ -347,11 +359,15 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       window.location.href = '/handler/sign-in';
       return;
     }
+    // Open the tab before any await: browsers only allow window.open inside the click's user
+    // activation, and Safari and Firefox blocked it once it ran after the publish round-trips.
+    const popup = window.open('about:blank', '_blank');
     setIsDeploying(true);
     setDeployError(null);
     setDeployResult(null);
     setDeployNotice(null);
     try {
+      await flushSave?.();
       const resultsPath = `/results/${projectName}`;
       const resultsUrl = `${window.location.origin}${resultsPath}`;
       await persistDeployMeta({ deploymentUrl: resultsUrl, deployProvider: 'maf-hosted', isPublished: true });
@@ -364,8 +380,10 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
           deploymentUrl: resultsUrl,
         });
       }
-      window.open(resultsPath, '_blank');
+      if (popup) popup.location.href = resultsPath;
+      else window.open(resultsPath, '_blank');
     } catch (err) {
+      popup?.close();
       const normalized = normalizeDeployError(err instanceof Error ? err.message : 'Publish failed');
       setDeployError(normalized);
       toast.error('Deploy failed', { description: normalized });
@@ -379,6 +397,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     publishProject,
     projectData?._id,
     addDeploymentHistory,
+    flushSave,
   ]);
 
   const runDeploy = useCallback(async (confirmCloudflareResources = false) => {
@@ -397,6 +416,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setDeployResult(null);
     setDeployNotice(null);
     try {
+      await flushSave?.();
       const data = await performDeploy(
         {
           projectName,
@@ -461,6 +481,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     projectData?._id,
     addDeploymentHistory,
     fetchIntegrationStatus,
+    flushSave,
   ]);
 
   const handleDeploy = useCallback(async () => {

@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { stackServerApp } from '@/stack/server';
 import { cloudflareRequest } from '@/lib/cloudflare';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getProject } from '@/lib/projects';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { requireProjectRole } from '@/lib/project-access';
 
 const querySchema = z.object({ projectName: z.string().min(1).max(120), bucket: z.string().min(3).max(64), prefix: z.string().max(512).optional() });
 const deleteSchema = querySchema.pick({ projectName: true, bucket: true }).extend({ key: z.string().min(1).max(1024) });
@@ -16,12 +14,9 @@ function projectBuckets(resourcesJson?: string) {
 }
 
 async function context(projectName: string, bucket: string) {
-  const user = await stackServerApp.getUser();
-  if (!user) return { error: Response.json({ error: 'Unauthorized' }, { status: 401 }) } as const;
-  const project = await getProject(projectName);
-  const access = assertCanAccessProject(project, user.id);
-  if (!access.ok) return { error: Response.json({ error: access.message }, { status: access.status }) } as const;
-  if (!projectBuckets(project?.cloudflareResourcesJson).includes(bucket)) return { error: Response.json({ error: 'Bucket is not bound to this project' }, { status: 403 }) } as const;
+  const access = await requireProjectRole(projectName, 'owner');
+  if (!access.ok) return { error: access.response } as const;
+  if (!projectBuckets(access.project.cloudflareResourcesJson).includes(bucket)) return { error: Response.json({ error: 'Bucket is not bound to this project' }, { status: 403 }) } as const;
   const integration = await getIntegrationTokens();
   if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return { error: Response.json({ error: 'Cloudflare connection required' }, { status: 400 }) } as const;
   return { token: integration.cloudflareApiToken, accountId: integration.cloudflareAccountId } as const;

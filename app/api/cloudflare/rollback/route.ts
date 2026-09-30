@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { stackServerApp } from '@/stack/server';
-import { rollbackCloudflarePagesDeployment } from '@/lib/cloudflare';
+import { ensureCloudflarePagesProject, rollbackCloudflarePagesDeployment } from '@/lib/cloudflare';
+import { cloudflarePagesUrl } from '@/lib/cloudflare-deploy';
+import { parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getProject, updateCloudflareProjectConfig } from '@/lib/projects';
+import { updateCloudflareProjectConfig } from '@/lib/projects';
+import { requireProjectRole } from '@/lib/project-access';
 
 const schema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/),
@@ -10,13 +12,12 @@ const schema = z.object({
 }).strict();
 
 export async function POST(req: Request) {
-  const user = await stackServerApp.getUser();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid rollback target' }, { status: 400 });
 
-  const project = await getProject(parsed.data.projectName);
-  if (!project) return Response.json({ error: 'Project not found' }, { status: 404 });
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
+  const { project } = access;
   if (!project.cloudflareProjectName) {
     return Response.json({ error: 'Project has no Cloudflare deployment' }, { status: 400 });
   }
@@ -32,12 +33,25 @@ export async function POST(req: Request) {
       projectName: project.cloudflareProjectName,
       deploymentId: parsed.data.deploymentId,
     });
+    const pagesProject = await ensureCloudflarePagesProject({
+      token: integration.cloudflareApiToken,
+      accountId: integration.cloudflareAccountId,
+      projectName: project.cloudflareProjectName,
+    });
     await updateCloudflareProjectConfig({
       projectName: parsed.data.projectName,
       cloudflareDeploymentId: parsed.data.deploymentId,
-      deploymentUrl: `https://${project.cloudflareProjectName}.pages.dev`,
+      deploymentUrl: cloudflarePagesUrl(project.cloudflareProjectName, pagesProject.subdomain),
     });
-    return Response.json({ deployment });
+    // A Pages rollback restores static assets and Pages Functions only. Standalone Workers, their
+    // cron schedules, and applied D1 migrations stay at the latest version; the response says so
+    // rather than implying the whole app went back.
+    const state = parseCloudflareResourceState(project.cloudflareResourcesJson);
+    const notRolledBack = [
+      ...Object.keys(state.worker ?? {}).map((name) => `Worker ${name}`),
+      ...(Object.keys(state.migrationHashes ?? {}).length ? ['D1 database migrations'] : []),
+    ];
+    return Response.json({ deployment, notRolledBack });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : 'Rollback failed' },

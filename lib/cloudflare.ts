@@ -377,9 +377,12 @@ export async function applyCloudflareD1Migrations(params: {
     .sort((a, b) => a.path.localeCompare(b.path));
 
   for (const migration of migrations) {
-    if (applied.has(migration.path)) continue;
+    // Wrangler records the file name ("0001_init.sql"), and so do we now, so either tool can
+    // continue where the other left off. Rows written with the full path are still honoured.
+    const name = migration.path.split('/').pop() ?? migration.path;
+    if (applied.has(name) || applied.has(migration.path)) continue;
     params.onProgress?.(`Cloudflare: Applying ${migration.path}`);
-    const escapedName = migration.path.replace(/'/g, "''");
+    const escapedName = name.replace(/'/g, "''");
     const result = await queryCloudflareD1({
       ...params,
       sql: `${migration.content}\nINSERT INTO d1_migrations (name) VALUES ('${escapedName}');`,

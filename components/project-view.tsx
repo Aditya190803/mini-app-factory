@@ -51,6 +51,14 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   const [provider, setProvider] = useState<string | null>(null);
   const hasStarted = useRef(false);
   const completed = useRef(initialProject.status === 'completed');
+  // Leaving the page must stop the stream reader and the completion poll; the build itself
+  // carries on server-side and is picked up again from the run record.
+  const unmounted = useRef(false);
+  const streamController = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    unmounted.current = true;
+    streamController.current?.abort();
+  }, []);
   const projectRecord = useQuery(api.projects.getProject, { projectName });
   const activeRun = useQuery(api.conversations.getActiveRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const persistedEvents = useQuery(
@@ -73,7 +81,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   }, []);
 
   const pollForCompletion = useCallback(async () => {
-    for (let attempt = 0; attempt < 60 && !completed.current; attempt++) {
+    for (let attempt = 0; attempt < 60 && !completed.current && !unmounted.current; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
       }
@@ -96,7 +104,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         return;
       }
     }
-    if (!completed.current) {
+    if (!completed.current && !unmounted.current) {
       setError({
         message: 'The build is taking too long or the connection dropped. Refresh this page or retry.',
         code: 'POLL_TIMEOUT',
@@ -115,6 +123,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     setError(null);
     setActivities([]);
     const controller = new AbortController();
+    streamController.current = controller;
     const timeout = setTimeout(() => controller.abort(), 300_000);
     try {
       const response = await fetch('/api/generate', {
@@ -153,6 +162,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         addActivity(String(data.status), String(data.message || data.status), typeof data.path === 'string' ? data.path : undefined);
       });
     } catch (cause) {
+      if (unmounted.current) return;
       const aborted = cause instanceof DOMException && cause.name === 'AbortError';
       setError({ message: aborted ? 'Generation timed out.' : 'The live connection was interrupted. Checking the saved build…', code: aborted ? 'AI_TIMEOUT' : 'STREAM_ERROR' });
     } finally {
@@ -198,8 +208,18 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       void pollForCompletion();
       return;
     }
+    // Only a fresh project starts a build by itself. One that failed, was cancelled, or was left
+    // "generating" by a dead request waits for Retry instead of silently spending another run.
+    if (project.status !== 'pending') {
+      hasStarted.current = true;
+      setError({
+        message: project.error || 'The last build did not finish. Retry when you are ready.',
+        code: 'RUN_INTERRUPTED',
+      });
+      return;
+    }
     void startGeneration();
-  }, [activeRun, persistedEvents, pollForCompletion, project.status, startGeneration]);
+  }, [activeRun, persistedEvents, pollForCompletion, project.error, project.status, startGeneration]);
 
   useEffect(() => {
     if (!hasStarted.current || !persistedEvents?.length || completed.current) return;

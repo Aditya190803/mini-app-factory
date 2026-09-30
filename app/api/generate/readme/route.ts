@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateReadmeContent } from "@/lib/repo-content";
 import { stackServerApp } from '@/stack/server';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { assertProjectRole } from '@/lib/project-access';
 import { getProject, getFiles } from '@/lib/projects';
+import { aiQuotaBuckets, consumeRateLimit, rateLimitedResponse } from '@/lib/rate-limit';
 
 const readmeSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
@@ -32,11 +33,15 @@ export async function POST(req: NextRequest) {
     const { projectName, prompt } = parsed.data;
 
     const projectRecord = await getProject(projectName);
-    const access = assertCanAccessProject(projectRecord, user.id);
+    const access = assertProjectRole(projectRecord, user.id, 'editor');
     if (!access.ok) {
       return NextResponse.json({ error: access.message }, { status: access.status });
     }
     const project = access.project;
+
+    // README generation runs on the platform's model keys, so it counts against the AI quota.
+    const rateLimit = await consumeRateLimit('readme', user.id, aiQuotaBuckets(false));
+    if (!rateLimit.allowed) return rateLimitedResponse(rateLimit);
 
     const storedFiles = await getFiles(projectName);
     if (storedFiles.length === 0) {

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
-import { claimProjectOrphan, getProject, getFiles } from '@/lib/projects';
-import { canUserEditProject, isOrphanProject } from '@/lib/project-access';
+import { getProject, getFilesSnapshot } from '@/lib/projects';
+import { accessDeniedResponse, assertProjectRole } from '@/lib/project-access';
 import { getServerEnv } from '@/lib/env';
-import { consumeRateLimit } from '@/lib/rate-limit';
+import { aiQuotaBuckets, consumeRateLimit, rateLimitedResponse } from '@/lib/rate-limit';
+import { usesOwnKeys } from '@/lib/ai-client';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
 import { createSSEWriter } from '@/lib/sse-writer';
@@ -26,6 +27,8 @@ const transformSchema = z
     activeFile: z.string().trim().max(500).optional(),
     modelId: z.string().trim().max(200).optional(),
     providerId: z.string().trim().max(50).optional(),
+    /** The filesVersion the editor last saw, after flushing its own pending save. */
+    expectedVersion: z.number().int().min(0).optional(),
   })
   .strict()
   .refine((data) => data.projectName || data.html, {
@@ -66,42 +69,32 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
     }
 
-    const rateLimit = await consumeRateLimit('transform', user.id);
-    if (!rateLimit.allowed) {
-      const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
-      return Response.json(
-        { error: 'Rate limit exceeded. Please wait before retrying.', code: 'RATE_LIMITED', retryAfter, requestId },
-        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
-      );
-    }
-
-    const { projectName, html, prompt, activeFile, modelId, providerId } = parsed.data;
+    const { projectName, html, prompt, activeFile, modelId, providerId, expectedVersion } = parsed.data;
 
     const project = projectName ? await getProject(projectName) : null;
-    if (projectName && !project) {
-      return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
-    }
-    if (project && !canUserEditProject(project, user.id)) {
-      return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
-    }
-    if (project && isOrphanProject(project)) {
-      try {
-        await claimProjectOrphan(projectName!);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '';
-        if (message === 'Project not found') {
-          return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
-        }
-        if (message === 'Unauthorized to edit this project') {
-          return Response.json({ error: 'Unauthorized to edit this project', code: 'FORBIDDEN', requestId }, { status: 403 });
-        }
-        throw err;
-      }
+    if (projectName) {
+      const access = assertProjectRole(project, user.id, 'editor');
+      if (!access.ok) return accessDeniedResponse(access, requestId);
     }
 
+    const rateLimit = await consumeRateLimit('transform', user.id, aiQuotaBuckets(usesOwnKeys(runtimeConfig)));
+    if (!rateLimit.allowed) return rateLimitedResponse(rateLimit, requestId);
+
     let finalFiles: ProjectFile[] = [];
+    let filesVersion: number | undefined;
     if (projectName) {
-      const storedFiles = await getFiles(projectName);
+      const snapshot = await getFilesSnapshot(projectName);
+      if (!snapshot) {
+        return Response.json({ error: 'Project not found', code: 'PROJECT_NOT_FOUND', requestId }, { status: 404 });
+      }
+      filesVersion = snapshot.filesVersion;
+      if (expectedVersion !== undefined && expectedVersion !== filesVersion) {
+        return Response.json(
+          { error: 'The project changed since the editor loaded it. Reload the latest files, then retry.', code: 'CONFLICT', requestId },
+          { status: 409 }
+        );
+      }
+      const storedFiles = snapshot.files;
       finalFiles = storedFiles.map((file) => ({
         path: file.path,
         content: file.content,
@@ -125,6 +118,7 @@ export async function POST(request: Request) {
       modelId,
       providerId: isAIProviderId(providerId) ? providerId : undefined,
       finalFiles,
+      filesVersion,
       runtimeConfig,
     };
 

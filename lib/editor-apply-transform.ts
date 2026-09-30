@@ -1,4 +1,3 @@
-import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
 import type { TransformCompletePayload } from '@/lib/transform-stream';
 
@@ -27,6 +26,12 @@ export function getTransformRecoverySuggestion(code: string) {
   if (code === 'INVALID_FILE_STRUCTURE') {
     return 'Restore required files (for example index.html) and retry.';
   }
+  if (code === 'CONFLICT') {
+    return 'Your files changed while the AI was working. Your edits are kept; send the request again.';
+  }
+  if (code === 'QUOTA_EXCEEDED') {
+    return 'Add your own API key in Settings to keep building now, or wait for the allowance to reset.';
+  }
   if (code === 'SAVE_FAILED') {
     return 'Server could not persist files. Retry; if it persists, check Convex connectivity.';
   }
@@ -45,30 +50,33 @@ export function getTransformRecoverySuggestion(code: string) {
   return 'Check your prompt, reduce scope, and retry. You can also apply part of the change manually, then run transform again.';
 }
 
+/**
+ * Apply a finished transform to the editor state. Returns the resulting files, or null when the
+ * result carried nothing to apply.
+ *
+ * The server has already saved the result (and reports the new `filesVersion`), so this does not
+ * save again. It used to call persistFiles, whose write carried the pre-transform version and was
+ * rejected — every successful build ended in a false "someone else saved" conflict and autosave
+ * stopped. `onApplied` hands the files and version to the editor to adopt as its saved baseline.
+ */
 export function applyTransformComplete(
   result: TransformCompletePayload,
   files: ProjectFile[],
   setFiles: (f: ProjectFile[]) => void,
   addToHistory: (f: ProjectFile[]) => void,
-  persistFiles: (f: ProjectFile[]) => void
-) {
+  onApplied: (f: ProjectFile[], filesVersion?: number) => void
+): ProjectFile[] | null {
+  let nextFiles: ProjectFile[];
   if (result.full) {
-    const fullFiles = Array.isArray(result.files) ? result.files : [];
-    if (fullFiles.length === 0) {
-      toast.error('Transform returned no files', {
-        description: 'The server indicated a full replacement but provided no files.',
-      });
-      return;
-    }
-    setFiles(fullFiles);
-    addToHistory(fullFiles);
-    persistFiles(fullFiles);
-    return;
+    nextFiles = Array.isArray(result.files) ? result.files : [];
+    if (nextFiles.length === 0) return null;
+  } else if (Array.isArray(result.files)) {
+    nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
+  } else {
+    return null;
   }
-  if (Array.isArray(result.files)) {
-    const nextFiles = applyFileDelta(files, result.files, result.deletedPaths || []);
-    setFiles(nextFiles);
-    addToHistory(nextFiles);
-    persistFiles(nextFiles);
-  }
+  setFiles(nextFiles);
+  addToHistory(nextFiles);
+  onApplied(nextFiles, result.filesVersion);
+  return nextFiles;
 }

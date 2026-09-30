@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { assertProjectRole } from '@/lib/project-access';
 import { getFiles, getProject } from '@/lib/projects';
 import { getAIClient } from '@/lib/ai-client';
 import { getGlobalAdminModelConfig, getPersistedAISettings } from '@/lib/ai-settings-store';
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
   const project = await getProject(parsed.data.projectName);
-  const access = assertCanAccessProject(project, user.id);
+  const access = assertProjectRole(project, user.id, 'editor');
   if (!access.ok) return Response.json({ error: access.message }, { status: access.status });
 
   const { runId, projectId } = await createProjectRun(parsed.data.projectName, 'discuss', parsed.data.prompt);

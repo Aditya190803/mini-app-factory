@@ -1,5 +1,9 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 
+vi.mock('@/lib/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
+  consumeRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })),
+}));
 vi.mock('server-only', () => ({}));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
@@ -83,6 +87,7 @@ describe('POST /api/generate/readme', () => {
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       userId: 'user_123',
+      accessRole: 'owner',
       prompt: 'Create a portfolio website',
     });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
@@ -123,6 +128,7 @@ describe('POST /api/generate/readme — request contract', () => {
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
       name: 'demo-project',
       userId: 'user_1',
+      accessRole: 'owner',
       prompt: 'a demo',
     });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValue([

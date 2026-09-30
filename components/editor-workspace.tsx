@@ -84,6 +84,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const filesVersionRef = useRef<number | null>(null);
   const savingRef = useRef(false);
   const pendingSaveRef = useRef<ProjectFile[] | null>(null);
+  /** The files array last known to match the server. Autosave skips when nothing changed since. */
+  const lastSavedRef = useRef<ProjectFile[] | null>(null);
+  const filesRef = useRef<ProjectFile[]>([]);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = useState(false);
@@ -135,7 +138,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const previewCleanupStarted = useRef(false);
 
   useEffect(() => {
-    if (previewCleanupStarted.current || !projectData?.cloudflarePreviewProjectName || (projectData.cloudflarePreviewExpiresAt || 0) > Date.now()) return;
+    if (previewCleanupStarted.current || projectData?.accessRole !== 'owner' || !projectData.cloudflarePreviewProjectName || (projectData.cloudflarePreviewExpiresAt || 0) > Date.now()) return;
     previewCleanupStarted.current = true;
     void fetch('/api/cloudflare/preview', {
       method: 'DELETE',
@@ -144,7 +147,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     }).then((response) => {
       if (!response.ok) previewCleanupStarted.current = false;
     }).catch(() => { previewCleanupStarted.current = false; });
-  }, [projectData?.cloudflarePreviewExpiresAt, projectData?.cloudflarePreviewProjectName, projectName]);
+  }, [projectData?.accessRole, projectData?.cloudflarePreviewExpiresAt, projectData?.cloudflarePreviewProjectName, projectName]);
 
   const addToHistory = useCallback((currentFiles: ProjectFile[]) => {
     setHistory(prev => {
@@ -184,6 +187,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         }));
         // Anchor optimistic concurrency to the version these files came from.
         filesVersionRef.current = projectData?.filesVersion ?? 0;
+        lastSavedRef.current = loadedFiles;
       } else if (initialHTML) {
         loadedFiles = migrateProject(initialHTML);
 
@@ -299,19 +303,6 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     );
   }, [files, activeFilePath, projectName, projectData]);
 
-  const deploy = useEditorDeploy({
-    projectName,
-    initialPrompt,
-    files,
-    userId: user?.id,
-    projectData,
-    // Passed unwidened: the `as (args: object)` casts that used to be here defeated argument
-    // checking, which is how a stale `userId` kept being sent to mutations that had stopped
-    // accepting one.
-    saveProject,
-    publishProject,
-    addDeploymentHistory,
-  });
 
   const historyTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -339,17 +330,21 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     return () => window.removeEventListener('beforeunload', warn);
   }, [saveStatus]);
 
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   const persistFiles = useCallback(async (
     nextFiles: ProjectFile[],
     opts?: { forceVersion?: number },
-  ) => {
-    if (!user || !projectData?._id || projectData.accessRole === 'viewer') return;
+  ): Promise<boolean> => {
+    if (!user || !projectData?._id || projectData.accessRole === 'viewer') return true;
     // Single-flight: a second writer (autosave racing a transform apply, two quick
     // edits) queues behind the in-flight save instead of racing it with the same
     // expectedVersion — the loser would always trip the version guard.
     if (savingRef.current) {
       pendingSaveRef.current = nextFiles;
-      return;
+      return true;
     }
     savingRef.current = true;
     setSaveStatus('saving');
@@ -363,6 +358,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           expectedVersion: override ?? filesVersionRef.current ?? undefined,
         });
         filesVersionRef.current = result.filesVersion;
+        lastSavedRef.current = current;
         override = undefined;
         const queued = pendingSaveRef.current;
         pendingSaveRef.current = null;
@@ -372,6 +368,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       setConflictKind(null);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
+      return true;
     } catch (err) {
       pendingSaveRef.current = null;
       const message = err instanceof Error ? err.message : '';
@@ -382,6 +379,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       console.error('Save failed', err);
       setConflictKind(message.includes('changed since they were loaded') ? 'version' : 'error');
       setSaveStatus('conflict');
+      return false;
     } finally {
       savingRef.current = false;
     }
@@ -392,6 +390,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     // Never auto-retry while a save is in flight or parked in conflict — the
     // parked snapshot is stale by definition and would fail forever.
     if (saveStatus === 'saving' || saveStatus === 'conflict') return;
+    if (files === lastSavedRef.current) return;
 
     const timer = setTimeout(() => {
       void persistFiles(files);
@@ -399,6 +398,43 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
 
     return () => clearTimeout(timer);
   }, [files, user, projectData?._id, saveStatus, persistFiles]);
+
+  /**
+   * Save now instead of waiting for the autosave debounce. Builds and deploys read the stored
+   * files, so anything typed in the last two seconds was otherwise left out of them.
+   */
+  const flushSave = useCallback(async () => {
+    for (let waited = 0; savingRef.current && waited < 100; waited++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (filesRef.current === lastSavedRef.current || filesRef.current.length === 0) return;
+    if (!(await persistFiles(filesRef.current))) {
+      throw new Error('Your latest edits could not be saved. Resolve the save conflict first.');
+    }
+  }, [persistFiles]);
+
+  const adoptSavedFiles = useCallback((savedFiles: ProjectFile[], filesVersion?: number) => {
+    if (filesVersion === undefined) return;
+    filesVersionRef.current = filesVersion;
+    lastSavedRef.current = savedFiles;
+  }, []);
+
+  const getFilesVersion = useCallback(() => filesVersionRef.current ?? undefined, []);
+
+  const deploy = useEditorDeploy({
+    projectName,
+    initialPrompt,
+    files,
+    userId: user?.id,
+    projectData,
+    // Passed unwidened: the `as (args: object)` casts that used to be here defeated argument
+    // checking, which is how a stale `userId` kept being sent to mutations that had stopped
+    // accepting one.
+    saveProject,
+    publishProject,
+    addDeploymentHistory,
+    flushSave,
+  });
 
   const handleConflictReload = async () => {
     const ok = await confirm({
@@ -415,6 +451,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       fileType: f.fileType as ProjectFile['fileType'],
     }));
     filesVersionRef.current = projectData?.filesVersion ?? filesVersionRef.current;
+    lastSavedRef.current = serverFiles;
     setConflictKind(null);
     setSaveStatus('idle');
     setFiles(serverFiles);
@@ -439,7 +476,9 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     files,
     setFiles,
     addToHistory,
-    persistFiles,
+    adoptSavedFiles,
+    flushSave,
+    getFilesVersion,
     selectedModel,
     transformPrompt,
     setTransformPrompt,
@@ -455,7 +494,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       const message = 'message' in event && event.message ? event.message : event.status === 'applying' ? `${event.tool}${event.path ? ` → ${event.path}` : ''}` : event.status;
       await appendRunEvent({ projectId: projectData._id, runId: activeTransformRun.current, type: event.status, message, path: 'path' in event ? event.path : undefined });
     },
-    onRunCompleted: async (prompt, nextFiles) => {
+    onRunCompleted: async (prompt, nextFiles, usage) => {
       if (!projectData?._id) return;
       const messageId = await appendMessage({
         projectId: projectData._id,
@@ -465,7 +504,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
         detailsJson: JSON.stringify({ files: nextFiles.map((file) => file.path) }),
       });
       await createVersion({ projectId: projectData._id, messageId, summary: prompt, filesJson: JSON.stringify(nextFiles) });
-      if (activeTransformRun.current) await finishRun({ projectId: projectData._id, runId: activeTransformRun.current, status: 'completed' });
+      if (activeTransformRun.current) {
+        await finishRun({
+          projectId: projectData._id,
+          runId: activeTransformRun.current,
+          status: 'completed',
+          ...(usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, model: usage.model } : {}),
+        });
+      }
       activeTransformRun.current = null;
     },
     onRunFailed: async (prompt, message) => {
@@ -1113,14 +1159,31 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               ]}
               onRestoreVersion={async (versionId) => {
                 if (!projectData?._id) return;
-                const restored = await restoreVersion({
-                  projectId: projectData._id,
-                  versionId: versionId as Id<'projectVersions'>,
+                const ok = await confirm({
+                  title: 'Restore this version?',
+                  description: 'The project files are replaced with this version. Your current files stay in the version history, so you can come back to them.',
+                  confirmLabel: 'Restore',
                 });
-                const restoredFiles = restored as ProjectFile[];
-                setFiles(restoredFiles);
-                addToHistory(restoredFiles);
-                toast.success('Version restored');
+                if (!ok) return;
+                try {
+                  // Save the current state as a version first, so restoring never loses unsaved work.
+                  await flushSave().catch(() => undefined);
+                  await createVersion({ projectId: projectData._id, summary: 'Before restoring an earlier version', filesJson: JSON.stringify(filesRef.current) });
+                  const restored = await restoreVersion({
+                    projectId: projectData._id,
+                    versionId: versionId as Id<'projectVersions'>,
+                  });
+                  const restoredFiles = restored.files as ProjectFile[];
+                  filesVersionRef.current = restored.filesVersion;
+                  lastSavedRef.current = restoredFiles;
+                  setConflictKind(null);
+                  setSaveStatus('idle');
+                  setFiles(restoredFiles);
+                  addToHistory(restoredFiles);
+                  toast.success('Version restored');
+                } catch (error) {
+                  toast.error('Could not restore that version', { description: error instanceof Error ? error.message : undefined });
+                }
               }}
             />
           </div>
@@ -1145,7 +1208,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
           </div>
         )}
 
-        <main className="flex min-w-0 flex-1 overflow-hidden">
+        <main id="main" className="flex min-w-0 flex-1 overflow-hidden">
           {activeTab === 'preview' && (
             <PreviewPanel
               previewHtml={previewHtml}

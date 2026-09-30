@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { stackServerApp } from '@/stack/server';
 import { addCloudflarePagesDomain, getCloudflarePagesDomain, listCloudflareZones, removeCloudflarePagesDomain } from '@/lib/cloudflare';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getProject, updateCloudflareProjectConfig } from '@/lib/projects';
+import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
+import { requireProjectRole } from '@/lib/project-access';
 
 const schema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/),
@@ -14,9 +14,7 @@ const schema = z.object({
 
 const querySchema = z.object({ projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/) });
 
-async function context(projectName: string) {
-  const project = await getProject(projectName);
-  if (!project) throw new Error('Project not found');
+async function context(project: ProjectMetadata) {
   if (!project.cloudflareProjectName) throw new Error('Deploy this project to Cloudflare first');
   const integration = await getIntegrationTokens();
   if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) throw new Error('Cloudflare connection required');
@@ -24,11 +22,12 @@ async function context(projectName: string) {
 }
 
 export async function GET(req: Request) {
-  if (!await stackServerApp.getUser()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
   if (!parsed.success) return Response.json({ error: 'Invalid project' }, { status: 400 });
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
   try {
-    const { project, token, accountId, pagesProjectName } = await context(parsed.data.projectName);
+    const { project, token, accountId, pagesProjectName } = await context(access.project);
     const zones = await listCloudflareZones({ token, accountId });
     const domain = project.cloudflareCustomDomain
       ? await getCloudflarePagesDomain({ token, accountId, projectName: pagesProjectName, domain: project.cloudflareCustomDomain }).catch(() => null)
@@ -40,13 +39,13 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const user = await stackServerApp.getUser();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid project or domain' }, { status: 400 });
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
 
   try {
-    const { project, token, accountId, pagesProjectName } = await context(parsed.data.projectName);
+    const { project, token, accountId, pagesProjectName } = await context(access.project);
     const zones = await listCloudflareZones({ token, accountId });
     const zone = zones.find((candidate) => candidate.status === 'active' && candidate.type === 'full' && (parsed.data.domain === candidate.name || parsed.data.domain.endsWith(`.${candidate.name}`)));
     if (!zone) return Response.json({ error: 'Choose a domain from an active zone in the connected Cloudflare account' }, { status: 400 });
@@ -73,11 +72,12 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  if (!await stackServerApp.getUser()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = querySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid project' }, { status: 400 });
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
   try {
-    const { project, token, accountId, pagesProjectName } = await context(parsed.data.projectName);
+    const { project, token, accountId, pagesProjectName } = await context(access.project);
     if (project.cloudflareCustomDomain) {
       await removeCloudflarePagesDomain({ token, accountId, projectName: pagesProjectName, domain: project.cloudflareCustomDomain });
       await updateCloudflareProjectConfig({ projectName: parsed.data.projectName, cloudflareCustomDomain: null });

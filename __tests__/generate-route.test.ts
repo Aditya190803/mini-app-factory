@@ -5,6 +5,14 @@ const aiMocks = vi.hoisted(() => ({ createSession: vi.fn() }));
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/ai-client', () => ({
   getAIClient: vi.fn(async () => ({ createSession: aiMocks.createSession })),
+  usesOwnKeys: vi.fn(() => false),
+  AIRunStoppedError: class AIRunStoppedError extends Error {},
+}));
+
+vi.mock('@/lib/rate-limit', () => ({
+  consumeRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })),
+  aiQuotaBuckets: vi.fn(() => []),
+  rateLimitedResponse: vi.fn(),
 }));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
@@ -24,6 +32,8 @@ vi.mock('@/lib/project-runs', () => ({
   finishProjectRun: vi.fn(async () => undefined),
   isProjectRunCancelled: vi.fn(async () => false),
   createProjectVersion: vi.fn(async () => 'version-1'),
+  createRunEventWriter: vi.fn(() => ({ write: vi.fn(), flush: vi.fn(async () => undefined) })),
+  watchRunCancellation: vi.fn(() => () => undefined),
 }));
 
 vi.mock('@/lib/resolve-reference-url', () => ({
@@ -130,6 +140,7 @@ describe('POST /api/generate', () => {
       name: 'demo-project',
       prompt: '',
       userId: 'user_123',
+      accessRole: 'owner',
     });
 
     const req = new Request('http://localhost/api/generate', {
@@ -157,7 +168,7 @@ describe('POST /api/generate', () => {
   });
 
   test('uses the stored gateway model instead of forcing OpenCode', async () => {
-    const { runGeneration } = await import('@/app/api/generate/route');
+    const { runGeneration } = await import('@/lib/generate-run');
     const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
     const session = (content: string) => ({
       sendAndWait: vi.fn().mockResolvedValue({ data: { content } }),
@@ -188,7 +199,7 @@ describe('POST /api/generate', () => {
         '```',
       ].join('\n')));
 
-    await runGeneration('monkey-type', 'Build a typing test', new AbortController().signal);
+    await runGeneration({ projectName: 'monkey-type', prompt: 'Build a typing test', signal: new AbortController().signal });
 
     expect(aiMocks.createSession).toHaveBeenCalledTimes(2);
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -206,7 +217,7 @@ describe('POST /api/generate', () => {
   });
 
   test('ignores an unknown provider selection so the default chain can run', async () => {
-    const { runGeneration } = await import('@/app/api/generate/route');
+    const { runGeneration } = await import('@/lib/generate-run');
     const { getProject, saveProject, saveFiles } = await import('@/lib/projects');
     const session = (content: string) => ({
       sendAndWait: vi.fn().mockResolvedValue({ data: { content } }),
@@ -237,7 +248,7 @@ describe('POST /api/generate', () => {
         '```',
       ].join('\n')));
 
-    await runGeneration('paid-model', 'Build a landing page', new AbortController().signal);
+    await runGeneration({ projectName: 'paid-model', prompt: 'Build a landing page', signal: new AbortController().signal });
 
     expect(aiMocks.createSession).toHaveBeenNthCalledWith(1, expect.objectContaining({
       model: undefined,
@@ -255,6 +266,7 @@ describe('POST /api/generate', () => {
       name: 'demo-project',
       prompt: 'Build a landing page',
       userId: 'user_123',
+      accessRole: 'owner',
     });
 
     const req = new Request('http://localhost/api/generate', {

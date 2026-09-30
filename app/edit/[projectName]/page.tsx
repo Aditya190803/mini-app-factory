@@ -1,4 +1,4 @@
-import { canUserEditProject } from '@/lib/project-access';
+import { hasProjectRole } from '@/lib/project-access';
 import { getProject } from '@/lib/projects';
 import ProjectView from '@/components/project-view';
 import { notFound, redirect } from 'next/navigation';
@@ -23,13 +23,14 @@ export default async function ProjectPage({ params }: PageProps) {
     redirect('/handler/sign-in');
   }
 
-  if (!canUserEditProject(project, user.id)) {
+  // Convex already returned null for non-members; this enforces the minimum role.
+  if (!hasProjectRole(project.accessRole, 'viewer')) {
     notFound();
   }
 
   return (
-    <main className="min-h-dvh">
+    <div className="min-h-dvh">
       <ProjectView projectName={projectName} initialProject={project} />
-    </main>
+    </div>
   );
 }

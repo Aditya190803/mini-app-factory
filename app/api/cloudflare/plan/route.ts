@@ -1,8 +1,8 @@
-import { stackServerApp } from '@/stack/server';
-import { getFiles, getProject } from '@/lib/projects';
+import { getFiles } from '@/lib/projects';
+import { requireProjectRole } from '@/lib/project-access';
 import { getIntegrationTokens } from '@/lib/integrations';
 import { normalizeCloudflareProjectName } from '@/lib/deploy-shared';
-import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
+import { parseCloudflareResourceState, resolveCloudflareManifest } from '@/lib/cloudflare-manifest';
 import { planCloudflareResources } from '@/lib/cloudflare-resources';
 import { z } from 'zod';
 
@@ -12,18 +12,17 @@ const schema = z.object({
 }).strict();
 
 export async function POST(req: Request) {
-  const user = await stackServerApp.getUser();
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
+  const { project } = access;
 
   try {
-    const [project, files, integration] = await Promise.all([
-      getProject(parsed.data.projectName),
+    const [files, integration] = await Promise.all([
       getFiles(parsed.data.projectName),
       getIntegrationTokens(),
     ]);
-    if (!project) return Response.json({ error: 'Project not found' }, { status: 404 });
     if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) {
       return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
     }
@@ -31,14 +30,15 @@ export async function POST(req: Request) {
     const cloudflareProjectName = normalizeCloudflareProjectName(
       project.cloudflareProjectName || parsed.data.cloudflareProjectName || project.name
     );
-    const manifest = parseCloudflareManifest(files, cloudflareProjectName);
+    const state = parseCloudflareResourceState(project.cloudflareResourcesJson);
+    const manifest = resolveCloudflareManifest(files, cloudflareProjectName, state);
     if (!manifest) return Response.json({ actions: [], needsConfirmation: false });
 
     const actions = await planCloudflareResources({
       token: integration.cloudflareApiToken,
       accountId: integration.cloudflareAccountId,
       manifest,
-      state: parseCloudflareResourceState(project.cloudflareResourcesJson),
+      state,
     });
     return Response.json({
       actions,

@@ -1,13 +1,26 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
-  canAccessProject,
-  canReadProject,
+  getProjectRole,
   getUserId,
   requireProjectAccess,
+  requireProjectRole,
+  requireProjectRoleById,
   requireUserId,
+  roleAtLeast,
 } from "./auth";
+
+/**
+ * Fields that never leave the server. `cloudflareEnvVarsEncrypted` is ciphertext, but handing it
+ * to every member let a viewer paste it into their own project and have it decrypted there.
+ * The Next.js server reads it through `getProjectCloudflareEnvVars`, which is owner-only.
+ */
+function toClientProject(project: Doc<"projects">) {
+  const { cloudflareEnvVarsEncrypted, ...rest } = project;
+  return { ...rest, hasCloudflareEnvVars: Boolean(cloudflareEnvVarsEncrypted) };
+}
 
 /**
  * Project records.
@@ -47,7 +60,7 @@ export const getPublishedProject = query({
   },
 });
 
-/** Requires sign-in; returns null unless the caller owns the project (or it is an orphan). */
+/** Requires sign-in; returns null unless the caller is a member of the project. */
 export const getProject = query({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {
@@ -59,10 +72,18 @@ export const getProject = query({
 
     // Null rather than throw: client `useQuery` call sites treat this as "not found", and
     // throwing would surface a console error on every render for a project the user can't see.
-    if (!(await canReadProject(ctx, project, userId))) return null;
-    if (!project || !userId) return null;
-    const member = project.userId === userId ? null : await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first();
-    return { ...project, accessRole: project.userId === userId ? 'owner' as const : member?.role ?? 'viewer' as const };
+    const accessRole = await getProjectRole(ctx, project, userId);
+    if (!project || !accessRole) return null;
+    return { ...toClientProject(project), accessRole };
+  },
+});
+
+/** Owner-only: the encrypted Cloudflare env var blob, for the Next.js server to decrypt. */
+export const getProjectCloudflareEnvVars = query({
+  args: { projectName: v.string() },
+  handler: async (ctx, args) => {
+    const project = await requireProjectRole(ctx, args.projectName, "owner");
+    return project.cloudflareEnvVarsEncrypted ?? null;
   },
 });
 
@@ -116,7 +137,7 @@ export const saveProject = mutation({
 
     const now = Date.now();
     if (existing) {
-      if (!canAccessProject(existing, userId)) {
+      if (!roleAtLeast(await getProjectRole(ctx, existing, userId), "editor")) {
         throw new Error("Unauthorized to edit this project");
       }
       await ctx.db.patch(existing._id, {
@@ -125,8 +146,8 @@ export const saveProject = mutation({
         // unconditional assignment blanked the page content for them.
         html: args.html ?? existing.html,
         status: args.status,
-        userId: existing.userId ?? userId,
-        isPublished: args.isPublished,
+        // Publishing is owner-only (see publishProject); an editor's save keeps the current state.
+        isPublished: existing.userId === userId ? args.isPublished : existing.isPublished,
         isMultiPage: args.isMultiPage ?? existing.isMultiPage ?? false,
         pageCount: args.pageCount ?? existing.pageCount ?? 0,
         description: args.description ?? existing.description,
@@ -194,27 +215,28 @@ export const reserveProjectName = mutation({
   },
 });
 
-/** Atomically claim an orphan project (userId unset). Legacy rows only — see canAccessProject. */
-export const claimProjectOrphan = mutation({
-  args: { projectName: v.string() },
+/**
+ * Assign an owner to a legacy project that has none. Internal: run it from the Convex dashboard.
+ * Orphans used to be claimable by whoever edited them first, which let anyone take them over.
+ */
+export const assignOrphanOwner = internalMutation({
+  args: { projectName: v.string(), userId: v.string() },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-
     const project = await ctx.db
       .query("projects")
       .withIndex("by_projectName", (q) => q.eq("projectName", args.projectName))
       .first();
     if (!project) throw new Error("Project not found");
-    if (project.userId && project.userId !== userId) {
-      throw new Error("Unauthorized to edit this project");
-    }
-    if (!project.userId) {
-      await ctx.db.patch(project._id, { userId, updatedAt: Date.now() });
-    }
-    return project._id;
+    if (project.userId) throw new Error("Project already has an owner");
+    await ctx.db.patch(project._id, { userId: args.userId, updatedAt: Date.now() });
   },
 });
 
+/**
+ * Cloudflare deployment state. Owner-only: the resources live in the owner's Cloudflare account,
+ * and the stored resource IDs decide what later deploys and teardowns touch. If a member could
+ * write them, they could point the owner's next deploy at the owner's other databases.
+ */
 export const updateCloudflareConfig = mutation({
   args: {
     projectName: v.string(),
@@ -233,7 +255,7 @@ export const updateCloudflareConfig = mutation({
     cloudflarePreviewExpiresAt: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
-    const project = await requireProjectAccess(ctx, args.projectName);
+    const project = await requireProjectRole(ctx, args.projectName, "owner");
     const patch: Record<string, string | number | undefined> = { updatedAt: Date.now() };
     for (const key of [
       "cloudflareProjectName",
@@ -312,15 +334,14 @@ export const updateProjectInstructions = mutation({
   },
 });
 
+/** Owner-only: making a project public is the owner's call, not an editor's. */
 export const publishProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    const project = await requireProjectAccess(ctx, args.projectName);
+    const project = await requireProjectRole(ctx, args.projectName, "owner");
 
     await ctx.db.patch(project._id, {
       isPublished: true,
-      userId: project.userId ?? userId,
       updatedAt: Date.now(),
     });
   },
@@ -345,10 +366,7 @@ export const updateMetadata = mutation({
   handler: async (ctx, args) => {
     // This had no userId argument and no ownership check at all, so anyone could rewrite the
     // title, description, og:image, and favicon of any published site.
-    const userId = await requireUserId(ctx);
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Project not found");
-    if (!canAccessProject(project, userId)) throw new Error("Unauthorized");
+    const project = await requireProjectRoleById(ctx, args.projectId, "editor");
 
     await ctx.db.patch(args.projectId, {
       favicon: args.favicon !== undefined ? args.favicon : project.favicon,
@@ -359,76 +377,73 @@ export const updateMetadata = mutation({
   },
 });
 
+const PROJECT_LIST_LIMIT = 200;
+
+/** List rows drop the legacy content blobs: the list page never renders them. */
+function toListProject(project: Doc<"projects">) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { html, pages, globalCss, globalJs, globalHeader, globalFooter, ...rest } = toClientProject(project);
+  return rest;
+}
+
 export const getUserProjects = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
+    // Bounded reads: an unbounded collect() of full project documents grows without limit.
     const owned = await ctx.db
       .query("projects")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .withIndex("by_userId_updated", (q) => q.eq("userId", userId))
       .order("desc")
-      .collect();
-    const memberships = await ctx.db.query('projectMembers').withIndex('by_user', (q) => q.eq('userId', userId)).collect();
+      .take(PROJECT_LIST_LIMIT);
+    const memberships = await ctx.db.query('projectMembers').withIndex('by_user', (q) => q.eq('userId', userId)).take(PROJECT_LIST_LIMIT);
     const shared = (await Promise.all(memberships.map(async (membership) => {
       const project = await ctx.db.get(membership.projectId);
-      return project ? { ...project, accessRole: membership.role } : null;
+      return project ? { ...toListProject(project), accessRole: membership.role } : null;
     }))).filter((project): project is NonNullable<typeof project> => project !== null);
-    return [...owned.map((project) => ({ ...project, accessRole: 'owner' as const })), ...shared].sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...owned.map((project) => ({ ...toListProject(project), accessRole: 'owner' as const })), ...shared].sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });
 
-const DELETE_BATCH_SIZE = 50;
+/**
+ * Child tables of a project, deleted one table per pass. Mixing all of them in one transaction
+ * read up to 50 files (each up to ~0.8 MB) plus version chunks at once and could exceed the
+ * transaction read limit, which left the child rows orphaned for good.
+ */
+const CHILD_TABLES = [
+  { table: 'projectFiles', batch: 5 },
+  { table: 'projectVersionChunks', batch: 5 },
+  { table: 'projectVersions', batch: 50 },
+  { table: 'projectMessages', batch: 50 },
+  { table: 'runEvents', batch: 200 },
+  { table: 'generationRuns', batch: 100 },
+  { table: 'editHistory', batch: 20 },
+  { table: 'deploymentHistory', batch: 100 },
+  { table: 'projectMembers', batch: 100 },
+  { table: 'projectInvites', batch: 100 },
+] as const;
 
 export const deleteProjectData = internalMutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    const files = await ctx.db
-      .query("projectFiles")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .take(DELETE_BATCH_SIZE);
-    const history = await ctx.db
-      .query("editHistory")
-      .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
-      .take(DELETE_BATCH_SIZE);
-    const deployments = await ctx.db
-      .query("deploymentHistory")
-      .withIndex("by_project_time", (q) => q.eq("projectId", args.projectId))
-      .take(DELETE_BATCH_SIZE);
-    const messages = await ctx.db.query("projectMessages").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
-    const versions = await ctx.db.query("projectVersions").withIndex("by_project_time", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
-    const runs = await ctx.db.query("generationRuns").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).take(DELETE_BATCH_SIZE);
-    const runEventBatches = await Promise.all(runs.map((run) => ctx.db.query("runEvents").withIndex("by_run", (q) => q.eq("runId", run._id)).take(DELETE_BATCH_SIZE + 1)));
-    const runEvents = runEventBatches.flatMap((events) => events.slice(0, DELETE_BATCH_SIZE));
-    const completedRuns = runs.filter((_, index) => runEventBatches[index].length <= DELETE_BATCH_SIZE);
-    const members = await ctx.db.query('projectMembers').withIndex('by_project', (q) => q.eq('projectId', args.projectId)).take(DELETE_BATCH_SIZE);
-    const invites = await ctx.db.query('projectInvites').withIndex('by_project', (q) => q.eq('projectId', args.projectId)).take(DELETE_BATCH_SIZE);
-
-    for (const row of [...files, ...history, ...deployments, ...messages, ...versions, ...runEvents, ...completedRuns, ...members, ...invites]) {
-      await ctx.db.delete(row._id);
-    }
-
-    if (
-      files.length === DELETE_BATCH_SIZE ||
-      history.length === DELETE_BATCH_SIZE ||
-      deployments.length === DELETE_BATCH_SIZE ||
-      messages.length === DELETE_BATCH_SIZE ||
-      versions.length === DELETE_BATCH_SIZE ||
-      runs.length === DELETE_BATCH_SIZE ||
-      runEvents.length >= DELETE_BATCH_SIZE ||
-      members.length === DELETE_BATCH_SIZE ||
-      invites.length === DELETE_BATCH_SIZE
-    ) {
+    for (const { table, batch } of CHILD_TABLES) {
+      const rows = await ctx.db
+        .query(table)
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .take(batch);
+      if (rows.length === 0) continue;
+      for (const row of rows) await ctx.db.delete(row._id);
       await ctx.scheduler.runAfter(0, internal.projects.deleteProjectData, args);
+      return;
     }
   },
 });
 
+
 export const deleteProject = mutation({
   args: { projectName: v.string() },
   handler: async (ctx, args) => {
-    const project = await requireProjectAccess(ctx, args.projectName);
-    const userId = await requireUserId(ctx);
-    if (project.userId !== userId) throw new Error('Only the project owner can delete it');
+    const project = await requireProjectRole(ctx, args.projectName, "owner");
 
     // Remove the parent first so no new child rows can be written while cleanup runs in batches.
     await ctx.db.delete(project._id);

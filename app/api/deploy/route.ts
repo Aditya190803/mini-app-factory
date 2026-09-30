@@ -1,12 +1,15 @@
 import { stackServerApp } from "@/stack/server";
 import { getIntegrationTokens } from "@/lib/integrations";
-import { buildGitHubContentPayload, normalizePath } from "@/lib/deploy-server";
+import { normalizePath } from "@/lib/deploy-server";
+import { commitGitHubTree, createGitHubRepo, findGitHubRepo, githubRequest, type GitHubRepo } from "@/lib/github";
+import { ensureNetlifySiteForRepo } from "@/lib/netlify";
 import { getRepoLookupTargets, normalizeNetlifySiteName, slugifyRepoName } from "@/lib/deploy-shared";
 import { generateReadmeContent, generateRepoDescription } from "@/lib/repo-content";
 import { getProject, getFiles } from "@/lib/projects";
 import { getServerEnv } from "@/lib/env";
-import { assertCanAccessProject } from "@/lib/project-access";
+import { assertProjectRole } from "@/lib/project-access";
 import { createSSEWriter } from "@/lib/sse-writer";
+import { consumeRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 import { z } from "zod";
 import { deployProjectToCloudflare } from "@/lib/cloudflare-deploy";
 
@@ -30,10 +33,8 @@ type DeployRequest = {
 };
 
 /**
- * Deploy uploads files to GitHub one at a time (a GET for the sha, then a PUT, per file) before
- * triggering the host, so its wall time scales with project size. Without this it inherits the
- * platform default and can be killed mid-upload, leaving a partially written repo and no rollback.
- * Matches the generate and transform routes, which already set it.
+ * Cloudflare deploys upload every asset and provision resources, and the GitHub path generates a
+ * README with the model, so wall time can be long. Matches the generate and transform routes.
  */
 export const maxDuration = 300;
 
@@ -49,45 +50,6 @@ const deploySchema = z.object({
   repoFullName: z.string().trim().min(1).max(240).optional(),
   netlifySiteName: z.string().trim().min(1).max(120).optional(),
 }).strict();
-
-async function githubRequest<T>(url: string, token: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!resp.ok) {
-    let details = "";
-    try {
-      const json = await resp.json();
-      details = json?.message ? `${json.message}${json.errors ? ` (${JSON.stringify(json.errors)})` : ""}` : JSON.stringify(json);
-    } catch {
-      details = await resp.text();
-    }
-    throw new Error(`GitHub API error: ${resp.status} ${details}`);
-  }
-  return (await resp.json()) as T;
-}
-
-async function netlifyRequest<T>(url: string, token: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Netlify API error: ${resp.status} ${text}`);
-  }
-  return (await resp.json()) as T;
-}
 
 export async function POST(req: Request) {
   try {
@@ -116,10 +78,16 @@ export async function POST(req: Request) {
   const body = parsed.data as DeployRequest;
 
   const project = await getProject(body.projectName);
-  const access = assertCanAccessProject(project, user.id);
+  const deployMode = body.deployMode ?? "github-netlify";
+  // Cloudflare resources live in the owner's account and the project records their IDs, so only
+  // the owner deploys there. GitHub and Netlify use the caller's own tokens, so editors may.
+  const access = assertProjectRole(project, user.id, deployMode === "cloudflare" ? "owner" : "editor");
   if (!access.ok) {
     return Response.json({ error: access.message }, { status: access.status });
   }
+
+  const rateLimit = await consumeRateLimit("deploy", user.id);
+  if (!rateLimit.allowed) return rateLimitedResponse(rateLimit);
 
   const storedFiles = await getFiles(body.projectName);
   if (storedFiles.length === 0) {
@@ -132,8 +100,6 @@ export async function POST(req: Request) {
     path: file.path,
     content: file.content,
   }));
-
-  const deployMode = body.deployMode ?? "github-netlify";
 
   const integrations = await getIntegrationTokens();
   if (deployMode === "cloudflare") {
@@ -177,37 +143,14 @@ export async function POST(req: Request) {
         const isPrivate = body.repoVisibility !== "public";
 
         writer.write({ status: "progress", message: "GitHub: Fetching user details" });
-        const viewer = await githubRequest<{ login: string }>("https://api.github.com/user", githubToken);
+        const viewer = await githubRequest<{ login: string }>("/user", githubToken);
         const ownerLogin = targetOrg || viewer.login;
-        const preferredFullName = body.repoFullName?.trim();
 
-        let repo:
-          | {
-              name: string;
-              full_name: string;
-              default_branch: string;
-              owner: { login: string };
-              id: number;
-            }
-          | null = null;
-
-        const repoLookupTargets = getRepoLookupTargets({
-          preferredFullName,
-          ownerLogin,
-          repoName,
-        });
-
+        let repo: GitHubRepo | null = null;
         writer.write({ status: "progress", message: `GitHub: Checking repository ${repoName}` });
-        for (const fullName of repoLookupTargets) {
-          try {
-            repo = await githubRequest(`https://api.github.com/repos/${fullName}`, githubToken);
-            break;
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "";
-            if (!/GitHub API error: 404/i.test(message)) {
-              throw err;
-            }
-          }
+        for (const fullName of getRepoLookupTargets({ preferredFullName: body.repoFullName?.trim(), ownerLogin, repoName })) {
+          repo = await findGitHubRepo(fullName, githubToken);
+          if (repo) break;
         }
 
         if (!repo) {
@@ -217,30 +160,16 @@ export async function POST(req: Request) {
             prompt: body.prompt,
             files: deployFiles.map((file) => file.path),
           });
-          const repoCreateUrl = targetOrg
-            ? `https://api.github.com/orgs/${encodeURIComponent(targetOrg)}/repos`
-            : "https://api.github.com/user/repos";
-          repo = await githubRequest<{
-            name: string;
-            full_name: string;
-            default_branch: string;
-            owner: { login: string };
-            id: number;
-          }>(repoCreateUrl, githubToken, {
-            method: "POST",
-            body: JSON.stringify({
-              name: repoName,
-              private: isPrivate,
-              description,
-            }),
-          });
+          repo = await createGitHubRepo({ token: githubToken, org: targetOrg, name: repoName, isPrivate, description });
         }
 
         const defaultBranch = repo.default_branch || "main";
         const owner = repo.owner?.login ?? viewer.login;
 
-        const uploadFiles = [...deployFiles];
-        const readmeExists = uploadFiles.some((f) => normalizePath(f.path).toLowerCase() === "readme.md");
+        const uploadFiles = deployFiles
+          .map((file) => ({ path: normalizePath(file.path), content: file.content }))
+          .filter((file) => file.path);
+        const readmeExists = uploadFiles.some((f) => f.path.toLowerCase() === "readme.md");
         if (!readmeExists) {
           writer.write({ status: "progress", message: "GitHub: Generating README" });
           const readme = await generateReadmeContent({
@@ -251,133 +180,28 @@ export async function POST(req: Request) {
           uploadFiles.push({ path: "README.md", content: readme });
         }
 
-        for (let i = 0; i < uploadFiles.length; i++) {
-          const file = uploadFiles[i];
-          const path = normalizePath(file.path);
-          if (!path) continue;
-
-          writer.write({
-            status: "progress",
-            message: `GitHub: Uploading ${path} (${i + 1}/${uploadFiles.length})`,
-          });
-
-          const encodedPath = path
-            .split("/")
-            .map((segment) => encodeURIComponent(segment))
-            .join("/");
-
-          let existingSha: string | undefined;
-          try {
-            const existing = await githubRequest<{ sha: string }>(
-              `https://api.github.com/repos/${owner}/${repo.name}/contents/${encodedPath}?ref=${encodeURIComponent(
-                defaultBranch
-              )}`,
-              githubToken
-            );
-            existingSha = existing.sha;
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "";
-            if (!/GitHub API error: 404/i.test(message)) {
-              throw err;
-            }
-          }
-
-          await githubRequest(`https://api.github.com/repos/${owner}/${repo.name}/contents/${encodedPath}`, githubToken, {
-            method: "PUT",
-            body: JSON.stringify(
-              buildGitHubContentPayload({
-                path,
-                content: file.content,
-                branch: defaultBranch,
-                existingSha,
-              })
-            ),
-          });
-        }
+        writer.write({ status: "progress", message: `GitHub: Committing ${uploadFiles.length} files` });
+        await commitGitHubTree({
+          token: githubToken,
+          repo: `${owner}/${repo.name}`,
+          branch: defaultBranch,
+          files: uploadFiles,
+          message: "Deploy from Mini App Factory",
+        });
 
         let deploymentUrl: string | undefined;
         let netlifySiteName: string | undefined;
         if (deployMode === "github-netlify") {
-          writer.write({ status: "progress", message: "Netlify: Configuring deploy keys" });
-          const deployKey = await netlifyRequest<{ id: string; public_key: string }>(
-            "https://api.netlify.com/api/v1/deploy_keys",
+          const site = await ensureNetlifySiteForRepo({
             netlifyToken,
-            { method: "POST" }
-          );
-
-          try {
-            await githubRequest(`https://api.github.com/repos/${owner}/${repo.name}/keys`, githubToken, {
-              method: "POST",
-              body: JSON.stringify({
-                title: "Netlify Deploy Key",
-                key: deployKey.public_key,
-                read_only: true,
-              }),
-            });
-          } catch {
-            // Already exists or cant be added
-          }
-
-          writer.write({ status: "progress", message: "Netlify: Setting up GitHub webhook" });
-          try {
-            await githubRequest(`https://api.github.com/repos/${owner}/${repo.name}/hooks`, githubToken, {
-              method: "POST",
-              body: JSON.stringify({
-                name: "web",
-                active: true,
-                events: ["push"],
-                config: {
-                  url: "https://api.netlify.com/hooks/github",
-                  content_type: "json",
-                },
-              }),
-            });
-          } catch {
-            // Already exists
-          }
-
-          writer.write({ status: "progress", message: "Netlify: Creating site" });
-          const createNetlifySite = async (name: string) => {
-            const resp = await fetch("https://api.netlify.com/api/v1/sites", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${netlifyToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                name,
-                repo: {
-                  provider: "github",
-                  repo: `${owner}/${repo.name}`,
-                  private: isPrivate,
-                  branch: defaultBranch,
-                  deploy_key_id: deployKey.id,
-                  repo_id: repo.id,
-                },
-              }),
-            });
-            if (!resp.ok) {
-              const text = await resp.text();
-              return { ok: false as const, status: resp.status, text };
-            }
-            const data = (await resp.json()) as { url?: string; ssl_url?: string; name?: string };
-            return { ok: true as const, data };
-          };
-
-          const preferredSiteName = normalizeNetlifySiteName(body.netlifySiteName || repoName);
-          let siteResult = await createNetlifySite(preferredSiteName);
-          if (!siteResult.ok && siteResult.status === 422 && siteResult.text.includes("subdomain")) {
-            const suffix = Math.random().toString(36).slice(2, 6);
-            const fallbackName = `${preferredSiteName}-${suffix}`;
-            siteResult = await createNetlifySite(fallbackName);
-          }
-          if (!siteResult.ok) {
-            throw new Error(`Netlify API error: ${siteResult.status} ${siteResult.text}`);
-          }
-
-          const site = siteResult.data;
-          deploymentUrl = site.ssl_url || site.url;
-          netlifySiteName = site.name || preferredSiteName;
+            githubToken,
+            existingSiteName: project!.netlifySiteName,
+            preferredSiteName: normalizeNetlifySiteName(body.netlifySiteName || repoName),
+            repo: { id: repo.id, name: repo.name, owner, branch: defaultBranch, isPrivate },
+            onProgress: (message) => writer.write({ status: "progress", message }),
+          });
+          deploymentUrl = site.url;
+          netlifySiteName = site.name;
         }
 
         writer.write({

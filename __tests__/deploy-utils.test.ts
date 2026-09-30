@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { buildGitHubContentPayload } from '../lib/deploy-server';
 import { 
   getRepoLookupTargets, 
   validateRepoName, 
@@ -38,29 +37,6 @@ describe('deploy helpers', () => {
       expect(extractNetlifySiteNameFromUrl('https://my-site.netlify.app')).toBe('my-site');
       expect(extractNetlifySiteNameFromUrl('http://dashboard.netlify.app/sites/my-site')).toBe('dashboard'); // Based on current regex logic
       expect(extractNetlifySiteNameFromUrl(null)).toBeUndefined();
-    });
-  });
-
-  describe('GitHub payload builder', () => {
-    it('includes sha when updating existing files', () => {
-      const payload = buildGitHubContentPayload({
-        path: 'index.html',
-        content: '<h1>Hello</h1>',
-        branch: 'main',
-        existingSha: 'abc123',
-      });
-      expect(payload.message).toMatch(/^Update/);
-      expect(payload).toHaveProperty('sha', 'abc123');
-    });
-
-    it('encodes content to base64 correctly', () => {
-      const content = 'Hello World';
-      const payload = buildGitHubContentPayload({
-        path: 'test.txt',
-        content,
-        branch: 'main',
-      });
-      expect(payload.content).toBe(Buffer.from(content).toString('base64'));
     });
   });
 

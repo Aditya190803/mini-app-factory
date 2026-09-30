@@ -20,6 +20,10 @@ export interface ProjectMetadata {
   createdAt: number;
   updatedAt?: number;
   status: 'pending' | 'generating' | 'completed' | 'error';
+  /** The caller's role, from Convex. See lib/project-access.ts. */
+  accessRole?: 'owner' | 'editor' | 'viewer';
+  target?: 'static' | 'edge';
+  filesVersion?: number;
   html?: string;
   error?: string;
   isPublished?: boolean;
@@ -42,7 +46,6 @@ export interface ProjectMetadata {
   cloudflareD1DatabaseId?: string;
   cloudflareD1DatabaseName?: string;
   cloudflareCustomDomain?: string;
-  cloudflareEnvVarsEncrypted?: string;
   cloudflareResourcesJson?: string;
   cloudflarePreviewProjectName?: string;
   cloudflarePreviewDeploymentId?: string;
@@ -138,6 +141,12 @@ export async function updateCloudflareProjectConfig(params: {
   await convex.mutation(api.projects.updateCloudflareConfig, params);
 }
 
+/** Owner-only: the encrypted Cloudflare env var blob. Never part of `getProject`. */
+export async function getProjectCloudflareEnvVars(projectName: string): Promise<string | null> {
+  const convex = await getConvex();
+  return await convex.query(api.projects.getProjectCloudflareEnvVars, { projectName });
+}
+
 export async function getProject(name: string): Promise<ProjectMetadata | null> {
   const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName: name });
@@ -167,19 +176,33 @@ export async function getFile(projectName: string, path: string) {
   return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
 }
 
-export async function claimProjectOrphan(projectName: string) {
+/** Files plus the filesVersion they were read at, from one consistent read. */
+export async function getFilesSnapshot(projectName: string) {
   const convex = await getConvex();
-  await convex.mutation(api.projects.claimProjectOrphan, { projectName });
+  const project = await convex.query(api.projects.getProject, { projectName });
+  if (!project) return null;
+  const snapshot = await convex.query(api.files.getFilesSnapshot, { projectId: project._id });
+  if (!snapshot) return null;
+  return {
+    files: snapshot.files.map((file) => projectFileRecordSchema.parse(file)),
+    filesVersion: snapshot.filesVersion,
+  };
 }
 
-export async function saveFiles(projectName: string, files: ProjectFile[]) {
+/**
+ * Replace the project's files. Pass `expectedVersion` when the files were derived from an earlier
+ * read: the save is then rejected if anything else wrote in between, instead of overwriting it.
+ */
+export async function saveFiles(projectName: string, files: ProjectFile[], expectedVersion?: number) {
   const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) throw new Error("Project not found");
-  await convex.mutation(api.files.saveFiles, {
+  const result = await convex.mutation(api.files.saveFiles, {
     projectId: project._id,
-    files
+    files,
+    ...(expectedVersion !== undefined ? { expectedVersion } : {}),
   });
+  return result.filesVersion;
 }
 
 export async function createProjectVersion(projectName: string, summary: string, files: ProjectFile[]) {

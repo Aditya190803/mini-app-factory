@@ -1,5 +1,5 @@
 import { getProject } from '@/lib/projects';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { assertProjectRole } from '@/lib/project-access';
 import { stackServerApp } from '@/stack/server';
 
 export async function GET(
@@ -18,7 +18,7 @@ export async function GET(
   const { name } = await params;
   const project = await getProject(name);
 
-  const access = assertCanAccessProject(project, user.id);
+  const access = assertProjectRole(project, user.id, 'viewer');
   if (!access.ok) {
     return Response.json(
       { error: access.message, code: access.status === 401 ? 'UNAUTHORIZED' : access.status === 404 ? 'PROJECT_NOT_FOUND' : 'FORBIDDEN', requestId },
