@@ -201,8 +201,8 @@ describe('POST /api/transform', () => {
     expect(statuses).toContain('complete');
     expect(body.full).toBe(false);
     expect(Array.isArray(body.files)).toBe(true);
-    expect(body.files![0].path).toBe('index.html');
-    expect(body.files![0].content).toContain('New');
+    expect(body.files![0]!.path).toBe('index.html');
+    expect(body.files![0]!.content).toContain('New');
   });
 
   test('forwards the selected model to the AI session', async () => {
@@ -288,7 +288,7 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     const body = await consumeTransformStream(res);
-    expect(body.files![0].content).toContain('Recovered');
+    expect(body.files![0]!.content).toContain('Recovered');
     expect(sendAndWait).toHaveBeenCalledTimes(2);
   });
 });
@@ -297,14 +297,14 @@ describe('extractToolCalls', () => {
   test('parses fenced JSON arrays', () => {
     const calls = extractToolCalls('```json\n[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]\n```');
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
-    expect(calls[0].args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
+    expect(calls[0]!.tool).toBe('updateFile');
+    expect(calls[0]!.args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
   });
 
   test('accepts single tool-call object payloads', () => {
     const calls = extractToolCalls('{"tool":"updateFile","args":{"file":"index.html","content":"x"}}');
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('rejects malformed JSON', () => {
@@ -317,7 +317,7 @@ describe('extractToolCalls', () => {
       'I will apply these changes:\n[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]\nDone.'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('recovers from trailing commas in tool call JSON', () => {
@@ -325,7 +325,7 @@ describe('extractToolCalls', () => {
       '[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>",},},]'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
+    expect(calls[0]!.args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
   });
 
   test('accepts wrapped toolCalls payload', () => {
@@ -333,7 +333,7 @@ describe('extractToolCalls', () => {
       '{"toolCalls":[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]}'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('accepts function-call style payload', () => {
@@ -341,7 +341,7 @@ describe('extractToolCalls', () => {
       '[{"function":{"name":"replaceContent","arguments":"{\\"file\\":\\"index.html\\",\\"selector\\":\\"h1\\",\\"newContent\\":\\"New\\"}"}}]'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('replaceContent');
-    expect(calls[0].args).toEqual({ file: 'index.html', selector: 'h1', newContent: 'New' });
+    expect(calls[0]!.tool).toBe('replaceContent');
+    expect(calls[0]!.args).toEqual({ file: 'index.html', selector: 'h1', newContent: 'New' });
   });
 });

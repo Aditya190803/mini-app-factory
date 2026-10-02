@@ -125,7 +125,7 @@ async function applyToolCalls(
 
   for (let i = 0; i < calls.length; i++) {
     throwIfAborted(signal);
-    const call = calls[i];
+    const call = calls[i]!;
     onEvent({
       status: 'applying',
       index: i + 1,
@@ -398,7 +398,7 @@ Only return the JSON array. No explanations.`;
     ) {
       const activePath = activeFile || 'index.html';
       const idx = finalFiles.findIndex((f) => f.path === activePath);
-      if (idx >= 0) finalFiles[idx].content = stripCodeFence(content);
+      if (idx >= 0) finalFiles[idx]!.content = stripCodeFence(content);
     }
   } finally {
     await session.destroy().catch(() => {});

@@ -104,12 +104,12 @@ export async function planCloudflareResources(params: ResourceParams & {
     }
   }
 
-  const references = [
-    ...params.manifest.bindings.analyticsEngine.map((item) => [item.binding, item.dataset]),
-    ...params.manifest.bindings.services.map((item) => [item.binding, item.service]),
-    ...params.manifest.bindings.durableObjects.map((item) => [item.binding, item.namespaceId]),
-    ...params.manifest.bindings.ai.map((item) => [item.binding, item.projectId]),
-    ...params.manifest.bindings.browser.map((item) => [item.binding, 'Browser Rendering']),
+  const references: Array<[string, string]> = [
+    ...params.manifest.bindings.analyticsEngine.map((item): [string, string] => [item.binding, item.dataset]),
+    ...params.manifest.bindings.services.map((item): [string, string] => [item.binding, item.service]),
+    ...params.manifest.bindings.durableObjects.map((item): [string, string] => [item.binding, item.namespaceId]),
+    ...params.manifest.bindings.ai.map((item): [string, string] => [item.binding, item.projectId]),
+    ...params.manifest.bindings.browser.map((item): [string, string] => [item.binding, 'Browser Rendering']),
   ];
   for (const [binding, name] of references) {
     actions.push({ kind: 'external', binding, name, action: 'reference' });

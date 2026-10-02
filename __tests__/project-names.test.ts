@@ -42,6 +42,6 @@ describe('batchEdit', () => {
       ],
     }, files);
     expect(result.success).toBe(false);
-    expect(files[0].content).toBe('body { color: red; }');
+    expect(files[0]!.content).toBe('body { color: red; }');
   });
 });

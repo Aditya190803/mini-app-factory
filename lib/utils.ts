@@ -14,7 +14,7 @@ export function stripCodeFence(code: string): string {
   // Try to find a code block
   const blockMatch = code.match(/```(?:\w+)?(?::[^\n]+)?\n([\s\S]*?)\n```/);
   if (blockMatch) {
-    return blockMatch[1].trim();
+    return blockMatch[1]!.trim();
   }
 
   // If no block found but it starts with backticks, try to clean it manually

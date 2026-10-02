@@ -31,7 +31,7 @@ export function prettifyGatewayModelName(id: string): string {
 
 function effortKey(id: string): string {
   const match = id.match(EFFORT_SUFFIX);
-  return match ? match[1].toLowerCase() : '';
+  return match?.[1] ? match[1].toLowerCase() : '';
 }
 
 export function gatewayModelFamily(id: string): string {

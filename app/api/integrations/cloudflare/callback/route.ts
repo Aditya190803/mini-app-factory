@@ -26,7 +26,8 @@ export async function GET(req: Request) {
     const token = await exchangeCloudflareCode({ code, redirectUri: `${baseUrl}/api/integrations/cloudflare/callback`, codeVerifier });
     const accounts = await listCloudflareAccounts(token.accessToken);
     if (!accounts.length) return Response.json({ error: 'No Cloudflare account was authorized' }, { status: 400 });
-    const account = accounts[0];
+    const [account] = accounts;
+    if (!account) return Response.json({ error: 'No Cloudflare account was authorized' }, { status: 400 });
 
     await upsertIntegrationTokens({
       cloudflareApiToken: token.accessToken,

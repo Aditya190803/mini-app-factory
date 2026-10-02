@@ -406,8 +406,8 @@ describe('Convex authorization', () => {
 
       const entries = await t.withIdentity(ADMIN).query(api.aiSettings.listAdminAudit, {});
       expect(entries).toHaveLength(1);
-      expect(entries[0].userId).toBe(ADMIN.subject);
-      expect(entries[0].email).toBe(ADMIN.email);
+      expect(entries[0]!.userId).toBe(ADMIN.subject);
+      expect(entries[0]!.email).toBe(ADMIN.email);
     });
   });
 

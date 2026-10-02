@@ -25,7 +25,7 @@ function assertSafeMigrations(files: CloudflareDeployFile[], applied: Record<str
     if (!applied[file.path]) {
       const rejected = disallowedMigrationStatements(file.content);
       if (rejected.length) {
-        throw new Error(`Migration ${file.path} needs manual review: only CREATE, ALTER TABLE ... ADD/RENAME, and INSERT run automatically. Rejected: ${rejected[0].slice(0, 120)}`);
+        throw new Error(`Migration ${file.path} needs manual review: only CREATE, ALTER TABLE ... ADD/RENAME, and INSERT run automatically. Rejected: ${rejected[0]!.slice(0, 120)}`);
       }
     }
     const previousHash = applied[file.path];

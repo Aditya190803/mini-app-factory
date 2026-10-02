@@ -82,7 +82,7 @@ export default function CodePanel({
     }
     if (matches.length === 0) return
 
-    const range = matches[0].range
+    const range = matches[0]!.range
     editor.revealRangeInCenter(range)
     decorationRef.current = editor.deltaDecorations(decorationRef.current, [
       { range, options: { inlineClassName: 'monaco-highlight-glow', isWholeLine: false } },

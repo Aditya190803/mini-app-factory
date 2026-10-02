@@ -40,7 +40,7 @@ function findByPathKeyword(prompt: string, manifest: HtmlFileManifest): string[]
     if (page) return [page];
   }
 
-  return hits.length ? [hits[0]] : [];
+  return hits.length ? [hits[0]!] : [];
 }
 
 function findByContent(prompt: string, manifest: HtmlFileManifest): string[] {

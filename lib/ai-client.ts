@@ -251,7 +251,7 @@ async function runWithFallbackChain<T>(
   let lastError: unknown;
 
   for (let stepIndex = 0; stepIndex < chain.length; stepIndex++) {
-    const step = chain[stepIndex];
+    const step = chain[stepIndex]!;
     for (let attempt = 1; attempt <= step.maxAttempts; attempt++) {
       // Cancellation and the time budget end the chain; they are not provider failures to fall
       // back from.

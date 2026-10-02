@@ -250,8 +250,8 @@ describe('POST /api/deploy', () => {
       const streamOutput = await res.text();
       expect(streamOutput).toContain('"status":"success"');
       expect(trees).toHaveLength(1);
-      expect(trees[0].base_tree).toBeUndefined();
-      expect(trees[0].tree.map((entry) => entry.path).sort()).toEqual(['README.md', 'index.html']);
+      expect(trees[0]!.base_tree).toBeUndefined();
+      expect(trees[0]!.tree.map((entry) => entry.path).sort()).toEqual(['README.md', 'index.html']);
     } finally {
       (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
     }

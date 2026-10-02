@@ -79,16 +79,18 @@ export const consume = mutation({
     const now = Date.now();
     const buckets = [args.bucket, ...(args.also ?? [])];
     const states = await Promise.all(buckets.map((bucket) => peek(ctx, userId, bucket, now)));
-    for (let index = 0; index < buckets.length; index++) {
-      if (states[index].count >= limitFor(buckets[index])) {
-        return { allowed: false, remaining: 0, resetAt: states[index].resetAt, bucket: buckets[index] };
+    for (const [index, bucket] of buckets.entries()) {
+      const state = states[index]!;
+      if (state.count >= limitFor(bucket)) {
+        return { allowed: false, remaining: 0, resetAt: state.resetAt, bucket };
       }
     }
     for (const state of states) {
       if (!state.row) await ctx.db.insert('rateLimits', { key: state.key, count: 1, resetAt: state.resetAt });
       else await ctx.db.patch(state.row._id, { count: state.count + 1, resetAt: state.resetAt });
     }
-    return { allowed: true, remaining: limitFor(args.bucket) - states[0].count - 1, resetAt: states[0].resetAt, bucket: args.bucket };
+    const first = states[0]!;
+    return { allowed: true, remaining: limitFor(args.bucket) - first.count - 1, resetAt: first.resetAt, bucket: args.bucket };
   },
 });
 

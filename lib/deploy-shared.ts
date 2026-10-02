@@ -81,7 +81,7 @@ export function extractRepoFullNameFromUrl(url?: string | null) {
   if (!url) return undefined;
   const match = url.match(/github\.com\/([^/]+\/[^/]+)(?:\.git)?$/i);
   if (!match) return undefined;
-  return match[1].replace(/\.git$/i, "");
+  return match[1]!.replace(/\.git$/i, "");
 }
 
 export function extractRepoNameFromFullName(fullName?: string | null) {

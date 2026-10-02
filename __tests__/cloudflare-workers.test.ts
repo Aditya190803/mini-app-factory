@@ -87,7 +87,7 @@ describe('Cloudflare companion Workers', () => {
     });
 
     expect(saved.worker?.['demo-worker']?.migrationTag).toBe('v1');
-    expect(saved.durableObject?.ROOMS.id).toBe('do-1');
+    expect(saved.durableObject?.ROOMS!.id).toBe('do-1');
     expect(buildCloudflarePagesConfig(parseCloudflareManifest(files, 'demo')!, saved)).toMatchObject({
       services: { WORKER: { service: 'demo-worker' } },
       durable_object_namespaces: { ROOMS: { namespace_id: 'do-1' } },

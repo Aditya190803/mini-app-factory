@@ -117,9 +117,9 @@ describe('Cloudflare Pages helpers', () => {
     const domain = await addCloudflarePagesDomain({ token: 'oauth-token', accountId: 'account-1', projectName: 'demo', domain: 'app.example.com' });
     await removeCloudflarePagesDomain({ token: 'oauth-token', accountId: 'account-1', projectName: 'demo', domain: 'app.example.com' });
 
-    expect(zones[0].name).toBe('example.com');
+    expect(zones[0]!.name).toBe('example.com');
     expect(domain.status).toBe('pending');
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/zones?account.id=account-1');
-    expect(fetchMock.mock.calls[2][1]?.method).toBe('DELETE');
+    expect(String(fetchMock.mock.calls[0]![0])).toContain('/zones?account.id=account-1');
+    expect(fetchMock.mock.calls[2]![1]?.method).toBe('DELETE');
   });
 });

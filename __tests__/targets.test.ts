@@ -75,8 +75,8 @@ describe('deploy surfaces', () => {
   })
 
   it('offers Cloudflare first for both targets', () => {
-    expect(surfacesFor('static')[0].id).toBe('cloudflare')
-    expect(surfacesFor('edge')[0].id).toBe('cloudflare')
+    expect(surfacesFor('static')[0]!.id).toBe('cloudflare')
+    expect(surfacesFor('edge')[0]!.id).toBe('cloudflare')
   })
 
   it('never offers an edge app a surface that cannot run a Worker', () => {

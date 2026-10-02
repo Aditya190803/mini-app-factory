@@ -262,7 +262,7 @@ function handleReplaceContent(args: { file: string; selector: string; oldContent
     const parseOpeningTag = (value: string) => {
       const match = value.trim().match(/^<([a-zA-Z][\w:-]*)([^>]*)>$/);
       if (!match) return null;
-      const tag = match[1].toLowerCase();
+      const tag = match[1]!.toLowerCase();
       const attrsPart = match[2] || '';
       try {
         const fragment = cheerio.load(`<${tag}${attrsPart}></${tag}>`, null, false);
@@ -414,7 +414,7 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
 
     if (position === 'prepend' || position === 'append') {
       const ascending = [...ranges].sort((a, b) => a.start - b.start);
-      const anchor = ascending[0];
+      const anchor = ascending[0]!;
       const ruleText = anchor.text;
       
       const firstBrace = ruleText.indexOf('{');
@@ -439,7 +439,7 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
     }
 
     const ascending = [...ranges].sort((a, b) => a.start - b.start);
-    const anchor = ascending[0];
+    const anchor = ascending[0]!;
     const insertion = content.endsWith('\n') ? content : `${content}\n`;
 
     if (position === 'before') {

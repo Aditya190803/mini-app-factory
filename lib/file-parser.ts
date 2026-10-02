@@ -14,9 +14,9 @@ export function parseMultiFileOutput(output: string): ProjectFile[] {
   let match;
 
   while ((match = regex.exec(output)) !== null) {
-    const lang = match[1].toLowerCase();
+    const lang = match[1]!.toLowerCase();
     let path = match[2]?.trim() || '';
-    const content = match[3].trim();
+    const content = match[3]!.trim();
     
     // Default paths if missing
     if (!path) {

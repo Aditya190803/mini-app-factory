@@ -132,7 +132,7 @@ export default function AIAdminConsole() {
       const target = direction === 'up' ? index - 1 : index + 1;
       if (target < 0 || target >= order.length) return prev;
 
-      [order[index], order[target]] = [order[target], order[index]];
+      [order[index], order[target]] = [order[target]!, order[index]!];
       const next = { ...prev, providerOrder: order };
       void persist(next);
       return next;

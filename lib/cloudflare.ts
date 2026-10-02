@@ -245,7 +245,7 @@ async function uploadAssets(params: {
   const batches = uploadBatches(uniqueMissing);
 
   for (let index = 0; index < batches.length; index++) {
-    const batch = batches[index];
+    const batch = batches[index]!;
     params.onProgress?.(`Cloudflare: Uploading assets (${index + 1}/${batches.length})`);
     await uploadRequest('/pages/assets/upload', {
       method: 'POST',

@@ -148,7 +148,7 @@ export function assembleFullPage(
     if (!replaced) {
       const basename = styleFile.path.split('/').pop() || styleFile.path;
       $(`link[rel="stylesheet"]`).each((_, el) => {
-        const href = ($(el).attr('href') || '').split('?')[0].replace(/^\.\//, '');
+        const href = ($(el).attr('href') || '').split('?')[0]!.replace(/^\.\//, '');
         if (href === styleFile.path || href === basename || href.endsWith(`/${basename}`)) {
           $(el).replaceWith(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
           replaced = true;
@@ -184,7 +184,7 @@ export function assembleFullPage(
     if (!replaced) {
       const basename = scriptFile.path.split('/').pop() || scriptFile.path;
       $('script[src]').each((_, el) => {
-        const src = ($(el).attr('src') || '').split('?')[0].replace(/^\.\//, '');
+        const src = ($(el).attr('src') || '').split('?')[0]!.replace(/^\.\//, '');
         if (src === scriptFile.path || src === basename || src.endsWith(`/${basename}`)) {
           $(el).replaceWith(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
           replaced = true;

@@ -64,7 +64,7 @@ export function validateGeneratedProject(files: ProjectFile[], projectName: stri
     const frontendRoutes = new Set<string>();
     for (const file of files.filter((candidate) => candidate.fileType === 'script' || candidate.fileType === 'page')) {
       for (const match of file.content.matchAll(/fetch\(\s*["'`]([^"'`?]+)["'`]/g)) {
-        if (match[1].startsWith('/api/')) frontendRoutes.add(match[1]);
+        if (match[1]?.startsWith('/api/')) frontendRoutes.add(match[1]);
       }
     }
     for (const route of frontendRoutes) {

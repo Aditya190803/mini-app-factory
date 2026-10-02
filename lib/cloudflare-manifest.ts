@@ -261,7 +261,7 @@ export function parseCloudflareManifest(files: DeployFile[], projectName: string
 
   if (wranglers.length) {
     const manifests = wranglers.map((wrangler) => manifestFromWrangler(wrangler, files, projectName));
-    const root = manifests[0];
+    const root = manifests[0]!;
     const mergedBindings = Object.fromEntries(Object.keys(root.bindings).map((key) => {
       const entries = manifests.flatMap((item) => item.bindings[key as keyof typeof item.bindings]);
       const byBinding = new Map<string, (typeof entries)[number]>();

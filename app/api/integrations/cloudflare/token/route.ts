@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     if (!accounts.length) {
       return Response.json({ error: 'That token has no Cloudflare accounts' }, { status: 400 });
     }
-    const account = accounts[0];
+    const [account] = accounts;
+    if (!account) return Response.json({ error: 'That token has no Cloudflare accounts' }, { status: 400 });
     await upsertIntegrationTokens({
       cloudflareApiToken: parsed.data.token,
       cloudflareAccountId: account.id,

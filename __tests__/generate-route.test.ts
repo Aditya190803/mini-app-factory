@@ -218,9 +218,9 @@ describe('POST /api/generate', () => {
     // reported as a successful build.
     const saveProjectMock = saveProject as ReturnType<typeof vi.fn>;
     const lastSave = saveProjectMock.mock.calls.length - 1;
-    expect(saveProjectMock.mock.calls[lastSave][0]).toMatchObject({ status: 'completed' });
-    expect((saveFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
-      .toBeLessThan(saveProjectMock.mock.invocationCallOrder[lastSave]);
+    expect(saveProjectMock.mock.calls[lastSave]![0]).toMatchObject({ status: 'completed' });
+    expect((saveFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!)
+      .toBeLessThan(saveProjectMock.mock.invocationCallOrder[lastSave]!);
   });
 
   test('reports a failed file save as a failed build', async () => {

@@ -101,8 +101,8 @@ describe('Cloudflare resource manifest', () => {
       }),
     }], 'demo');
 
-    expect(manifest?.bindings.d1[0].migrations).toBe('db/migrations');
-    expect(manifest?.bindings.services[0].environment).toBe('production');
+    expect(manifest?.bindings.d1[0]!.migrations).toBe('db/migrations');
+    expect(manifest?.bindings.services[0]!.environment).toBe('production');
   });
 
   test('rejects duplicate binding names across resource types', () => {
