@@ -1,11 +1,15 @@
 'use client'
 
 import * as React from 'react'
-import Editor from '@monaco-editor/react'
+import Editor, { loader } from '@monaco-editor/react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { useTheme } from 'next-themes'
 import { Check, Copy, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/kit'
+
+// Load Monaco from this origin (copied there by scripts/copy-monaco.mjs) rather than from the
+// jsdelivr CDN the library defaults to.
+loader.config({ paths: { vs: '/monaco/vs' } })
 
 interface CodePanelProps {
   html: string

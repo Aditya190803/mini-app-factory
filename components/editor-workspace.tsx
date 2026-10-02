@@ -41,6 +41,7 @@ import ComponentLibraryDialog from './editor/component-library-dialog';
 import QuickOpen from './editor/quick-open';
 import HelpDialog from './editor/help-dialog';
 import NameDialog, { type NameDialogRequest } from './editor/name-dialog';
+import VersionHistoryDialog from './editor/version-history-dialog';
 
 interface EditorWorkspaceProps {
   initialHTML: string;
@@ -87,6 +88,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [nameRequest, setNameRequest] = useState<NameDialogRequest | null>(null);
   const [isExplorerVisible, setIsExplorerVisible] = useState(false);
   // Closed until we know the viewport: on a phone an open conversation pane covers the preview.
@@ -228,9 +230,10 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     historyTimerRef.current = setTimeout(() => addToHistory(nextFiles), 1000);
   };
 
-  const restoreVersionById = useCallback(async (versionId: string, copy: { title: string; description: string; confirmLabel: string }) => {
+  /** Pass `copy` to ask first; the history dialog has already shown a diff, so it does not. */
+  const restoreVersionById = useCallback(async (versionId: string, copy?: { title: string; description: string; confirmLabel: string }) => {
     if (!projectId) return;
-    if (!(await confirm({ ...copy, destructive: true }))) return;
+    if (copy && !(await confirm({ ...copy, destructive: true }))) return;
     try {
       // Keep the current state as a version first, so restoring never loses unsaved work.
       await flushSave().catch(() => undefined);
@@ -642,6 +645,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
               filePaths={files.map((file) => file.path)}
               versions={(projectVersions || []).map((version) => ({ id: version._id, summary: version.summary, createdAt: version.createdAt }))}
               messages={messages}
+              onOpenHistory={() => setIsHistoryOpen(true)}
               onRestoreVersion={(versionId) =>
                 restoreVersionById(versionId, {
                   title: 'Restore this version?',
@@ -733,6 +737,14 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       <EditorDeployDialog projectName={projectName} deploy={deploy} target={buildTarget} />
 
       <NameDialog request={nameRequest} onClose={() => setNameRequest(null)} />
+
+      <VersionHistoryDialog
+        open={isHistoryOpen}
+        onOpenChange={setIsHistoryOpen}
+        projectId={projectId}
+        currentFiles={files}
+        onRestore={(versionId) => restoreVersionById(versionId)}
+      />
 
       <QuickOpen open={isQuickOpenOpen} onOpenChange={setIsQuickOpenOpen} files={files} onSelect={setActiveFilePath} />
     </div>

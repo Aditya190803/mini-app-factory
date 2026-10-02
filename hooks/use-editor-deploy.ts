@@ -81,6 +81,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     cloudflareOAuthConfigured: false,
     cloudflareAccountName: undefined as string | undefined,
   });
+  /** False until the first status check answers, so the dialog does not flash "not connected". */
+  const [integrationStatusLoaded, setIntegrationStatusLoaded] = useState(false);
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
@@ -159,6 +161,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       });
     } catch {
       setIntegrationStatus(disconnected);
+    } finally {
+      setIntegrationStatusLoaded(true);
     }
   }, []);
 
@@ -559,6 +563,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setGithubOrg,
     githubOrgs,
     integrationStatus,
+    integrationStatusLoaded,
     repoCheck,
     deployResult,
     deployError,

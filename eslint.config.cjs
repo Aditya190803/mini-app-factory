@@ -6,7 +6,7 @@ const nextPlugin = require("@next/eslint-plugin-next");
 
 module.exports = [
   {
-    ignores: [".next", "node_modules", "convex/_generated", "coverage"]
+    ignores: [".next", "node_modules", "convex/_generated", "coverage", "public/monaco"]
   },
   {
     files: ["**/*.{ts,tsx,js,jsx}"],

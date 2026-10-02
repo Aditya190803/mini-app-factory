@@ -109,7 +109,7 @@ export function Field({
 
 const controlBase = [
   'w-full rounded-md border bg-[var(--surface-1)] text-[var(--foreground)]',
-  'border-[var(--rule-strong)]',
+  'border-[var(--input)]',
   'placeholder:text-[var(--muted-foreground)]',
   'transition-[border-color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-out-quint)]',
   'outline-none',
