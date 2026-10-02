@@ -1,7 +1,6 @@
 # What this needs from you
 
-Everything in the redesign builds, typechecks, lints, and passes its tests
-already. This file is the list of things **only you can do**, because they need
+Everything builds, typechecks, lints, and passes its tests already. This file is the list of things **only you can do**, because they need
 accounts, dashboards, or decisions that are yours.
 
 Ordered by whether the app works without them.
@@ -15,13 +14,14 @@ These already existed before the redesign. Listed so the list is complete.
 | Variable | Where to get it |
 | --- | --- |
 | `NEXT_PUBLIC_CONVEX_URL` | `bun convex dev`, or the Convex dashboard |
-| `CONVEX_DEPLOYMENT_KEY` | Convex dashboard, Settings, Deploy keys |
+| `CONVEX_DEPLOY_KEY` | Convex dashboard, Settings, Deploy keys. Also add it as a GitHub Actions secret: CI checks codegen drift and deploys Convex on merge to main. |
 | `NEXT_PUBLIC_STACK_PROJECT_ID` | Stack Auth dashboard |
 | `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` | Stack Auth dashboard |
 | `STACK_SECRET_SERVER_KEY` | Stack Auth dashboard |
-| `OPENCODE_API_KEY` | opencode.ai/zen |
-| `AI_GATEWAY_API_KEY` | Your AI gateway |
+| `OPENCODE_API_KEY` | opencode.ai/zen. Optional if every user brings their own key. |
+| `AI_GATEWAY_API_KEY` | Your AI gateway. Must be set together with `AI_GATEWAY_BASE_URL`. |
 | `AI_GATEWAY_BASE_URL` | e.g. `https://ai-gateway.example/v1` |
+| `NEXT_PUBLIC_APP_URL` | The public origin. OAuth redirects use it instead of the request's host header. |
 | `INTEGRATION_TOKEN_SECRET` | Generate one: `openssl rand -base64 48`. 32+ chars. |
 
 ### Schema push (new, and required)
@@ -41,6 +41,40 @@ files. Push it before deploying:
 bun convex dev      # development
 bun convex deploy   # production
 ```
+
+### After merging the audit fixes (one-off)
+
+1. **Push the schema and functions**: `bun convex deploy`. New tables
+   (`projectVersionChunks`), indexes, crons (stale-run reaper, failure alerts) and
+   the `migrations` module ship with it.
+2. **Run the data migrations** on production, from the Convex dashboard or:
+
+   ```bash
+   npx convex run migrations:backfillLegacyProjects
+   npx convex run migrations:clearVercelTokens
+   ```
+
+   Both are idempotent and continue themselves until done. Afterwards the legacy
+   fields (`projects.html`, `pages`, `global*`, `userIntegrations.vercelAccessToken`),
+   `lib/migration.ts` and the editor's client-side migration path can be deleted.
+3. **Legacy ownerless projects** are now locked. If any exist, assign an owner:
+   `npx convex run projects:assignOrphanOwner '{"projectName":"…","userId":"…"}'`.
+4. **Cloudflare env var secrets** are re-encrypted bound to their project the next
+   time each project's secrets are saved; old values keep working until then.
+5. **Set the operational env vars** (all optional):
+
+   | Where | Variable | Effect |
+   | --- | --- | --- |
+   | App | `ERROR_REPORT_WEBHOOK_URL` | Server and client errors are posted here as `{ text }` |
+   | App | `CSP_ENFORCE=1` | Enforces the CSP in `proxy.ts` (report-only until then) |
+   | Convex | `MAF_ALERT_WEBHOOK_URL` | Alert when runs fail in bulk |
+   | Convex | `MAF_ALERT_FAILURE_THRESHOLD` | Failures per 15 minutes before alerting (default 5) |
+   | Convex | `MAF_AI_DAILY_LIMIT` / `MAF_AI_MONTHLY_LIMIT` | Shared-key builds per user (defaults 100 / 1500) |
+
+6. **Roll out the CSP**: watch the browser console for
+   `Content-Security-Policy-Report-Only` violations on sign-in, the projects
+   list and settings, then set `CSP_ENFORCE=1`. Enforcing renders pages
+   dynamically (the nonce is per request).
 
 ---
 
@@ -121,37 +155,34 @@ Redirect URIs follow the same shape:
 
 ## 4. Decisions I could not make for you
 
-1. **Cost ceilings.** Deploys now bill the user's own Cloudflare account. The
-   terms say so plainly, and the plan gate shows what will be created, but
-   there is no spend cap and no usage display. If you expect non-technical
-   users, that is a real gap.
+1. **Cost ceilings.** Deploys bill the user's own Cloudflare account. The plan
+   and settings now label each resource as free tier, may bill, or paid plan,
+   and settings can tear a deployment down, but there is no spend cap.
 
-2. **The Netlify path for edge apps.** Currently hidden, because Netlify cannot
-   run a Worker. That is honest. Confirm you agree rather than wanting a
-   partial static export there.
+2. **The Netlify path for edge apps.** Hidden, because Netlify cannot run a
+   Worker. Confirm you agree rather than wanting a partial static export.
 
-3. **Where the app itself is hosted.** The `.vercel` directory says Vercel.
-   Nothing here forces that, but "Cloudflare-first" hosted on Vercel is a
-   question a user will ask. `@vercel/analytics` is still wired into the root
-   layout.
+3. **Where the app itself is hosted.** `@vercel/analytics` records
+   `project_created`, `first_build_completed` and `deployed`, but only on
+   Vercel. Elsewhere, swap it for that host's analytics.
 
-## 5. Things worth doing that I did not
+4. **A separate origin for user content.** `/results` and `/preview` are
+   sandboxed (opaque origin, no framing by other sites, noindex), which also
+   means generated apps cannot use `localStorage` there. Serving them from a
+   separate domain (`*.usercontent.<domain>`) would lift that and remove the
+   phishing risk of user pages on the app's own domain. It needs DNS and
+   hosting, so it is yours.
 
-- **Visual regression.** There is no screenshot testing, so a token change can
-  silently break a surface. The build and 250 unit tests catch types and logic,
-  not layout.
-- **A contrast test.** The palette was designed to hit AA and the reasoning is
-  in `DESIGN.md`, but nothing in CI enforces it. A test over the token values
-  would.
-- **A full Content Security Policy.** `next.config.mjs` sets HSTS, framing,
-  referrer, and permissions headers, but only `frame-ancestors` from CSP. A
-  script policy needs nonces for the Stack Auth and Convex clients.
-- **Error reporting.** Server errors go to `console.error` only. Wire Sentry or
-  similar once there is an account for it; `/api/health` is ready for an
-  uptime monitor.
-- **Backfilling `target`.** Not required, because it is inferred. But a
-  one-time backfill would let the dashboard filter on an index instead of in
-  memory once there are a lot of projects.
+## 5. Still open
+
+- **Visual regression.** No screenshot tests. `bun run test:e2e` covers the
+  public pages and headers; signed-in flows need test accounts on Stack Auth
+  and a Convex deployment to run against.
+- **Dev-only advisories.** `bun audit` (all deps) still reports minimatch,
+  picomatch and brace-expansion through ESLint's own dependencies, and
+  `elliptic` (low, no fixed release) through Stack Auth. CI audits production
+  dependencies at high severity.
+- **Planned upgrades.** `ai` 7, `zod` 4.
 
 ---
 
@@ -159,7 +190,7 @@ Redirect URIs follow the same shape:
 
 ```bash
 bun install
-bun convex dev        # pushes the target field
+bun convex dev        # pushes the schema
 bun run dev
 ```
 

@@ -137,8 +137,12 @@ export default function DocsPage() {
         <p>
           Two rules are enforced rather than suggested. A migration that has already been applied
           cannot be edited afterwards; the deploy is refused and you are asked to add a new one
-          instead. And a migration containing a destructive statement, such as dropping a table or
-          truncating one, is refused outright and needs a person to handle it deliberately.
+          instead. And a new migration only runs automatically if every statement in it is one of{' '}
+          <code>CREATE TABLE</code>, <code>CREATE INDEX</code>, <code>CREATE VIEW</code>,{' '}
+          <code>ALTER TABLE … ADD COLUMN</code>, <code>ALTER TABLE … RENAME TO</code>, or{' '}
+          <code>INSERT</code>. Anything else, such as <code>DROP</code>, <code>DELETE</code>,{' '}
+          <code>UPDATE</code>, a trigger, or a <code>PRAGMA</code>, stops the deploy so a person can
+          handle it deliberately.
         </p>
       </ProseSection>
 
@@ -156,6 +160,32 @@ export default function DocsPage() {
         <p>
           You can edit any file by hand. Manual edits and generated edits share the same history and
           the same undo.
+        </p>
+        <p>
+          A build does not rewrite the project wholesale. The model answers with a list of edit
+          operations, each applied to the current files and checked before anything is saved:
+        </p>
+        <div className="not-prose my-5">
+          <SpecTable
+            dense
+            caption="Edit operations"
+            rows={[
+              { key: 'replaceContent', label: <code>replaceContent</code>, value: 'Replace the inside of the element a CSS selector matches.' },
+              { key: 'replaceElement', label: <code>replaceElement</code>, value: 'Replace the matched element itself.' },
+              { key: 'insertContent', label: <code>insertContent</code>, value: 'Insert before, after, or at the start or end of a matched element.' },
+              { key: 'deleteContent', label: <code>deleteContent</code>, value: 'Remove the matched element.' },
+              { key: 'updateStyle', label: <code>updateStyle</code>, value: 'Replace or merge the declarations of a CSS rule, creating it if needed.' },
+              { key: 'createFile', label: <code>createFile</code>, value: 'Add a file.' },
+              { key: 'updateFile', label: <code>updateFile</code>, value: 'Rewrite one file, when surgical edits are not enough.' },
+              { key: 'deleteFile', label: <code>deleteFile</code>, value: 'Remove a file.' },
+            ]}
+          />
+        </div>
+        <p>
+          Paths are checked against the project, an operation that cannot be applied is handed back
+          to the model to correct, and anything still unresolved is reported to you rather than
+          dropped. If the files changed while the model was working, the result is not saved over
+          them; you are asked to send the request again.
         </p>
       </ProseSection>
 
