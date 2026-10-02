@@ -10,6 +10,7 @@ import { getServerEnv } from "@/lib/env";
 import { assertProjectRole } from "@/lib/project-access";
 import { createSSEWriter } from "@/lib/sse-writer";
 import { consumeRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
+import { reportError } from "@/lib/error-reporting";
 import { z } from "zod";
 import { deployProjectToCloudflare } from "@/lib/cloudflare-deploy";
 
@@ -214,6 +215,7 @@ export async function POST(req: Request) {
           },
         });
       } catch (err) {
+        await reportError(err, { source: `deploy:${deployMode}`, project: body.projectName });
         writer.write({
           status: "error",
           message: err instanceof Error ? err.message : "Deploy failed",

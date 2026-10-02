@@ -9,6 +9,12 @@ export default defineConfig({
     // pushed several route tests past the 5s default and made CI flaky. The same tests finish in
     // well under a second once warm — this is startup cost, not slow tests.
     testTimeout: 30_000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'html', 'lcov'],
+      include: ['lib/**', 'convex/**', 'app/api/**', 'hooks/**'],
+      exclude: ['convex/_generated/**'],
+    },
     env: {
       NEXT_PUBLIC_CONVEX_URL: 'https://test.convex.cloud',
       OPENCODE_API_KEY: 'test-key',

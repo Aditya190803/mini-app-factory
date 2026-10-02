@@ -12,6 +12,7 @@ import { resolveOpenCodeModel } from '@/lib/opencode-models';
 import { resolveGatewayModel } from '@/lib/gateway-models';
 import { validateGeneratedProject } from '@/lib/generated-project-validation';
 import { RUN_BUDGET_MS, sumUsage } from '@/lib/ai-usage';
+import { reportError } from '@/lib/error-reporting';
 
 export function classifyGenerationError(raw: unknown): { code: string; message: string } {
   try {
@@ -262,7 +263,7 @@ export async function runGeneration(params: {
     const cancelled = err instanceof AIRunStoppedError && signal.aborted;
     const original = err instanceof Error ? err.message : String(err);
     const errorInfo = classifyGenerationError(original);
-    if (!cancelled) console.error(`[Generation ${requestId ?? 'unknown'}] error for`, projectName, ':', original);
+    if (!cancelled) await reportError(err, { source: 'generate', requestId, project: projectName, code: errorInfo.code });
 
     try {
       const proj = await getProject(projectName);

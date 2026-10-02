@@ -21,3 +21,18 @@ describe('server environment', () => {
     expect(() => getServerEnv()).not.toThrow();
   });
 });
+
+describe('paired credentials', () => {
+  afterEach(() => {
+    delete process.env.GITHUB_CLIENT_ID;
+    delete process.env.GITHUB_CLIENT_SECRET;
+  });
+
+  test('rejects half-configured OAuth credentials', async () => {
+    process.env.GITHUB_CLIENT_ID = 'id-only';
+    delete process.env.GITHUB_CLIENT_SECRET;
+    vi.resetModules();
+    const { getServerEnv } = await import('@/lib/env');
+    expect(() => getServerEnv()).toThrow(/GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be set together/);
+  });
+});

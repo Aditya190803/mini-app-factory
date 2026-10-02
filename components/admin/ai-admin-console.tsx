@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input } from '@/components/kit';
+import RunFailures from '@/components/admin/run-failures';
 import { TopBar } from '@/components/shell/top-bar';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
@@ -448,6 +449,8 @@ export default function AIAdminConsole() {
             </div>
           )}
         </section>
+
+        <RunFailures />
       </main>
     </div>
   );

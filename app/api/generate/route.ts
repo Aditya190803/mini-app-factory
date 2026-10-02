@@ -9,6 +9,7 @@ import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import { getPersistedAISettings, getGlobalAdminModelConfig } from '@/lib/ai-settings-store';
 import { appendReferenceUrlToPrompt } from '@/lib/resolve-reference-url';
 import { createSSEWriter } from '@/lib/sse-writer';
+import { reportError } from '@/lib/error-reporting';
 import { classifyGenerationError, runGeneration } from '@/lib/generate-run';
 import {
   appendProjectMessage,
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
         })()
           .catch(async (err) => {
             const errorInfo = classifyGenerationError(err instanceof Error ? err.message : err);
-            console.error(`[Generation ${requestId}] workflow error:`, err);
+            await reportError(err, { source: 'generate', requestId, project: projectName });
             // The project may have been deleted mid-run; that must not become an unhandled rejection.
             await finishProjectRun({ projectId, runId, status: 'failed', errorCode: errorInfo.code, errorMessage: errorInfo.message }).catch(() => undefined);
             sse.write({ status: 'error', error: errorInfo.message, code: errorInfo.code, requestId });
@@ -209,7 +210,7 @@ export async function POST(request: Request) {
 
   } catch (error) {
     const errorInfo = classifyGenerationError(error instanceof Error ? error.message : error);
-    console.error(`[Generation ${requestId}] Failed to initialize:`, error);
+    await reportError(error, { source: 'generate', requestId, stage: 'initialize' });
     return Response.json({ error: errorInfo.message, code: errorInfo.code, requestId }, { status: 500 });
   }
 }

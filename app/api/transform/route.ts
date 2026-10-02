@@ -8,6 +8,7 @@ import { usesOwnKeys } from '@/lib/ai-client';
 import { isAIProviderId } from '@/lib/ai-admin-config';
 import { getPersistedAISettings } from '@/lib/ai-settings-store';
 import { createSSEWriter } from '@/lib/sse-writer';
+import { reportError } from '@/lib/error-reporting';
 import { runTransformWork, classifyTransformError } from '@/lib/transform-run';
 import { normalizeFileType } from '@/lib/transform-files';
 import type { ProjectFile } from '@/lib/page-builder';
@@ -141,7 +142,10 @@ export async function POST(request: Request) {
               error && typeof error === 'object' && 'code' in error && typeof (error as { code: string }).code === 'string'
                 ? (error as { code: string }).code
                 : classified.code;
-            console.error(`[Transform ${requestId}] error:`, error);
+            // Cancellation and conflicts are expected outcomes, not failures worth an alert.
+            if (code !== 'ABORTED' && code !== 'CONFLICT') {
+              await reportError(error, { source: 'transform', requestId, project: projectName, code });
+            }
             sse.write({ status: 'error', error: classified.message, code, requestId });
             sse.close();
           }
@@ -161,7 +165,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const classified = classifyTransformError(error);
-    console.error(`[Transform ${requestId}] error:`, error);
+    await reportError(error, { source: 'transform', requestId, stage: 'initialize' });
     return Response.json({ error: classified.message, code: classified.code, requestId }, { status: 500 });
   }
 }

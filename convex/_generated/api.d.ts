@@ -9,6 +9,7 @@
  */
 
 import type * as aiSettings from "../aiSettings.js";
+import type * as alerts from "../alerts.js";
 import type * as auth from "../auth.js";
 import type * as collaboration from "../collaboration.js";
 import type * as components_ from "../components.js";
@@ -28,6 +29,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   aiSettings: typeof aiSettings;
+  alerts: typeof alerts;
   auth: typeof auth;
   collaboration: typeof collaboration;
   components: typeof components_;
