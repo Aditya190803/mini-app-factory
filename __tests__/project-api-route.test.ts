@@ -48,6 +48,7 @@ describe('GET /api/project/[name]', () => {
       status: 'completed',
       createdAt: 1,
       userId: 'u1',
+      accessRole: 'owner',
     } as never);
 
     const res = await GET(new Request('http://x'), { params: Promise.resolve({ name: 'p' }) });

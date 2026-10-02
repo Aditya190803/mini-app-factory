@@ -20,6 +20,8 @@ import {
 } from '@/components/kit';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/hooks/use-confirm';
+import { apiFetch, readApiResponse } from '@/lib/api-fetch';
+import { billingNote } from '@/lib/cloudflare-billing';
 
 type Deployment = {
   _id: string;
@@ -86,7 +88,7 @@ export default function CloudflareProjectSettings({
     setBusy('r2'); setMessage('');
     try {
       const response = await fetch(`/api/cloudflare/r2?projectName=${encodeURIComponent(projectName)}&bucket=${encodeURIComponent(bucket)}&prefix=${encodeURIComponent(r2Prefix)}`);
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Unable to list objects');
+      const data = await readApiResponse(response, 'Unable to list objects');
       setR2Objects(data.objects || []);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to list objects'); }
     finally { setBusy(null); }
@@ -97,7 +99,7 @@ export default function CloudflareProjectSettings({
     const key = `${r2Prefix.replace(/^\/+|\/+$/g, '')}${r2Prefix ? '/' : ''}${file.name}`;
     const form = new FormData(); form.set('projectName', projectName); form.set('bucket', r2Bucket); form.set('key', key); form.set('file', file);
     setBusy('r2'); setMessage('');
-    try { const response = await fetch('/api/cloudflare/r2', { method: 'POST', body: form }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Upload failed'); setMessage(`Uploaded ${key}.`); await loadR2(); }
+    try { const response = await fetch('/api/cloudflare/r2', { method: 'POST', body: form }); await readApiResponse(response, 'Upload failed'); setMessage(`Uploaded ${key}.`); await loadR2(); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Upload failed'); }
     finally { setBusy(null); }
   };
@@ -110,7 +112,7 @@ export default function CloudflareProjectSettings({
       destructive: true,
     }))) return;
     setBusy('r2');
-    try { const response = await fetch('/api/cloudflare/r2', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, bucket: r2Bucket, key }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Delete failed'); setR2Objects((items) => items.filter((item) => item.key !== key)); setMessage(`Deleted ${key}.`); }
+    try { const response = await fetch('/api/cloudflare/r2', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName, bucket: r2Bucket, key }) }); await readApiResponse(response, 'Delete failed'); setR2Objects((items) => items.filter((item) => item.key !== key)); setMessage(`Deleted ${key}.`); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Delete failed'); }
     finally { setBusy(null); }
   };
@@ -155,8 +157,7 @@ export default function CloudflareProjectSettings({
     setD1Error('');
     try {
       const response = await fetch(`/api/cloudflare/d1?projectName=${encodeURIComponent(projectName)}&table=${encodeURIComponent(table)}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to inspect table');
+      const data = await readApiResponse(response, 'Unable to inspect table');
       setD1(data);
     } catch (error) {
       setD1Error(error instanceof Error ? error.message : 'Unable to inspect table');
@@ -200,8 +201,7 @@ export default function CloudflareProjectSettings({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, domain }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Unable to add domain');
+      const data = await readApiResponse(response, 'Unable to add domain');
       setDomainStatus(data.domain?.status || 'pending');
       setMessage('Domain attached. Cloudflare is configuring DNS and TLS.');
     } catch (error) {
@@ -222,8 +222,7 @@ export default function CloudflareProjectSettings({
     setMessage('');
     try {
       const response = await fetch('/api/cloudflare/domain', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectName }) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Unable to remove domain');
+      await readApiResponse(response, 'Unable to remove domain');
       setDomain('');
       setDomainStatus('');
       setMessage('Custom domain removed.');
@@ -248,11 +247,37 @@ export default function CloudflareProjectSettings({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, deploymentId }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({})) as { error?: string; notRolledBack?: string[] };
       if (!response.ok) throw new Error(data.error || 'Rollback failed');
-      setMessage('Production rolled back successfully.');
+      setMessage(
+        data.notRolledBack?.length
+          ? `The site was rolled back. These stay on the latest version: ${data.notRolledBack.join(', ')}.`
+          : 'Production rolled back successfully.'
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Rollback failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const [teardownName, setTeardownName] = useState('');
+  const teardown = async () => {
+    if (!(await confirm({
+      title: 'Delete the Cloudflare deployment?',
+      description: 'The live site goes offline and every resource below is deleted from your Cloudflare account, with its data. This cannot be undone. Your project files are not affected.',
+      details: resources.map((resource) => `${resource.kind}  ${resource.name}`).join('\n') || cloudflareProjectName,
+      confirmLabel: 'Delete everything',
+      destructive: true,
+    }))) return;
+    setBusy('teardown');
+    setMessage('');
+    try {
+      await apiFetch('/api/cloudflare/resources', { method: 'DELETE', json: { projectName, confirmName: teardownName } });
+      setMessage('The Cloudflare deployment and its resources were deleted.');
+      setTeardownName('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Teardown failed');
     } finally {
       setBusy(null);
     }
@@ -305,11 +330,17 @@ export default function CloudflareProjectSettings({
                   value:
                     resources.length > 0 ? (
                       <span className="flex flex-wrap gap-1.5">
-                        {resources.map((resource) => (
-                          <Badge key={`${resource.kind}:${resource.binding}`} tone="neutral" mono>
-                            {resource.binding} · {resource.kind} · {resource.name}
-                          </Badge>
-                        ))}
+                        {resources.map((resource) => {
+                          const note = billingNote(resource.kind);
+                          return (
+                            <span key={`${resource.kind}:${resource.binding}`} className="inline-flex items-center gap-1" title={note.detail}>
+                              <Badge tone="neutral" mono>
+                                {resource.binding} · {resource.kind} · {resource.name}
+                              </Badge>
+                              <Badge tone={note.tone === 'free' ? 'live' : note.tone === 'paid' ? 'failed' : 'warning'}>{note.label}</Badge>
+                            </span>
+                          );
+                        })}
                       </span>
                     ) : (
                       'None bound'
@@ -599,6 +630,21 @@ export default function CloudflareProjectSettings({
               )}
             </Section>
           )}
+
+          <Section
+            title="Take it down"
+            description="Delete the Pages project and every resource this project created in your Cloudflare account, so nothing keeps running or billing. Your project files stay here and can be deployed again."
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label={`Type ${projectName} to confirm`} className="min-w-56 flex-1">
+                <Input value={teardownName} onChange={(event) => setTeardownName(event.target.value)} className="font-mono" autoComplete="off" />
+              </Field>
+              <Button intent="danger" disabled={busy !== null || teardownName !== projectName} onClick={() => void teardown()}>
+                <Trash2 className="size-3.5" />
+                Delete deployment
+              </Button>
+            </div>
+          </Section>
 
           {cloudflareDeployments.length > 1 && (
             <Section

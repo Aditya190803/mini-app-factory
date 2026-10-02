@@ -2,19 +2,15 @@ import { z } from 'zod';
 import { stackServerApp } from '@/stack/server';
 import { getIntegrationTokens } from '@/lib/integrations';
 import { createProjectVersion, getFiles, getProject, saveFiles } from '@/lib/projects';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { assertProjectRole } from '@/lib/project-access';
+import { consumeRateLimit, rateLimitedResponse } from '@/lib/rate-limit';
+import { githubRequest } from '@/lib/github';
 import { extractRepoFullNameFromUrl } from '@/lib/deploy-shared';
 import { classifyGitHubFile, diffProjectFiles } from '@/lib/github-sync';
 import type { ProjectFile } from '@/lib/page-builder';
 
 const schema = z.object({ projectName: z.string().min(1).max(120) }).strict();
-const headers = (token: string) => ({ Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' });
-
-async function github<T>(url: string, token: string): Promise<T> {
-  const response = await fetch(url, { headers: headers(token), cache: 'no-store' });
-  if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-  return await response.json() as T;
-}
+const github = <T,>(url: string, token: string) => githubRequest<T>(url, token, { cache: 'no-store' });
 
 async function context(req: Request) {
   const user = await stackServerApp.getUser();
@@ -23,8 +19,10 @@ async function context(req: Request) {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: Response.json({ error: 'Invalid request' }, { status: 400 }) } as const;
   const project = await getProject(parsed.data.projectName);
-  const access = assertCanAccessProject(project, user.id);
+  const access = assertProjectRole(project, user.id, 'editor');
   if (!access.ok) return { error: Response.json({ error: access.message }, { status: access.status }) } as const;
+  const rateLimit = await consumeRateLimit('github-sync', user.id);
+  if (!rateLimit.allowed) return { error: rateLimitedResponse(rateLimit) } as const;
   const repo = extractRepoFullNameFromUrl(project?.repoUrl);
   if (!repo) return { error: Response.json({ error: 'This project is not linked to a GitHub repository' }, { status: 400 }) } as const;
   const integration = await getIntegrationTokens();

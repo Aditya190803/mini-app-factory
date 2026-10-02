@@ -8,11 +8,11 @@ import {
   normalizeCloudflareProjectName,
   type CloudflareDeployFile,
 } from '@/lib/cloudflare';
-import { parseCloudflareManifest, parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
+import { disallowedMigrationStatements, parseCloudflareResourceState, resolveCloudflareManifest } from '@/lib/cloudflare-manifest';
 import { buildCloudflarePagesConfig, provisionCloudflareResources } from '@/lib/cloudflare-resources';
 import { deployCloudflareWorkers } from '@/lib/cloudflare-workers';
 import { decryptSecret } from '@/lib/secret-box';
-import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
+import { getProjectCloudflareEnvVars, updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
 import { blake3 } from '@noble/hashes/blake3';
 
 function migrationHash(content: string) {
@@ -20,9 +20,14 @@ function migrationHash(content: string) {
 }
 
 function assertSafeMigrations(files: CloudflareDeployFile[], applied: Record<string, string>) {
-  const destructive = /\b(?:DROP\s+(?:TABLE|INDEX)|TRUNCATE|DELETE\s+FROM\s+\w+\s*;|ALTER\s+TABLE\s+\w+\s+DROP)\b/i;
   for (const file of files.filter((candidate) => candidate.path.endsWith('.sql'))) {
-    if (destructive.test(file.content)) throw new Error(`Destructive migration requires manual review: ${file.path}`);
+    // Already-applied migrations are checked by hash below; only new ones need the allowlist.
+    if (!applied[file.path]) {
+      const rejected = disallowedMigrationStatements(file.content);
+      if (rejected.length) {
+        throw new Error(`Migration ${file.path} needs manual review: only CREATE, ALTER TABLE ... ADD/RENAME, and INSERT run automatically. Rejected: ${rejected[0]!.slice(0, 120)}`);
+      }
+    }
     const previousHash = applied[file.path];
     if (previousHash && previousHash !== migrationHash(file.content)) {
       throw new Error(`Applied migration was modified: ${file.path}. Add a new migration instead.`);
@@ -30,8 +35,18 @@ function assertSafeMigrations(files: CloudflareDeployFile[], applied: Record<str
   }
 }
 
-export function readCloudflareEnvVars(encrypted?: string): Record<string, string> {
-  const plaintext = decryptSecret(encrypted);
+/** The production URL of a Pages project, from the subdomain Cloudflare reports when known. */
+export function cloudflarePagesUrl(projectName: string, subdomain?: string) {
+  return `https://${subdomain || `${projectName}.pages.dev`}`;
+}
+
+/** AAD context for a project's env var blob. Binds the ciphertext to the project it belongs to. */
+export function cloudflareEnvVarsContext(projectName: string) {
+  return `cloudflare-env:${projectName}`;
+}
+
+export function readCloudflareEnvVars(encrypted: string | null | undefined, projectName: string): Record<string, string> {
+  const plaintext = decryptSecret(encrypted, cloudflareEnvVarsContext(projectName));
   if (!plaintext) return {};
   try {
     const parsed = JSON.parse(plaintext) as unknown;
@@ -61,9 +76,10 @@ export async function deployProjectToCloudflare(params: {
   if (!projectName) throw new Error('Cloudflare project name is invalid');
 
   params.onProgress?.('Cloudflare: Preparing Pages project');
-  await ensureCloudflarePagesProject({ token: params.token, accountId: params.accountId, projectName });
+  const pagesProject = await ensureCloudflarePagesProject({ token: params.token, accountId: params.accountId, projectName });
 
-  const parsedManifest = parseCloudflareManifest(params.files, projectName);
+  let state = parseCloudflareResourceState(target === 'preview' ? params.project.cloudflarePreviewResourcesJson : params.project.cloudflareResourcesJson);
+  const parsedManifest = resolveCloudflareManifest(params.files, projectName, state);
   const manifest = parsedManifest && target === 'preview' ? {
     ...parsedManifest,
     bindings: {
@@ -75,7 +91,6 @@ export async function deployProjectToCloudflare(params: {
     },
     workers: parsedManifest.workers.map((worker) => ({ ...worker, name: `${worker.name}-preview`.slice(0, 63).replace(/-+$/, '') })),
   } : parsedManifest;
-  let state = parseCloudflareResourceState(target === 'preview' ? params.project.cloudflarePreviewResourcesJson : params.project.cloudflareResourcesJson);
   assertSafeMigrations(params.files, state.migrationHashes ?? {});
 
   const persistState = async (nextState: typeof state) => updateCloudflareProjectConfig(target === 'preview' ? {
@@ -98,7 +113,9 @@ export async function deployProjectToCloudflare(params: {
     });
   }
 
-  const envVars = target === 'preview' ? {} : readCloudflareEnvVars(params.project.cloudflareEnvVarsEncrypted);
+  const envVars = target === 'preview'
+    ? {}
+    : readCloudflareEnvVars(await getProjectCloudflareEnvVars(params.project.name), params.project.name);
   if (manifest?.workers.length) {
     state = await deployCloudflareWorkers({
       token: params.token,
@@ -168,7 +185,9 @@ export async function deployProjectToCloudflare(params: {
     files: params.files,
     onProgress: params.onProgress,
   });
-  const deploymentUrl = `https://${projectName}.pages.dev`;
+  // Cloudflare assigns the *.pages.dev subdomain, and it is not always the project name (a taken
+  // name gets a random suffix), so use the one it reports.
+  const deploymentUrl = cloudflarePagesUrl(projectName, pagesProject.subdomain);
 
   await updateCloudflareProjectConfig(target === 'preview' ? {
     projectName: params.project.name,

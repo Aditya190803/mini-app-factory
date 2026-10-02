@@ -12,11 +12,17 @@ vi.mock('@/lib/projects', () => ({
   getFiles: vi.fn(),
   saveFiles: vi.fn(),
   saveProject: vi.fn(),
-  claimProjectOrphan: vi.fn(),
+  getFilesSnapshot: vi.fn(),
 }));
 
 vi.mock('@/lib/ai-client', () => ({
   getAIClient: vi.fn(),
+  usesOwnKeys: vi.fn(() => false),
+}));
+
+vi.mock('@/lib/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
+  consumeRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })),
 }));
 
 vi.mock('@/lib/ai-settings-store', () => ({
@@ -105,39 +111,37 @@ describe('POST /api/transform', () => {
     expect(res.status).toBe(400);
   });
 
-  test('claims orphan project on first transform', async () => {
+  test('rejects a viewer with 403', async () => {
     const { POST } = await import('@/app/api/transform/route');
     const { stackServerApp } = await import('@/stack/server');
-    const { getProject, getFiles, saveFiles, claimProjectOrphan } = await import('@/lib/projects');
-    const { getAIClient } = await import('@/lib/ai-client');
-
-    const orphan = { name: 'legacy', prompt: 'p', status: 'completed' as const, createdAt: 1 };
+    const { getProject } = await import('@/lib/projects');
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce(orphan);
-    (claimProjectOrphan as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
-    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      createSession: vi.fn().mockResolvedValue({
-        sendAndWait: vi.fn().mockResolvedValue({
-          data: {
-            content: '[{"tool":"replaceContent","args":{"file":"index.html","selector":"h1","newContent":"New"}}]',
-          },
-        }),
-        destroy: vi.fn().mockResolvedValue(undefined),
-      }),
-    });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'shared', prompt: 'p', status: 'completed', createdAt: 1, accessRole: 'viewer' });
 
-    const req = new Request('http://localhost/api/transform', {
+    const res = await POST(new Request('http://localhost/api/transform', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectName: 'legacy', prompt: 'Update title' }),
-    });
+      body: JSON.stringify({ projectName: 'shared', prompt: 'Update title' }),
+    }));
+    expect(res.status).toBe(403);
+  });
 
-    const res = await POST(req);
-    await consumeTransformStream(res);
-    // The owner is derived from the verified identity inside Convex, so no userId is passed.
-    expect(claimProjectOrphan).toHaveBeenCalledWith('legacy');
+  test('rejects a stale editor with 409 before calling the model', async () => {
+    const { POST } = await import('@/app/api/transform/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFilesSnapshot } = await import('@/lib/projects');
+    const { getAIClient } = await import('@/lib/ai-client');
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'p', prompt: 'p', status: 'completed', createdAt: 1, accessRole: 'editor' });
+    (getFilesSnapshot as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: baseProjectFiles, filesVersion: 7 });
+
+    const res = await POST(new Request('http://localhost/api/transform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectName: 'p', prompt: 'Update title', expectedVersion: 6 }),
+    }));
+    expect(res.status).toBe(409);
+    expect(getAIClient).not.toHaveBeenCalled();
   });
 
   test('returns 400 for invalid payload', async () => {
@@ -159,16 +163,17 @@ describe('POST /api/transform', () => {
   test('applies tool calls and returns updated files', async () => {
     const { POST } = await import('@/app/api/transform/route');
     const { stackServerApp } = await import('@/stack/server');
-    const { getProject, getFiles, saveFiles } = await import('@/lib/projects');
+    const { getProject, getFilesSnapshot, saveFiles } = await import('@/lib/projects');
     const { getAIClient } = await import('@/lib/ai-client');
 
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       userId: 'user_123',
+      accessRole: 'owner',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
-    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getFilesSnapshot as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: baseProjectFiles, filesVersion: 1 });
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(2);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       createSession: vi.fn().mockResolvedValue({
         sendAndWait: vi.fn().mockResolvedValue({
@@ -196,14 +201,14 @@ describe('POST /api/transform', () => {
     expect(statuses).toContain('complete');
     expect(body.full).toBe(false);
     expect(Array.isArray(body.files)).toBe(true);
-    expect(body.files![0].path).toBe('index.html');
-    expect(body.files![0].content).toContain('New');
+    expect(body.files![0]!.path).toBe('index.html');
+    expect(body.files![0]!.content).toContain('New');
   });
 
   test('forwards the selected model to the AI session', async () => {
     const { POST } = await import('@/app/api/transform/route');
     const { stackServerApp } = await import('@/stack/server');
-    const { getProject, getFiles, saveFiles } = await import('@/lib/projects');
+    const { getProject, getFilesSnapshot, saveFiles } = await import('@/lib/projects');
     const { getAIClient } = await import('@/lib/ai-client');
 
     const createSession = vi.fn().mockResolvedValue({
@@ -218,10 +223,11 @@ describe('POST /api/transform', () => {
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       userId: 'user_123',
+      accessRole: 'owner',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
-    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getFilesSnapshot as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: baseProjectFiles, filesVersion: 1 });
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(2);
     (getAIClient as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ createSession });
 
     const req = new Request('http://localhost/api/transform', {
@@ -246,16 +252,17 @@ describe('POST /api/transform', () => {
   test('repairs malformed tool-call output automatically', async () => {
     const { POST } = await import('@/app/api/transform/route');
     const { stackServerApp } = await import('@/stack/server');
-    const { getProject, getFiles, saveFiles } = await import('@/lib/projects');
+    const { getProject, getFilesSnapshot, saveFiles } = await import('@/lib/projects');
     const { getAIClient } = await import('@/lib/ai-client');
 
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
     (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       userId: 'user_123',
+      accessRole: 'owner',
       html: '<html><body><h1>Old</h1></body></html>',
     });
-    (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(baseProjectFiles);
-    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    (getFilesSnapshot as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: baseProjectFiles, filesVersion: 1 });
+    (saveFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(2);
 
     const sendAndWait = vi
       .fn()
@@ -281,7 +288,7 @@ describe('POST /api/transform', () => {
 
     const res = await POST(req);
     const body = await consumeTransformStream(res);
-    expect(body.files![0].content).toContain('Recovered');
+    expect(body.files![0]!.content).toContain('Recovered');
     expect(sendAndWait).toHaveBeenCalledTimes(2);
   });
 });
@@ -290,14 +297,14 @@ describe('extractToolCalls', () => {
   test('parses fenced JSON arrays', () => {
     const calls = extractToolCalls('```json\n[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]\n```');
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
-    expect(calls[0].args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
+    expect(calls[0]!.tool).toBe('updateFile');
+    expect(calls[0]!.args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
   });
 
   test('accepts single tool-call object payloads', () => {
     const calls = extractToolCalls('{"tool":"updateFile","args":{"file":"index.html","content":"x"}}');
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('rejects malformed JSON', () => {
@@ -310,7 +317,7 @@ describe('extractToolCalls', () => {
       'I will apply these changes:\n[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]\nDone.'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('recovers from trailing commas in tool call JSON', () => {
@@ -318,7 +325,7 @@ describe('extractToolCalls', () => {
       '[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>",},},]'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
+    expect(calls[0]!.args).toEqual({ file: 'index.html', content: '<h1>Hi</h1>' });
   });
 
   test('accepts wrapped toolCalls payload', () => {
@@ -326,7 +333,7 @@ describe('extractToolCalls', () => {
       '{"toolCalls":[{"tool":"updateFile","args":{"file":"index.html","content":"<h1>Hi</h1>"}}]}'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('updateFile');
+    expect(calls[0]!.tool).toBe('updateFile');
   });
 
   test('accepts function-call style payload', () => {
@@ -334,7 +341,7 @@ describe('extractToolCalls', () => {
       '[{"function":{"name":"replaceContent","arguments":"{\\"file\\":\\"index.html\\",\\"selector\\":\\"h1\\",\\"newContent\\":\\"New\\"}"}}]'
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool).toBe('replaceContent');
-    expect(calls[0].args).toEqual({ file: 'index.html', selector: 'h1', newContent: 'New' });
+    expect(calls[0]!.tool).toBe('replaceContent');
+    expect(calls[0]!.args).toEqual({ file: 'index.html', selector: 'h1', newContent: 'New' });
   });
 });

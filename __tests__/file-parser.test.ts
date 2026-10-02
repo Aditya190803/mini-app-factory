@@ -64,6 +64,6 @@ CREATE TABLE messages(id INTEGER PRIMARY KEY);
   test('parseMultiFileOutput handles missing paths with defaults', () => {
     const output = "\`\`\`html\n<h1>No path</h1>\n\`\`\`";
     const files = parseMultiFileOutput(output);
-    expect(files[0].path).toBe('index.html');
+    expect(files[0]!.path).toBe('index.html');
   });
 });

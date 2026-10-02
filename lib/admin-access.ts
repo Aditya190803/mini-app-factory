@@ -1,3 +1,5 @@
+import 'server-only';
+
 /**
  * Admin access is granted by email allowlist, configured via MAF_ADMIN_EMAILS.
  *

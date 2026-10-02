@@ -261,7 +261,7 @@ export function parseCloudflareManifest(files: DeployFile[], projectName: string
 
   if (wranglers.length) {
     const manifests = wranglers.map((wrangler) => manifestFromWrangler(wrangler, files, projectName));
-    const root = manifests[0];
+    const root = manifests[0]!;
     const mergedBindings = Object.fromEntries(Object.keys(root.bindings).map((key) => {
       const entries = manifests.flatMap((item) => item.bindings[key as keyof typeof item.bindings]);
       const byBinding = new Map<string, (typeof entries)[number]>();
@@ -333,4 +333,140 @@ export function parseCloudflareManifest(files: DeployFile[], projectName: string
     }
   }
   return manifest;
+}
+
+/** FNV-1a, for a short stable suffix when a scoped name has to be truncated. */
+function shortHash(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0').slice(0, 6);
+}
+
+/** `<scope>-<name>`, kept within Cloudflare's 63-character limit without a trailing hyphen. */
+export function scopeResourceName(scope: string, name: string): string {
+  if (name === scope || name.startsWith(`${scope}-`)) return name;
+  const full = `${scope}-${name}`;
+  if (full.length <= 63) return full;
+  return `${full.slice(0, 56).replace(/-+$/, '')}-${shortHash(full)}`;
+}
+
+/**
+ * Give every account-level resource a project-specific name.
+ *
+ * Resources were matched by the model-written name alone, so two apps that both called their
+ * database `todo-db` shared it, and a manifest could name the owner's production database and have
+ * it bound. Prefixing with the Pages project name (unique within the account) keeps each project
+ * inside its own namespace.
+ *
+ * Names already recorded in this project's own state are kept as they are: those resources were
+ * created for this project before scoping existed, and renaming would orphan their data.
+ */
+export function scopeCloudflareManifest(
+  manifest: CloudflareManifest,
+  scope: string,
+  state: CloudflareResourceState
+): CloudflareManifest {
+  const scoped = structuredClone(manifest);
+  const pick = (recorded: string | undefined, name: string) => (recorded === name ? name : scopeResourceName(scope, name));
+  for (const item of scoped.bindings.d1) item.name = pick(state.d1?.[item.binding]?.name, item.name);
+  for (const item of scoped.bindings.kv) item.name = pick(state.kv?.[item.binding]?.name, item.name);
+  for (const item of scoped.bindings.r2) item.name = pick(state.r2?.[item.binding]?.name, item.name);
+  const queueNames = new Map<string, string>();
+  for (const item of scoped.bindings.queues) {
+    const next = pick(state.queue?.[item.binding]?.name, item.name);
+    queueNames.set(item.name, next);
+    item.name = next;
+  }
+  for (const item of scoped.bindings.vectorize) item.name = pick(state.vectorize?.[item.binding]?.name, item.name);
+
+  const workerNames = new Map<string, string>();
+  for (const worker of scoped.workers) {
+    const next = state.worker?.[worker.name] ? worker.name : scopeResourceName(scope, worker.name);
+    workerNames.set(worker.name, next);
+    worker.name = next;
+    for (const consumer of worker.queueConsumers) {
+      if (consumer.deadLetterQueue) consumer.deadLetterQueue = queueNames.get(consumer.deadLetterQueue) ?? consumer.deadLetterQueue;
+    }
+  }
+  // A service binding to a Worker defined in this same manifest follows that Worker's new name.
+  for (const service of scoped.bindings.services) service.service = workerNames.get(service.service) ?? service.service;
+  return scoped;
+}
+
+/** Parse and scope in one step. The form every deploy-side caller should use. */
+export function resolveCloudflareManifest(
+  files: DeployFile[],
+  pagesProjectName: string,
+  state: CloudflareResourceState
+): CloudflareManifest | null {
+  const manifest = parseCloudflareManifest(files, pagesProjectName);
+  return manifest ? scopeCloudflareManifest(manifest, pagesProjectName, state) : null;
+}
+
+const ALLOWED_MIGRATION_STATEMENTS = [
+  /^CREATE\s+TABLE\b/i,
+  /^CREATE\s+VIRTUAL\s+TABLE\b/i,
+  /^CREATE\s+(?:UNIQUE\s+)?INDEX\b/i,
+  /^CREATE\s+VIEW\b/i,
+  /^ALTER\s+TABLE\s+\S+\s+ADD\s+(?:COLUMN\s+)?/i,
+  /^ALTER\s+TABLE\s+\S+\s+RENAME\s+TO\b/i,
+  /^INSERT\s+(?:OR\s+IGNORE\s+)?INTO\b/i,
+];
+
+/** Split SQL into statements, respecting quotes and comments. */
+export function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  for (let index = 0; index < sql.length; index++) {
+    const char = sql[index];
+    const next = sql[index + 1];
+    if (char === '-' && next === '-') {
+      while (index < sql.length && sql[index] !== '\n') index++;
+      current += ' ';
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      index += 2;
+      while (index < sql.length && !(sql[index] === '*' && sql[index + 1] === '/')) index++;
+      index++;
+      current += ' ';
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`' || char === '[') {
+      const close = char === '[' ? ']' : char;
+      current += char;
+      index++;
+      while (index < sql.length) {
+        current += sql[index];
+        if (sql[index] === close) {
+          if (sql[index + 1] === close && close !== ']') { current += sql[++index]; index++; continue; }
+          break;
+        }
+        index++;
+      }
+      continue;
+    }
+    if (char === ';') {
+      if (current.trim()) statements.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+
+/**
+ * The statements in a migration that are not on the allowlist. Migrations run unattended against
+ * a live database, so anything that can destroy or rewrite data (DROP, DELETE, UPDATE, REPLACE,
+ * triggers, PRAGMA, ALTER … DROP COLUMN) needs a human.
+ */
+export function disallowedMigrationStatements(sql: string): string[] {
+  return splitSqlStatements(sql).filter(
+    (statement) => !ALLOWED_MIGRATION_STATEMENTS.some((pattern) => pattern.test(statement))
+  );
 }

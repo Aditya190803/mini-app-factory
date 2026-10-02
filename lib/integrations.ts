@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { api } from "@/convex/_generated/api";
 import { decryptSecret, encryptSecret } from "@/lib/secret-box";
 import { getAuthedConvexClient } from "@/lib/convex-server";

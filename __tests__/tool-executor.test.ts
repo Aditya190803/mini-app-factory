@@ -30,7 +30,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles![0].content).toContain('<div id="target">New</div>');
+    expect(result.updatedFiles![0]!.content).toContain('<div id="target">New</div>');
   });
 
   test('insertContent appends content', async () => {
@@ -42,7 +42,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles![0].content).toContain('<div id="target">Old</div><footer>Foot</footer>');
+    expect(result.updatedFiles![0]!.content).toContain('<div id="target">Old</div><footer>Foot</footer>');
   });
 
   test('createFile adds a new file to the list', async () => {
@@ -54,7 +54,7 @@ describe('tool-executor', () => {
 
     expect(result.success).toBe(true);
     expect(result.updatedFiles).toHaveLength(1);
-    expect(result.updatedFiles![0].path).toBe('about.html');
+    expect(result.updatedFiles![0]!.path).toBe('about.html');
   });
 
   test('deleteFile returns the path to delete', async () => {
@@ -96,7 +96,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles?.[0].content).toContain('role="main"');
+    expect(result.updatedFiles?.[0]?.content).toContain('role="main"');
   });
 
   test('replaceContent opening-tag updates attributes without nesting', async () => {
@@ -115,7 +115,7 @@ describe('tool-executor', () => {
     }, files);
 
     expect(result.success).toBe(true);
-    const html = result.updatedFiles?.[0].content || '';
+    const html = result.updatedFiles?.[0]?.content || '';
     expect(html).toContain('<main class="layout" role="main">');
     expect(html).not.toContain('<main><main');
   });
@@ -128,7 +128,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles?.[0].content).toMatch(/\.title\s*\{\s*color:\s*blue;?\s*font-size:\s*20px;?\s*\}/);
+    expect(result.updatedFiles?.[0]?.content).toMatch(/\.title\s*\{\s*color:\s*blue;?\s*font-size:\s*20px;?\s*\}/);
   });
 
   test('insertContent inserts CSS block before selector rule', async () => {
@@ -140,7 +140,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    const css = result.updatedFiles?.[0].content || '';
+    const css = result.updatedFiles?.[0]?.content || '';
     expect(css.indexOf('.section-title')).toBeGreaterThanOrEqual(0);
     expect(css.indexOf('.section-title')).toBeLessThan(css.indexOf('.title'));
   });
@@ -152,7 +152,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles?.[0].content).not.toMatch(/\.title\s*\{/);
+    expect(result.updatedFiles?.[0]?.content).not.toMatch(/\.title\s*\{/);
   });
 
   test('updateStyle updates existing rule', async () => {
@@ -163,10 +163,10 @@ describe('tool-executor', () => {
 
     expect(result.message).not.toMatch(/error/i);
     expect(result.success).toBe(true);
-    expect(result.updatedFiles?.[0].content).toMatch(/color:\s*blue/);
-    expect(result.updatedFiles?.[0].content).toMatch(/font-weight:\s*700/);
+    expect(result.updatedFiles?.[0]?.content).toMatch(/color:\s*blue/);
+    expect(result.updatedFiles?.[0]?.content).toMatch(/font-weight:\s*700/);
     // Ensure the old 'color: red' is removed (not duplicated)
-    expect(result.updatedFiles?.[0].content).not.toMatch(/color:\s*red/);
+    expect(result.updatedFiles?.[0]?.content).not.toMatch(/color:\s*red/);
   });
 
   test('updateStyle accepts numeric CSS values', async () => {
@@ -176,8 +176,8 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles?.[0].content).toMatch(/z-index:\s*10/);
-    expect(result.updatedFiles?.[0].content).toMatch(/opacity:\s*0.8/);
+    expect(result.updatedFiles?.[0]?.content).toMatch(/z-index:\s*10/);
+    expect(result.updatedFiles?.[0]?.content).toMatch(/opacity:\s*0.8/);
   });
 
   test('updateStyle rejects properties without valid primitive values', async () => {
@@ -241,8 +241,8 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles![0].content).toContain('font-weight: bold;');
-    expect(result.updatedFiles![0].content).toContain('.title { color: red;');
+    expect(result.updatedFiles![0]!.content).toContain('font-weight: bold;');
+    expect(result.updatedFiles![0]!.content).toContain('.title { color: red;');
   });
 
   test('insertContent prepends to CSS rule correctly', async () => {
@@ -254,7 +254,7 @@ describe('tool-executor', () => {
     }, initialFiles);
 
     expect(result.success).toBe(true);
-    expect(result.updatedFiles![0].content).toContain('margin: 0;');
-    expect(result.updatedFiles![0].content).toContain('color: red;');
+    expect(result.updatedFiles![0]!.content).toContain('margin: 0;');
+    expect(result.updatedFiles![0]!.content).toContain('color: red;');
   });
 });

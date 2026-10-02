@@ -1,5 +1,5 @@
 import { api } from "@/convex/_generated/api";
-import { normalizeProjectMetadata, projectFileRecordSchema } from "./project-metadata";
+import { normalizeProjectMetadata, projectFileRecordSchema, type ProjectMetadata } from "./project-metadata";
 import { getAuthedConvexClient, getPublicConvexClient } from "./convex-server";
 
 import { ProjectFile } from "./page-builder";
@@ -14,49 +14,7 @@ import { ProjectFile } from "./page-builder";
  */
 const getConvex = getAuthedConvexClient;
 
-export interface ProjectMetadata {
-  name: string;
-  prompt: string;
-  createdAt: number;
-  updatedAt?: number;
-  status: 'pending' | 'generating' | 'completed' | 'error';
-  html?: string;
-  error?: string;
-  isPublished?: boolean;
-  userId?: string;
-  isMultiPage?: boolean;
-  pageCount?: number;
-  description?: string;
-  referenceUrl?: string;
-  projectInstructions?: string;
-  selectedModel?: string;
-  providerId?: string;
-  favicon?: string;
-  deploymentUrl?: string;
-  repoUrl?: string;
-  deployProvider?: string;
-  deployedAt?: number;
-  netlifySiteName?: string;
-  cloudflareProjectName?: string;
-  cloudflareDeploymentId?: string;
-  cloudflareD1DatabaseId?: string;
-  cloudflareD1DatabaseName?: string;
-  cloudflareCustomDomain?: string;
-  cloudflareEnvVarsEncrypted?: string;
-  cloudflareResourcesJson?: string;
-  cloudflarePreviewProjectName?: string;
-  cloudflarePreviewDeploymentId?: string;
-  cloudflarePreviewUrl?: string;
-  cloudflarePreviewResourcesJson?: string;
-  cloudflarePreviewExpiresAt?: number;
-  globalSeo?: {
-    siteName?: string;
-    description?: string;
-    ogImage?: string;
-  };
-  seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>;
-  files?: ProjectFile[];
-}
+export type { ProjectMetadata };
 
 export interface PublishedProjectMetadata {
   name: string;
@@ -68,7 +26,7 @@ export interface PublishedProjectMetadata {
 }
 
 function toProjectMetadata(record: unknown): ProjectMetadata {
-  return normalizeProjectMetadata(record) as ProjectMetadata;
+  return normalizeProjectMetadata(record);
 }
 
 export async function projectExists(name: string): Promise<boolean> {
@@ -138,6 +96,12 @@ export async function updateCloudflareProjectConfig(params: {
   await convex.mutation(api.projects.updateCloudflareConfig, params);
 }
 
+/** Owner-only: the encrypted Cloudflare env var blob. Never part of `getProject`. */
+export async function getProjectCloudflareEnvVars(projectName: string): Promise<string | null> {
+  const convex = await getConvex();
+  return await convex.query(api.projects.getProjectCloudflareEnvVars, { projectName });
+}
+
 export async function getProject(name: string): Promise<ProjectMetadata | null> {
   const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName: name });
@@ -167,19 +131,33 @@ export async function getFile(projectName: string, path: string) {
   return await convex.query(api.files.getFileByPath, { projectId: project._id, path });
 }
 
-export async function claimProjectOrphan(projectName: string) {
+/** Files plus the filesVersion they were read at, from one consistent read. */
+export async function getFilesSnapshot(projectName: string) {
   const convex = await getConvex();
-  await convex.mutation(api.projects.claimProjectOrphan, { projectName });
+  const project = await convex.query(api.projects.getProject, { projectName });
+  if (!project) return null;
+  const snapshot = await convex.query(api.files.getFilesSnapshot, { projectId: project._id });
+  if (!snapshot) return null;
+  return {
+    files: snapshot.files.map((file) => projectFileRecordSchema.parse(file)),
+    filesVersion: snapshot.filesVersion,
+  };
 }
 
-export async function saveFiles(projectName: string, files: ProjectFile[]) {
+/**
+ * Replace the project's files. Pass `expectedVersion` when the files were derived from an earlier
+ * read: the save is then rejected if anything else wrote in between, instead of overwriting it.
+ */
+export async function saveFiles(projectName: string, files: ProjectFile[], expectedVersion?: number) {
   const convex = await getConvex();
   const project = await convex.query(api.projects.getProject, { projectName });
   if (!project) throw new Error("Project not found");
-  await convex.mutation(api.files.saveFiles, {
+  const result = await convex.mutation(api.files.saveFiles, {
     projectId: project._id,
-    files
+    files,
+    ...(expectedVersion !== undefined ? { expectedVersion } : {}),
   });
+  return result.filesVersion;
 }
 
 export async function createProjectVersion(projectName: string, summary: string, files: ProjectFile[]) {

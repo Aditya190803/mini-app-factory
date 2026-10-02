@@ -1,19 +1,20 @@
 import { z } from 'zod';
-import { stackServerApp } from '@/stack/server';
+import { upstreamErrorResponse, apiError } from '@/lib/api-route';
 import { queryCloudflareD1 } from '@/lib/cloudflare';
 import { getIntegrationTokens } from '@/lib/integrations';
-import { getProject } from '@/lib/projects';
+import { requireProjectRole } from '@/lib/project-access';
 
 const querySchema = z.object({ projectName: z.string().min(1).max(120), table: z.string().max(128).optional() });
 
 export async function GET(req: Request) {
-  if (!await stackServerApp.getUser()) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
-  if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
-  const project = await getProject(parsed.data.projectName);
-  if (!project?.cloudflareD1DatabaseId) return Response.json({ error: 'This project has no deployed D1 database' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
+  const access = await requireProjectRole(parsed.data.projectName, 'owner');
+  if (!access.ok) return access.response;
+  const { project } = access;
+  if (!project?.cloudflareD1DatabaseId) return apiError(400, 'This project has no deployed D1 database', 'INVALID_REQUEST');
   const integration = await getIntegrationTokens();
-  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
 
   try {
     const params = { token: integration.cloudflareApiToken, accountId: integration.cloudflareAccountId, databaseId: project.cloudflareD1DatabaseId };
@@ -28,6 +29,6 @@ export async function GET(req: Request) {
     ]);
     return Response.json({ tables, table: parsed.data.table, columns: columns[0]?.results || [], rows: rows[0]?.results || [] });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to inspect D1' }, { status: 400 });
+    return upstreamErrorResponse(error, 'Unable to inspect D1');
   }
 }

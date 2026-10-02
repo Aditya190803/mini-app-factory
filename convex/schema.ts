@@ -82,7 +82,8 @@ export default defineSchema({
   })
     .index("by_projectName", ["projectName"])
     .index("by_userId", ["userId"])
-    .index("by_userId_updated", ["userId", "updatedAt"]),
+    .index("by_userId_updated", ["userId", "updatedAt"])
+    .index("by_status_updated", ["status", "updatedAt"]),
 
   // NEW: Separate files table
   projectFiles: defineTable({
@@ -170,6 +171,7 @@ export default defineSchema({
     userId: v.optional(v.string()),
   })
     .index("by_file", ["fileId"])
+    .index("by_project", ["projectId"])
     .index("by_project_time", ["projectId", "createdAt"]),
 
   projectMessages: defineTable({
@@ -195,9 +197,22 @@ export default defineSchema({
     projectId: v.id("projects"),
     messageId: v.optional(v.id("projectMessages")),
     summary: v.string(),
-    filesJson: v.string(),
+    /** Legacy single-document snapshot. New versions store their files in projectVersionChunks. */
+    filesJson: v.optional(v.string()),
+    chunkCount: v.optional(v.number()),
     createdAt: v.number(),
-  }).index("by_project_time", ["projectId", "createdAt"]),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_time", ["projectId", "createdAt"]),
+
+  projectVersionChunks: defineTable({
+    projectId: v.id("projects"),
+    versionId: v.id("projectVersions"),
+    index: v.number(),
+    data: v.string(),
+  })
+    .index("by_version", ["versionId", "index"])
+    .index("by_project", ["projectId"]),
 
   generationRuns: defineTable({
     projectId: v.id("projects"),
@@ -206,11 +221,16 @@ export default defineSchema({
     prompt: v.string(),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    /** Model token usage, recorded when the run finishes. */
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    model: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_time", ["projectId", "createdAt"]),
+    .index("by_project_time", ["projectId", "createdAt"])
+    .index("by_status_time", ["status", "updatedAt"]),
 
   runEvents: defineTable({
     projectId: v.id("projects"),
@@ -223,7 +243,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_run", ["runId"])
-    .index("by_run_sequence", ["runId", "sequence"]),
+    .index("by_run_sequence", ["runId", "sequence"])
+    .index("by_project", ["projectId"]),
 
   userIntegrations: defineTable({
     userId: v.string(),

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
-import { consumeTransformStream, type TransformStreamEvent } from '@/lib/transform-stream';
+import { consumeTransformStream, type TransformCompletePayload, type TransformStreamEvent } from '@/lib/transform-stream';
 import { transformEventToProgress, type TransformProgressState } from '@/components/editor/transform-progress';
 import {
   applyTransformComplete,
@@ -17,6 +16,7 @@ export type RunTransformBody = {
   prompt?: string;
   modelId?: string;
   providerId?: string;
+  expectedVersion?: number;
 };
 
 type UseProjectTransformArgs = {
@@ -25,14 +25,18 @@ type UseProjectTransformArgs = {
   files: ProjectFile[];
   setFiles: (f: ProjectFile[]) => void;
   addToHistory: (f: ProjectFile[]) => void;
-  persistFiles: (f: ProjectFile[]) => void;
+  /** Adopt files the server already saved, at the version it reports. */
+  adoptSavedFiles: (f: ProjectFile[], filesVersion?: number) => void;
+  /** Save pending edits first, so the model sees them and its save does not conflict with them. */
+  flushSave: () => Promise<void>;
+  getFilesVersion: () => number | undefined;
   selectedModel: { id: string; providerId: string };
   transformPrompt: string;
   setTransformPrompt: (v: string) => void;
   selectedElement: { path: string; html: string; selector?: string } | null;
   setSelectedElement: (v: null) => void;
   onRunStarted?: (prompt: string) => void | Promise<void>;
-  onRunCompleted?: (prompt: string, files: ProjectFile[]) => void | Promise<void>;
+  onRunCompleted?: (prompt: string, files: ProjectFile[], usage?: TransformCompletePayload['usage']) => void | Promise<void>;
   onRunFailed?: (prompt: string, message: string) => void | Promise<void>;
   onRunEvent?: (event: TransformStreamEvent) => void | Promise<void>;
   onRunCancelled?: () => void | Promise<void>;
@@ -45,7 +49,9 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     files,
     setFiles,
     addToHistory,
-    persistFiles,
+    adoptSavedFiles,
+    flushSave,
+    getFilesVersion,
     selectedModel,
     transformPrompt,
     setTransformPrompt,
@@ -87,7 +93,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
       try {
         const response = await fetch('/api/transform', {
           method: 'POST',
-          headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
           signal: ac.signal,
         });
@@ -99,7 +105,10 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
           if (next) setTransformProgress(next);
         });
 
-        applyTransformComplete(result, filesRef.current, setFiles, addToHistory, persistFiles);
+        const applied = applyTransformComplete(result, filesRef.current, setFiles, addToHistory, adoptSavedFiles);
+        if (!applied) {
+          throw Object.assign(new Error('The build returned no files'), { code: 'TRANSFORM_ERROR' });
+        }
 
         // The edit succeeded, but some operations could not be applied even after retries. Say so
         // — otherwise the user sees a clean success for a change that was only partly made.
@@ -110,7 +119,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
           );
         }
 
-        return result;
+        return { ...result, appliedFiles: applied };
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
           await onRunCancelled?.();
@@ -124,7 +133,12 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
             ? String((err as { requestId: string }).requestId)
             : undefined;
         const suggestion = getTransformRecoverySuggestion(code);
-        toast.error(message, { description: requestId ? `${suggestion} (request: ${requestId})` : suggestion });
+        toast.error(message, {
+          description: requestId ? `${suggestion} (request: ${requestId})` : suggestion,
+          ...(code === 'QUOTA_EXCEEDED'
+            ? { action: { label: 'Add a key', onClick: () => window.location.assign('/settings#api-keys') } }
+            : {}),
+        });
         throw err;
       } finally {
         if (runGenerationRef.current === generation) {
@@ -134,7 +148,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         }
       }
     },
-    [setFiles, addToHistory, persistFiles, onRunEvent, onRunCancelled]
+    [setFiles, addToHistory, adoptSavedFiles, onRunEvent, onRunCancelled]
   );
 
   const runTransform = useCallback(async (promptOverride?: string) => {
@@ -151,6 +165,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
       finalPrompt = `Target element in ${selectedElement.path}:\n${selectorLine}${cleanHtml}\n\nInstructions: ${requestedPrompt}`;
     }
     try {
+      await flushSave();
       await onRunStarted?.(requestedPrompt);
       const result = await postTransform({
         projectName,
@@ -158,20 +173,22 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
         prompt: finalPrompt,
         modelId: selectedModelRef.current.id || undefined,
         providerId: selectedModelRef.current.providerId || undefined,
+        expectedVersion: getFilesVersion(),
       });
       if (!result) {
         // Cancelled — put the prompt back so the user can edit and resend.
         setTransformPrompt(requestedPrompt);
         return;
       }
-      const nextFiles = result.full && result.files
-        ? result.files
-        : filesRef.current
-            .filter((file) => !result.deletedPaths?.includes(file.path))
-            .map((file) => result.files?.find((updated) => updated.path === file.path) || file)
-            .concat((result.files || []).filter((updated) => !filesRef.current.some((file) => file.path === updated.path)));
-      await onRunCompleted?.(requestedPrompt, nextFiles);
       setSelectedElement(null);
+      // Bookkeeping failures (message, version, run record) must not turn an applied build into
+      // "Build failed": the files are already saved and on screen.
+      try {
+        await onRunCompleted?.(requestedPrompt, result.appliedFiles, result.usage);
+      } catch (error) {
+        console.error('Could not record the finished build', error);
+        toast.warning('Build applied, but its history entry could not be saved');
+      }
     } catch (error) {
       // Put the prompt back so the user can edit and retry after a failure.
       setTransformPrompt(requestedPrompt);
@@ -188,6 +205,8 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
     onRunStarted,
     onRunCompleted,
     onRunFailed,
+    flushSave,
+    getFilesVersion,
   ]);
 
   return {

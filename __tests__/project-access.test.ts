@@ -1,29 +1,51 @@
-import { describe, expect, it } from 'vitest';
-import { assertCanAccessProject, canUserEditProject, isOrphanProject } from '@/lib/project-access';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
+vi.mock('@/stack/server', () => ({ stackServerApp: { getUser: vi.fn() } }));
+vi.mock('@/lib/projects', () => ({ getProject: vi.fn() }));
+
+import { assertProjectRole, hasProjectRole, requireProjectRole } from '@/lib/project-access';
 
 describe('project-access', () => {
-  it('allows owner', () => {
-    expect(canUserEditProject({ userId: 'u1' }, 'u1')).toBe(true);
+  it('ranks roles owner > editor > viewer', () => {
+    expect(hasProjectRole('owner', 'owner')).toBe(true);
+    expect(hasProjectRole('owner', 'viewer')).toBe(true);
+    expect(hasProjectRole('editor', 'editor')).toBe(true);
+    expect(hasProjectRole('editor', 'owner')).toBe(false);
+    expect(hasProjectRole('viewer', 'editor')).toBe(false);
+    expect(hasProjectRole(undefined, 'viewer')).toBe(false);
   });
 
-  it('denies other users when owned', () => {
-    expect(canUserEditProject({ userId: 'u1' }, 'u2')).toBe(false);
+  it('requires auth', () => {
+    expect(assertProjectRole({ accessRole: 'owner' }, undefined, 'viewer')).toMatchObject({ ok: false, status: 401 });
   });
 
-  it('allows any signed-in user on orphan until claimed', () => {
-    expect(canUserEditProject({}, 'u1')).toBe(true);
-    expect(isOrphanProject({})).toBe(true);
+  it('returns 404 when the project is missing or not shared with the caller', () => {
+    expect(assertProjectRole(null, 'u1', 'viewer')).toMatchObject({ ok: false, status: 404 });
   });
 
-  it('assertCanAccessProject requires auth', () => {
-    expect(assertCanAccessProject({ userId: 'u1' }, undefined)).toEqual({
-      ok: false,
-      status: 401,
-      message: 'Authentication required',
-    });
+  it('lets editors edit but not do owner-only work', () => {
+    const project = { accessRole: 'editor' as const };
+    expect(assertProjectRole(project, 'u1', 'editor')).toMatchObject({ ok: true });
+    expect(assertProjectRole(project, 'u1', 'owner')).toMatchObject({ ok: false, status: 403 });
   });
 
-  it('assertCanAccessProject returns 404 when project missing', () => {
-    expect(assertCanAccessProject(null, 'u1')).toMatchObject({ ok: false, status: 404 });
+  it('keeps viewers read-only', () => {
+    const project = { accessRole: 'viewer' as const };
+    expect(assertProjectRole(project, 'u1', 'viewer')).toMatchObject({ ok: true });
+    expect(assertProjectRole(project, 'u1', 'editor')).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it('requireProjectRole returns a ready response on denial', async () => {
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject } = await import('@/lib/projects');
+    (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'u1' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'p', accessRole: 'viewer' });
+    const result = await requireProjectRole('p', 'owner');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+      expect(await result.response.json()).toMatchObject({ code: 'FORBIDDEN' });
+    }
   });
 });

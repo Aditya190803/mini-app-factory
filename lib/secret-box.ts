@@ -13,10 +13,13 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:cr
  * AES-256-GCM. The key is derived from INTEGRATION_TOKEN_SECRET with HKDF-SHA256 and a
  * context-specific info string, so the raw env value is never used as a key directly.
  *
- * Stored format: `maf1.<base64url(iv | authTag | ciphertext)>`
+ * Stored format: `maf1.<base64url(iv | authTag | ciphertext)>`, or `maf2.` for values bound to a
+ * context string with GCM additional authenticated data. A `maf2` value only decrypts under the
+ * context it was written with, so a ciphertext copied from one project into another is useless.
  */
 
 const VERSION_PREFIX = 'maf1.';
+const BOUND_PREFIX = 'maf2.';
 const IV_BYTES = 12; // GCM standard nonce length
 const TAG_BYTES = 16;
 const HKDF_INFO = 'mini-app-factory:integration-token:v1';
@@ -41,20 +44,25 @@ function getKey(): Buffer {
 
 /** True if the value is already in our encrypted envelope. */
 export function isEncrypted(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.startsWith(VERSION_PREFIX);
+  return typeof value === 'string' && (value.startsWith(VERSION_PREFIX) || value.startsWith(BOUND_PREFIX));
 }
 
-export function encryptSecret(plaintext: string): string {
+/**
+ * Encrypt a secret. Pass `context` (e.g. `cloudflare-env:<project>`) to bind the ciphertext to
+ * where it is stored; the same context must then be given to `decryptSecret`.
+ */
+export function encryptSecret(plaintext: string, context?: string): string {
   if (!plaintext) return plaintext;
   // Never double-wrap — callers may pass a value that came straight back out of the database.
   if (isEncrypted(plaintext)) return plaintext;
 
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', getKey(), iv);
+  if (context) cipher.setAAD(Buffer.from(context, 'utf8'));
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
 
-  return VERSION_PREFIX + Buffer.concat([iv, tag, ciphertext]).toString('base64url');
+  return (context ? BOUND_PREFIX : VERSION_PREFIX) + Buffer.concat([iv, tag, ciphertext]).toString('base64url');
 }
 
 /**
@@ -65,9 +73,13 @@ export function encryptSecret(plaintext: string): string {
  * Returns null only when the envelope is present but cannot be authenticated — a wrong or
  * rotated INTEGRATION_TOKEN_SECRET, or a tampered row.
  */
-export function decryptSecret(stored: string | null | undefined): string | null {
+export function decryptSecret(stored: string | null | undefined, context?: string): string | null {
   if (!stored) return null;
   if (!isEncrypted(stored)) return stored; // legacy plaintext
+  const bound = stored.startsWith(BOUND_PREFIX);
+  // A bound value needs its context; an unbound one read where a context is expected is legacy
+  // and still accepted, and gets bound the next time it is written.
+  if (bound && !context) return null;
 
   try {
     const raw = Buffer.from(stored.slice(VERSION_PREFIX.length), 'base64url');
@@ -78,6 +90,7 @@ export function decryptSecret(stored: string | null | undefined): string | null 
     const ciphertext = raw.subarray(IV_BYTES + TAG_BYTES);
 
     const decipher = createDecipheriv('aes-256-gcm', getKey(), iv);
+    if (bound && context) decipher.setAAD(Buffer.from(context, 'utf8'));
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch {

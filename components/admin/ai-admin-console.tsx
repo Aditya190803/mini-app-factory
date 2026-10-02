@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input } from '@/components/kit';
+import RunFailures from '@/components/admin/run-failures';
+import { apiFetch } from '@/lib/api-fetch';
 import { TopBar } from '@/components/shell/top-bar';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
 import { Shield, Settings2, ArrowUp, ArrowDown } from 'lucide-react';
 import { AI_PROVIDER_IDS, PROVIDER_LABELS, type AIProviderId, emptyProviderRecord } from '@/lib/ai-admin-config';
-import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
+import { DEFAULT_AI_ADMIN_CONFIG } from '@/lib/ai-admin-config';
 
 const providerLabel = PROVIDER_LABELS;
 
@@ -34,7 +36,7 @@ export default function AIAdminConsole() {
     detailsJson: string;
     createdAt: number;
   }>>([]);
-  const [aiConfig, setAiConfig] = useState(() => getStoredAIAdminConfig());
+  const [aiConfig, setAiConfig] = useState(DEFAULT_AI_ADMIN_CONFIG);
   const [newModelInput, setNewModelInput] = useState<Record<AIProviderId, string>>(() => emptyProviderRecord(''));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -55,7 +57,6 @@ export default function AIAdminConsole() {
           const data = await settingsResp.json();
           if (data.adminConfig) {
             setAiConfig(data.adminConfig);
-            setStoredAIAdminConfig(data.adminConfig);
           }
         }
 
@@ -90,20 +91,13 @@ export default function AIAdminConsole() {
 
   const persist = async (nextConfig: typeof aiConfig) => {
     setSaveState('saving');
-    setStoredAIAdminConfig(nextConfig);
     try {
-      const resp = await fetch('/api/ai/settings', {
+      // apiFetch throws on a failed save. This used to fall through to "saved" on any status.
+      const data = await apiFetch<{ adminConfig?: typeof aiConfig }>('/api/ai/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminConfig: nextConfig }),
+        json: { adminConfig: nextConfig },
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.adminConfig) {
-          setAiConfig(data.adminConfig);
-          setStoredAIAdminConfig(data.adminConfig);
-        }
-      }
+      if (data.adminConfig) setAiConfig(data.adminConfig);
       void loadAudit();
       setSaveState('saved');
       setTimeout(() => setSaveState((prev) => (prev === 'saved' ? 'idle' : prev)), 1200);
@@ -138,7 +132,7 @@ export default function AIAdminConsole() {
       const target = direction === 'up' ? index - 1 : index + 1;
       if (target < 0 || target >= order.length) return prev;
 
-      [order[index], order[target]] = [order[target], order[index]];
+      [order[index], order[target]] = [order[target]!, order[index]!];
       const next = { ...prev, providerOrder: order };
       void persist(next);
       return next;
@@ -448,6 +442,8 @@ export default function AIAdminConsole() {
             </div>
           )}
         </section>
+
+        <RunFailures />
       </main>
     </div>
   );

@@ -19,8 +19,8 @@ const nextConfig = {
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // Only framing is locked down. A full script CSP needs nonces for the
-          // Stack Auth and Convex clients and is its own piece of work.
+          // Framing is enforced here for every response, API routes included. The full
+          // script policy (with per-request nonces) is set by proxy.ts.
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },

@@ -13,6 +13,13 @@ export type TransformStreamEvent =
       deletedPaths?: string[];
       html?: string;
       /**
+       * The version the server saved. The client adopts it instead of saving the same files
+       * again, which used to fail against the bumped version and raise a false conflict.
+       */
+      filesVersion?: number;
+      /** Tokens the transform spent, for the run record. */
+      usage?: { inputTokens: number; outputTokens: number; calls: number; model?: string };
+      /**
        * Operations the model asked for that could not be applied, even after retries. The
        * transform still succeeded and the result still passed validation — these are reported so
        * a partially-applied edit is visible rather than silently dropped.

@@ -1,4 +1,5 @@
 import 'server-only';
+import { cloudflareSchemas } from '@/lib/cloudflare-schemas';
 
 import { CloudflareApiError, cloudflareRequest, createCloudflareD1Database } from '@/lib/cloudflare';
 import type { CloudflareManifest, CloudflareResourceKind, CloudflareResourceState } from '@/lib/cloudflare-manifest';
@@ -16,30 +17,30 @@ type ResourceParams = { token: string; accountId: string };
 const encode = encodeURIComponent;
 
 async function findD1(params: ResourceParams, name: string) {
-  const databases = await cloudflareRequest<Array<{ uuid: string; name: string }>>(
-    `/accounts/${encode(params.accountId)}/d1/database?name=${encode(name)}&per_page=10`, params.token
+  const databases = await cloudflareRequest(
+    `/accounts/${encode(params.accountId)}/d1/database?name=${encode(name)}&per_page=10`, params.token, undefined, cloudflareSchemas.d1Database.array()
   );
   return databases.find((database) => database.name === name);
 }
 
 async function findKv(params: ResourceParams, name: string) {
-  const namespaces = await cloudflareRequest<Array<{ id: string; title: string }>>(
-    `/accounts/${encode(params.accountId)}/storage/kv/namespaces?per_page=1000`, params.token
+  const namespaces = await cloudflareRequest(
+    `/accounts/${encode(params.accountId)}/storage/kv/namespaces?per_page=1000`, params.token, undefined, cloudflareSchemas.kvNamespace.array()
   );
   return namespaces.find((namespace) => namespace.title === name);
 }
 
 async function findR2(params: ResourceParams, name: string, jurisdiction?: string) {
-  const result = await cloudflareRequest<{ buckets: Array<{ name: string; jurisdiction?: string }> }>(
+  const result = await cloudflareRequest(
     `/accounts/${encode(params.accountId)}/r2/buckets?name_contains=${encode(name)}&per_page=100`, params.token,
-    jurisdiction && jurisdiction !== 'default' ? { headers: { 'cf-r2-jurisdiction': jurisdiction } } : undefined
+    jurisdiction && jurisdiction !== 'default' ? { headers: { 'cf-r2-jurisdiction': jurisdiction } } : undefined, cloudflareSchemas.r2BucketList
   );
   return result.buckets.find((bucket) => bucket.name === name);
 }
 
 async function findQueue(params: ResourceParams, name: string) {
-  const queues = await cloudflareRequest<Array<{ queue_id: string; queue_name: string }>>(
-    `/accounts/${encode(params.accountId)}/queues`, params.token
+  const queues = await cloudflareRequest(
+    `/accounts/${encode(params.accountId)}/queues`, params.token, undefined, cloudflareSchemas.queue.array()
   );
   return queues.find((queue) => queue.queue_name === name);
 }
@@ -104,12 +105,12 @@ export async function planCloudflareResources(params: ResourceParams & {
     }
   }
 
-  const references = [
-    ...params.manifest.bindings.analyticsEngine.map((item) => [item.binding, item.dataset]),
-    ...params.manifest.bindings.services.map((item) => [item.binding, item.service]),
-    ...params.manifest.bindings.durableObjects.map((item) => [item.binding, item.namespaceId]),
-    ...params.manifest.bindings.ai.map((item) => [item.binding, item.projectId]),
-    ...params.manifest.bindings.browser.map((item) => [item.binding, 'Browser Rendering']),
+  const references: Array<[string, string]> = [
+    ...params.manifest.bindings.analyticsEngine.map((item): [string, string] => [item.binding, item.dataset]),
+    ...params.manifest.bindings.services.map((item): [string, string] => [item.binding, item.service]),
+    ...params.manifest.bindings.durableObjects.map((item): [string, string] => [item.binding, item.namespaceId]),
+    ...params.manifest.bindings.ai.map((item): [string, string] => [item.binding, item.projectId]),
+    ...params.manifest.bindings.browser.map((item): [string, string] => [item.binding, 'Browser Rendering']),
   ];
   for (const [binding, name] of references) {
     actions.push({ kind: 'external', binding, name, action: 'reference' });
@@ -146,9 +147,9 @@ export async function provisionCloudflareResources(params: ResourceParams & {
       const existing = await findKv(params, resource.name);
       if (!existing && !params.allowCreate) throw new Error('Cloudflare resource creation requires confirmation');
       params.onProgress?.(`Cloudflare: ${existing ? 'Reusing' : 'Creating'} KV ${resource.name}`);
-      const namespace = existing ?? await cloudflareRequest<{ id: string; title: string }>(
+      const namespace = existing ?? await cloudflareRequest(
         `/accounts/${encode(params.accountId)}/storage/kv/namespaces`, params.token,
-        { method: 'POST', body: JSON.stringify({ title: resource.name }) }
+        { method: 'POST', body: JSON.stringify({ title: resource.name }) }, cloudflareSchemas.kvNamespace
       );
       value = { id: namespace.id, name: namespace.title };
       state.kv = { ...state.kv, [resource.binding]: value };
@@ -162,13 +163,13 @@ export async function provisionCloudflareResources(params: ResourceParams & {
       const existing = await findR2(params, resource.name, resource.jurisdiction);
       if (!existing && !params.allowCreate) throw new Error('Cloudflare resource creation requires confirmation');
       params.onProgress?.(`Cloudflare: ${existing ? 'Reusing' : 'Creating'} R2 ${resource.name}`);
-      const bucket = existing ?? await cloudflareRequest<{ name: string; jurisdiction?: string }>(
+      const bucket = existing ?? await cloudflareRequest(
         `/accounts/${encode(params.accountId)}/r2/buckets`, params.token,
         {
           method: 'POST',
           headers: resource.jurisdiction && resource.jurisdiction !== 'default' ? { 'cf-r2-jurisdiction': resource.jurisdiction } : undefined,
           body: JSON.stringify({ name: resource.name }),
-        }
+        }, cloudflareSchemas.r2Bucket
       );
       value = { name: bucket.name, ...(bucket.jurisdiction ? { jurisdiction: bucket.jurisdiction } : {}) };
       state.r2 = { ...state.r2, [resource.binding]: value };
@@ -182,9 +183,9 @@ export async function provisionCloudflareResources(params: ResourceParams & {
       const existing = await findQueue(params, resource.name);
       if (!existing && !params.allowCreate) throw new Error('Cloudflare resource creation requires confirmation');
       params.onProgress?.(`Cloudflare: ${existing ? 'Reusing' : 'Creating'} Queue ${resource.name}`);
-      const queue = existing ?? await cloudflareRequest<{ queue_id: string; queue_name: string }>(
+      const queue = existing ?? await cloudflareRequest(
         `/accounts/${encode(params.accountId)}/queues`, params.token,
-        { method: 'POST', body: JSON.stringify({ queue_name: resource.name }) }
+        { method: 'POST', body: JSON.stringify({ queue_name: resource.name }) }, cloudflareSchemas.queue
       );
       value = { id: queue.queue_id, name: queue.queue_name };
       state.queue = { ...state.queue, [resource.binding]: value };

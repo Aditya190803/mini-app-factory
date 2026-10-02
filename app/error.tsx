@@ -4,16 +4,17 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { Button, EmptyState } from '@/components/kit'
 import { TriangleAlert } from 'lucide-react'
+import { reportClientError } from '@/lib/report-client-error'
 
 export default function Error({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string }
-  reset: () => void
+  retry: () => void
 }) {
   useEffect(() => {
-    console.error(error)
+    reportClientError(error, 'page')
   }, [error])
 
   return (
@@ -27,7 +28,7 @@ export default function Error({
           icon={<TriangleAlert className="size-5" />}
           action={
             <div className="flex gap-2">
-              <Button intent="primary" onClick={reset}>
+              <Button intent="primary" onClick={() => retry()}>
                 Try again
               </Button>
               <Button asChild>

@@ -1,4 +1,16 @@
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
+
+/**
+ * Load HTML as a full document. `cheerio/slim` (htmlparser2 only) keeps the editor bundle free of
+ * parse5 and undici, which the full `cheerio` entry pulled into the browser. Unlike parse5 it does
+ * not invent <html>/<head>/<body> for a fragment, so do that here: the code below injects styles,
+ * scripts and the preview bridge into head and body.
+ */
+function loadDocument(html: string) {
+  const $ = cheerio.load(html);
+  if ($('body').length > 0) return $;
+  return cheerio.load(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`);
+}
 
 export interface ProjectFile {
   path: string;
@@ -45,8 +57,8 @@ export function assembleFullPage(
   const pageFile = files.find(f => f.path === pagePath);
   if (!pageFile) return '';
 
-  let html = resolveIncludes(pageFile.content, files, isEditorPreview);
-  const $ = cheerio.load(html);
+  const html = resolveIncludes(pageFile.content, files, isEditorPreview);
+  const $ = loadDocument(html);
 
   if (isEditorPreview) {
     $('body').attr('data-source-file', pagePath);
@@ -136,7 +148,7 @@ export function assembleFullPage(
     if (!replaced) {
       const basename = styleFile.path.split('/').pop() || styleFile.path;
       $(`link[rel="stylesheet"]`).each((_, el) => {
-        const href = ($(el).attr('href') || '').split('?')[0].replace(/^\.\//, '');
+        const href = ($(el).attr('href') || '').split('?')[0]!.replace(/^\.\//, '');
         if (href === styleFile.path || href === basename || href.endsWith(`/${basename}`)) {
           $(el).replaceWith(`<style data-file="${styleFile.path}">\n${styleFile.content}\n</style>`);
           replaced = true;
@@ -172,7 +184,7 @@ export function assembleFullPage(
     if (!replaced) {
       const basename = scriptFile.path.split('/').pop() || scriptFile.path;
       $('script[src]').each((_, el) => {
-        const src = ($(el).attr('src') || '').split('?')[0].replace(/^\.\//, '');
+        const src = ($(el).attr('src') || '').split('?')[0]!.replace(/^\.\//, '');
         if (src === scriptFile.path || src === basename || src.endsWith(`/${basename}`)) {
           $(el).replaceWith(`<script data-file="${scriptFile.path}">\n${scriptFile.content}\n</script>`);
           replaced = true;
@@ -391,7 +403,7 @@ export function extractInlineAssets(html: string): {
   styles: string, 
   scripts: string 
 } {
-  const $ = cheerio.load(html);
+  const $ = loadDocument(html);
   let styles = '';
   let scripts = '';
 

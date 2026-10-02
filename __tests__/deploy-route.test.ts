@@ -1,5 +1,9 @@
 import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 
+vi.mock('@/lib/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
+  consumeRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })),
+}));
 vi.mock('server-only', () => ({}));
 vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
@@ -101,7 +105,7 @@ describe('POST /api/deploy', () => {
     const { stackServerApp } = await import('@/stack/server');
     const { getProject, getFiles } = await import('@/lib/projects');
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ userId: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ accessRole: 'owner', userId: 'user_123' });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
 
     const req = new Request('http://localhost/api/deploy', {
@@ -120,7 +124,7 @@ describe('POST /api/deploy', () => {
     const { getProject, getFiles } = await import('@/lib/projects');
     const { getIntegrationTokens } = await import('@/lib/integrations');
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ userId: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ accessRole: 'owner', userId: 'user_123' });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ path: 'index.html', content: '<h1>Hi</h1>' }]);
     (getIntegrationTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
 
@@ -142,7 +146,7 @@ describe('POST /api/deploy', () => {
     const { deployProjectToCloudflare } = await import('@/lib/cloudflare-deploy');
 
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'demo-project', userId: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ name: 'demo-project', userId: 'user_123', accessRole: 'owner' });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ path: 'index.html', content: '<h1>Hello</h1>' }]);
     (getIntegrationTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       cloudflareApiToken: 'cf-token',
@@ -176,7 +180,7 @@ describe('POST /api/deploy', () => {
     const { getIntegrationTokens } = await import('@/lib/integrations');
 
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 'user_123' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ userId: 'user_123' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ accessRole: 'owner', userId: 'user_123' });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       { path: 'index.html', content: '<h1>Hello</h1>' },
       { path: 'README.md', content: '# Demo' },
@@ -185,6 +189,7 @@ describe('POST /api/deploy', () => {
       githubAccessToken: 'gh-token',
     });
 
+    const trees: Array<{ tree: Array<{ path: string }>; base_tree?: string }> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method || 'GET';
@@ -193,7 +198,8 @@ describe('POST /api/deploy', () => {
         return new Response(JSON.stringify({ login: 'octocat' }), { status: 200 });
       }
 
-      if (url.includes('https://api.github.com/repos/octocat/demo-project') && !url.includes('/contents/')) {
+      const repo = 'https://api.github.com/repos/octocat/demo-project';
+      if (url === repo) {
         return new Response(
           JSON.stringify({
             name: 'demo-project',
@@ -205,13 +211,23 @@ describe('POST /api/deploy', () => {
           { status: 200 }
         );
       }
-
-      if (url.includes('/contents/') && method === 'GET') {
-        return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+      if (url === `${repo}/git/ref/heads/main`) {
+        return new Response(JSON.stringify({ object: { sha: 'parent-sha' } }), { status: 200 });
       }
-
-      if (url.includes('/contents/') && method === 'PUT') {
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      if (url === `${repo}/git/commits/parent-sha`) {
+        return new Response(JSON.stringify({ tree: { sha: 'old-tree' } }), { status: 200 });
+      }
+      if (url === `${repo}/git/trees` && method === 'POST') {
+        const body = JSON.parse(String(init?.body)) as { tree: Array<{ path: string }>; base_tree?: string };
+        // The whole tree is replaced (no base_tree), so files deleted in the editor go too.
+        trees.push(body);
+        return new Response(JSON.stringify({ sha: 'new-tree' }), { status: 201 });
+      }
+      if (url === `${repo}/git/commits` && method === 'POST') {
+        return new Response(JSON.stringify({ sha: 'new-commit' }), { status: 201 });
+      }
+      if (url === `${repo}/git/refs/heads/main` && method === 'PATCH') {
+        return new Response(JSON.stringify({ object: { sha: 'new-commit' } }), { status: 200 });
       }
 
       throw new Error(`Unexpected fetch call: ${method} ${url}`);
@@ -233,6 +249,9 @@ describe('POST /api/deploy', () => {
 
       const streamOutput = await res.text();
       expect(streamOutput).toContain('"status":"success"');
+      expect(trees).toHaveLength(1);
+      expect(trees[0]!.base_tree).toBeUndefined();
+      expect(trees[0]!.tree.map((entry) => entry.path).sort()).toEqual(['README.md', 'index.html']);
     } finally {
       (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
     }

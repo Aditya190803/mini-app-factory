@@ -4,7 +4,8 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/stack/server', () => ({ stackServerApp: { getUser: vi.fn() } }));
 vi.mock('@/lib/oauth', () => ({
   createOAuthStateCookie: vi.fn(),
-  consumeOAuthStateCookie: vi.fn(),
+  consumeOAuthState: vi.fn(),
+  createPkcePair: vi.fn(() => ({ verifier: 'verifier-1', challenge: 'challenge-1' })),
   getBaseUrl: vi.fn(),
   sanitizeReturnTo: vi.fn((value) => value || '/'),
 }));
@@ -38,6 +39,9 @@ describe('Cloudflare OAuth routes', () => {
     const response = await GET(new Request('https://factory.example/api/integrations/cloudflare/start?returnTo=%2Fsettings'));
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toContain('dash.cloudflare.com/oauth2/auth');
+    // PKCE: the verifier stays server-side in the state cookie, only the challenge goes out.
+    expect(oauth.createOAuthStateCookie).toHaveBeenCalledWith('oauth_cloudflare_state', '/settings', 'verifier-1');
+    expect(cloudflareOAuth.createCloudflareAuthorizationUrl).toHaveBeenCalledWith(expect.objectContaining({ codeChallenge: 'challenge-1' }));
   });
 
   test('sends the user back to settings when OAuth is not configured', async () => {
@@ -56,7 +60,7 @@ describe('Cloudflare OAuth routes', () => {
     const { listCloudflareAccounts } = await import('@/lib/cloudflare');
     const { upsertIntegrationTokens } = await import('@/lib/integrations');
     const { GET } = await import('@/app/api/integrations/cloudflare/callback/route');
-    (oauth.consumeOAuthStateCookie as ReturnType<typeof vi.fn>).mockResolvedValue('/settings');
+    (oauth.consumeOAuthState as ReturnType<typeof vi.fn>).mockResolvedValue({ returnTo: '/settings', codeVerifier: 'verifier-1' });
     (cloudflareOAuth.exchangeCloudflareCode as ReturnType<typeof vi.fn>).mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh', expiresAt: 123456, scope: 'workers.write' });
     (listCloudflareAccounts as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'a1', name: 'First' }, { id: 'a2', name: 'Second' }]);
 
@@ -71,13 +75,14 @@ describe('Cloudflare OAuth routes', () => {
       cloudflareAccountId: 'a1',
       cloudflareAccountName: 'First',
     });
+    expect(cloudflareOAuth.exchangeCloudflareCode).toHaveBeenCalledWith(expect.objectContaining({ codeVerifier: 'verifier-1' }));
   });
 
   test('rejects a callback with invalid state before exchanging a code', async () => {
     const oauth = await import('@/lib/oauth');
     const cloudflareOAuth = await import('@/lib/cloudflare-oauth');
     const { GET } = await import('@/app/api/integrations/cloudflare/callback/route');
-    (oauth.consumeOAuthStateCookie as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (oauth.consumeOAuthState as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     const response = await GET(new Request('https://factory.example/api/integrations/cloudflare/callback?code=code-1&state=wrong'));
     expect(response.status).toBe(400);

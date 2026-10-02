@@ -81,6 +81,6 @@ export async function resolveOpenCodeModel(
   const catalog = await fetchOpenCodeFreeModels();
   if (catalog.length === 0) return trimmed;
   if (catalog.some((model) => model.id === trimmed)) return trimmed;
-  const liveFallback = catalog.some((model) => model.id === fallback) ? fallback : catalog[0].id;
+  const liveFallback = catalog.some((model) => model.id === fallback) ? fallback : catalog[0]?.id ?? fallback;
   return liveFallback;
 }

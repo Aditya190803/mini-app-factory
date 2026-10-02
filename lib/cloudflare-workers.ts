@@ -1,4 +1,5 @@
 import 'server-only';
+import { cloudflareSchemas } from '@/lib/cloudflare-schemas';
 
 import { cloudflareRequest, type CloudflareDeployFile } from '@/lib/cloudflare';
 import type { CloudflareManifest, CloudflareResourceState } from '@/lib/cloudflare-manifest';
@@ -168,8 +169,8 @@ export async function deployCloudflareWorkers(params: {
     };
 
     if (worker.durableObjects.length > 0) {
-      const namespaces = await cloudflareRequest<Array<{ id: string; class: string; name: string; script: string }>>(
-        `/accounts/${encode(params.accountId)}/workers/durable_objects/namespaces?per_page=1000`, params.token
+      const namespaces = await cloudflareRequest(
+        `/accounts/${encode(params.accountId)}/workers/durable_objects/namespaces?per_page=1000`, params.token, undefined, cloudflareSchemas.durableObjectNamespace.array()
       );
       for (const durableObject of worker.durableObjects) {
         const namespace = namespaces.find((item) => item.script === worker.name && item.class === durableObject.className);

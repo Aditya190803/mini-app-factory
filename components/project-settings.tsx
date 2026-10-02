@@ -84,7 +84,7 @@ export default function ProjectSettings({ projectName }: { projectName: string }
         <TopBar crumbs={[{ label: 'Projects', href: '/projects' }]}>
           {chrome}
         </TopBar>
-        <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10 sm:px-6">
+        <main id="main" className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-10 sm:px-6">
           <Skeleton className="h-7 w-56" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-48 w-full" />
@@ -215,16 +215,22 @@ export default function ProjectSettings({ projectName }: { projectName: string }
             )}
           </Section>
 
-          <CloudflareProjectSettings
-            projectName={project.projectName}
-            cloudflareProjectName={project.cloudflareProjectName}
-            d1DatabaseName={project.cloudflareD1DatabaseName}
-            resourcesJson={project.cloudflareResourcesJson}
-            customDomain={project.cloudflareCustomDomain}
-            deployments={deploymentHistory || []}
-          />
+          {/* Cloudflare resources live in the owner's account and sharing is the owner's call;
+              the APIs behind both sections are owner-only. */}
+          {project.accessRole === 'owner' && (
+            <>
+              <CloudflareProjectSettings
+                projectName={project.projectName}
+                cloudflareProjectName={project.cloudflareProjectName}
+                d1DatabaseName={project.cloudflareD1DatabaseName}
+                resourcesJson={project.cloudflareResourcesJson}
+                customDomain={project.cloudflareCustomDomain}
+                deployments={deploymentHistory || []}
+              />
 
-          <ProjectCollaboration projectId={project._id} />
+              <ProjectCollaboration projectId={project._id} />
+            </>
+          )}
 
           <GitHubProjectSync projectName={project.projectName} repoUrl={project.repoUrl} />
 

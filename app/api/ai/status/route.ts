@@ -1,3 +1,5 @@
+import { stackServerApp } from '@/stack/server';
+
 export const dynamic = 'force-dynamic';
 
 const providers = [
@@ -13,7 +15,14 @@ const providers = [
   },
 ];
 
+/**
+ * Signed-in only. It makes outbound calls with the platform's provider keys, so an anonymous
+ * caller could use it to hammer the providers on the platform's account.
+ */
 export async function GET() {
+  if (!(await stackServerApp.getUser())) {
+    return Response.json({ status: 'unavailable', error: 'Authentication required' }, { status: 401 });
+  }
   try {
     const configured = providers.filter((provider) => provider.key() && provider.url && !provider.url.startsWith('/'));
     const details = {

@@ -13,11 +13,13 @@ import {
   Modal,
   ModalContent,
   Select,
+  Skeleton,
   StatusDot,
 } from '@/components/kit'
 import CloudflareConnect from '@/components/cloudflare-connect'
 import { DEPLOY_SURFACES, TARGETS, type BuildTarget } from '@/lib/targets'
 import { cn } from '@/lib/utils'
+import { billingNote } from '@/lib/cloudflare-billing'
 
 type DeployState = ReturnType<typeof useEditorDeploy>
 
@@ -60,6 +62,7 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
     setGithubOrg,
     githubOrgs,
     integrationStatus,
+    integrationStatusLoaded,
     repoCheck,
     deployResult,
     deployError,
@@ -89,8 +92,9 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
     (surface) => surface.id !== 'cloudflare-preview' && surface.supports.includes(target)
   )
 
+  // Until the status check answers, nothing is reported as missing.
   const connected = (need: 'cloudflare' | 'github' | 'netlify') =>
-    need === 'cloudflare'
+    !integrationStatusLoaded ? true : need === 'cloudflare'
       ? integrationStatus.cloudflareConnected
       : need === 'github'
         ? integrationStatus.githubConnected
@@ -137,6 +141,7 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
                 return (
                   <label
                     key={surface.id}
+                    aria-label={surface.label}
                     className={cn(
                       'flex cursor-pointer items-start gap-3 rounded-lg border p-3',
                       'transition-colors duration-[var(--dur-1)]',
@@ -180,12 +185,16 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
           {deployOption === 'cloudflare' && (
             <div className="space-y-4">
               <div className="rounded-lg border border-[var(--rule)] p-3">
-                <CloudflareConnect
-                  connected={integrationStatus.cloudflareConnected}
-                  accountName={integrationStatus.cloudflareAccountName}
-                  oauthConfigured={integrationStatus.cloudflareOAuthConfigured}
-                  onConnected={markCloudflareConnected}
-                />
+                {integrationStatusLoaded ? (
+                  <CloudflareConnect
+                    connected={integrationStatus.cloudflareConnected}
+                    accountName={integrationStatus.cloudflareAccountName}
+                    oauthConfigured={integrationStatus.cloudflareOAuthConfigured}
+                    onConnected={markCloudflareConnected}
+                  />
+                ) : (
+                  <Skeleton className="h-10" aria-label="Checking the Cloudflare connection" />
+                )}
               </div>
 
               <Field
@@ -334,15 +343,21 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
                       <span className="text-[var(--foreground)]">{item.binding}</span>
                       <span className="text-[var(--muted-foreground)]"> to {item.name}</span>
                     </span>
-                    <span
-                      className={cn(
-                        'shrink-0',
-                        item.action === 'create'
-                          ? 'text-[var(--warning-text)]'
-                          : 'text-[var(--muted-foreground)]'
+                    <span className="flex shrink-0 items-center gap-2">
+                      {item.action === 'create' && (
+                        <span className="font-sans text-[var(--muted-foreground)]" title={billingNote(item.kind).detail}>
+                          {billingNote(item.kind).label}
+                        </span>
                       )}
-                    >
-                      {item.action}
+                      <span
+                        className={cn(
+                          item.action === 'create'
+                            ? 'text-[var(--warning-text)]'
+                            : 'text-[var(--muted-foreground)]'
+                        )}
+                      >
+                        {item.action}
+                      </span>
                     </span>
                   </li>
                 ))}

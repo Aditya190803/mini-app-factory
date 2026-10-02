@@ -62,70 +62,78 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx): Promise<{
   return { userId: identity.subject, email };
 }
 
+export type ProjectRole = 'owner' | 'editor' | 'viewer';
+
+const ROLE_RANK: Record<ProjectRole, number> = { viewer: 1, editor: 2, owner: 3 };
+
+export function roleAtLeast(role: ProjectRole | null, min: ProjectRole): boolean {
+  return role !== null && ROLE_RANK[role] >= ROLE_RANK[min];
+}
+
 /**
- * Whether `userId` may read/write `project`.
+ * The caller's role on `project`, or null for no access.
  *
- * Mirrors `assertCanAccessProject` in lib/project-access.ts: the owner, or anyone signed in when
- * the project has no owner at all.
- *
- * The orphan branch is legacy-only. Backfill old rows with an audited one-off migration before
- * removing it; new project creation always derives the owner from the verified identity.
+ * Projects with no owner are legacy rows. They used to be claimable by anyone signed in; now they
+ * are inaccessible until an admin assigns an owner with `projects.assignOrphanOwner`.
  */
-export function canAccessProject(
+export async function getProjectRole(
+  ctx: QueryCtx | MutationCtx,
   project: Doc<'projects'> | null,
   userId: string | null
-): boolean {
-  if (!project) return false;
-  if (!userId) return false;
-  return !project.userId || project.userId === userId;
+): Promise<ProjectRole | null> {
+  if (!project || !userId || !project.userId) return null;
+  if (project.userId === userId) return 'owner';
+  const member = await ctx.db
+    .query('projectMembers')
+    .withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId))
+    .first();
+  return member?.role ?? null;
 }
 
-export async function canReadProject(ctx: QueryCtx | MutationCtx, project: Doc<'projects'> | null, userId: string | null): Promise<boolean> {
-  if (canAccessProject(project, userId)) return true;
-  if (!project || !userId) return false;
-  return (await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first()) !== null;
-}
-
-export async function canEditProject(ctx: QueryCtx | MutationCtx, project: Doc<'projects'> | null, userId: string | null): Promise<boolean> {
-  if (canAccessProject(project, userId)) return true;
-  if (!project || !userId) return false;
-  const member = await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', project._id).eq('userId', userId)).first();
-  return member?.role === 'editor';
-}
-
-/** Load a project by name and assert the caller may use it. Throws otherwise. */
-export async function requireProjectAccess(
+async function loadWithRole(
   ctx: QueryCtx | MutationCtx,
-  projectName: string
+  project: Doc<'projects'> | null,
+  min: ProjectRole
 ): Promise<Doc<'projects'>> {
   const userId = await requireUserId(ctx);
+  if (!project) throw new Error('Project not found');
+  if (!roleAtLeast(await getProjectRole(ctx, project, userId), min)) throw new Error('Unauthorized');
+  return project;
+}
+
+/** Load a project by name and assert the caller has at least `min` role on it. */
+export async function requireProjectRole(
+  ctx: QueryCtx | MutationCtx,
+  projectName: string,
+  min: ProjectRole
+): Promise<Doc<'projects'>> {
   const project = await ctx.db
     .query('projects')
     .withIndex('by_projectName', (q) => q.eq('projectName', projectName))
     .first();
-
-  if (!project) throw new Error('Project not found');
-  if (!(await canEditProject(ctx, project, userId))) throw new Error('Unauthorized');
-  return project;
+  return loadWithRole(ctx, project, min);
 }
 
 /** Same, by document id — for the file/deployment tables, which key off projectId. */
-export async function requireProjectAccessById(
+export async function requireProjectRoleById(
   ctx: QueryCtx | MutationCtx,
-  projectId: Id<'projects'>
+  projectId: Id<'projects'>,
+  min: ProjectRole
 ): Promise<Doc<'projects'>> {
-  const userId = await requireUserId(ctx);
-  const project = await ctx.db.get(projectId);
-
-  if (!project) throw new Error('Project not found');
-  if (!(await canEditProject(ctx, project, userId))) throw new Error('Unauthorized');
-  return project;
+  return loadWithRole(ctx, await ctx.db.get(projectId), min);
 }
 
-export async function requireProjectReadAccessById(ctx: QueryCtx | MutationCtx, projectId: Id<'projects'>): Promise<Doc<'projects'>> {
-  const userId = await requireUserId(ctx);
-  const project = await ctx.db.get(projectId);
-  if (!project) throw new Error('Project not found');
-  if (!(await canReadProject(ctx, project, userId))) throw new Error('Unauthorized');
-  return project;
+/** Editor-or-owner access by name. */
+export function requireProjectAccess(ctx: QueryCtx | MutationCtx, projectName: string) {
+  return requireProjectRole(ctx, projectName, 'editor');
+}
+
+/** Editor-or-owner access by id. */
+export function requireProjectAccessById(ctx: QueryCtx | MutationCtx, projectId: Id<'projects'>) {
+  return requireProjectRoleById(ctx, projectId, 'editor');
+}
+
+/** Any-member access by id. */
+export function requireProjectReadAccessById(ctx: QueryCtx | MutationCtx, projectId: Id<'projects'>) {
+  return requireProjectRoleById(ctx, projectId, 'viewer');
 }

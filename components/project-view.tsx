@@ -4,11 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
 import { Badge, Button, Callout, Spinner, StatusDot } from '@/components/kit';
+import { PROVIDER_LABELS } from '@/lib/ai-admin-config';
+import { track } from '@vercel/analytics';
+
+/** Failures that another provider may well not have. */
+const PROVIDER_ERROR_CODES = new Set(['AI_PROVIDER_ERROR', 'AI_TIMEOUT', 'AI_NETWORK_ERROR', 'AI_AUTH_ERROR', 'AI_ERROR', 'RUN_TIMEOUT']);
 import EditorWorkspace from '@/components/editor-workspace';
 import type { ProjectMetadata } from '@/lib/projects';
 import type { ProjectFile } from '@/lib/page-builder';
 import { readStream } from '@/lib/stream-utils';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
@@ -45,13 +49,23 @@ function ActivityIcon({ activity }: { activity: Activity }) {
 
 export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
   const router = useRouter();
-  const [project, setProject] = useState(initialProject);
+  const [project, setProject] = useState<ProjectMetadata & { files?: ProjectFile[] }>(initialProject);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const hasStarted = useRef(false);
   const completed = useRef(initialProject.status === 'completed');
+  // Leaving the page must stop the stream reader and the completion poll; the build itself
+  // carries on server-side and is picked up again from the run record.
+  const unmounted = useRef(false);
+  const streamController = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    unmounted.current = true;
+    streamController.current?.abort();
+  }, []);
   const projectRecord = useQuery(api.projects.getProject, { projectName });
+  const otherProvider: 'gateway' | 'opencode' = projectRecord?.providerId === 'opencode' ? 'gateway' : 'opencode';
+  const latestRun = useQuery(api.conversations.getLatestRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const activeRun = useQuery(api.conversations.getActiveRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const persistedEvents = useQuery(
     api.conversations.listRunEvents,
@@ -73,7 +87,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   }, []);
 
   const pollForCompletion = useCallback(async () => {
-    for (let attempt = 0; attempt < 60 && !completed.current; attempt++) {
+    for (let attempt = 0; attempt < 60 && !completed.current && !unmounted.current; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
       }
@@ -96,7 +110,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         return;
       }
     }
-    if (!completed.current) {
+    if (!completed.current && !unmounted.current) {
       setError({
         message: 'The build is taking too long or the connection dropped. Refresh this page or retry.',
         code: 'POLL_TIMEOUT',
@@ -109,18 +123,19 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     }
   }, [projectName]);
 
-  const startGeneration = useCallback(async () => {
+  const startGeneration = useCallback(async (providerId?: 'gateway' | 'opencode') => {
     hasStarted.current = true;
     completed.current = false;
     setError(null);
     setActivities([]);
     const controller = new AbortController();
+    streamController.current = controller;
     const timeout = setTimeout(() => controller.abort(), 300_000);
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ projectName, prompt: project.prompt }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectName, prompt: project.prompt, ...(providerId ? { providerId } : {}) }),
         signal: controller.signal,
       });
       await readStream(response, () => {}, (data) => {
@@ -139,6 +154,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           return;
         }
         if (data.status === 'completed') {
+          track('first_build_completed');
           completed.current = true;
           setActivities((current) => current.map((item) => ({ ...item, state: 'complete' })));
           const result = data as { html?: string; files?: ProjectFile[] };
@@ -153,6 +169,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
         addActivity(String(data.status), String(data.message || data.status), typeof data.path === 'string' ? data.path : undefined);
       });
     } catch (cause) {
+      if (unmounted.current) return;
       const aborted = cause instanceof DOMException && cause.name === 'AbortError';
       setError({ message: aborted ? 'Generation timed out.' : 'The live connection was interrupted. Checking the saved build…', code: aborted ? 'AI_TIMEOUT' : 'STREAM_ERROR' });
     } finally {
@@ -183,7 +200,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   // has a run in flight (the page was reloaded mid-build) rehydrates from the
   // persisted events and polls instead of starting a second run.
   useEffect(() => {
-    if (project.status === 'completed' || hasStarted.current || activeRun === undefined) return;
+    if (project.status === 'completed' || hasStarted.current || activeRun === undefined || latestRun === undefined) return;
     if (activeRun) {
       hasStarted.current = true;
       setActivities(
@@ -198,8 +215,18 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       void pollForCompletion();
       return;
     }
+    // Only a fresh project starts a build by itself. One that failed, was cancelled, or was left
+    // "generating" by a dead request waits for Retry instead of silently spending another run.
+    if (project.status !== 'pending') {
+      hasStarted.current = true;
+      setError({
+        message: (latestRun?.status === 'failed' && latestRun.errorMessage) || 'The last build did not finish. Retry when you are ready.',
+        code: (latestRun?.status === 'failed' && latestRun.errorCode) || 'RUN_INTERRUPTED',
+      });
+      return;
+    }
     void startGeneration();
-  }, [activeRun, persistedEvents, pollForCompletion, project.status, startGeneration]);
+  }, [activeRun, latestRun, persistedEvents, pollForCompletion, project.status, startGeneration]);
 
   useEffect(() => {
     if (!hasStarted.current || !persistedEvents?.length || completed.current) return;
@@ -304,10 +331,24 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               className="mt-5"
               title="The build stopped"
               action={
-                <Button size="sm" onClick={() => void startGeneration()}>
-                  <RotateCcw className="size-3.5" />
-                  Retry
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {error.code === 'QUOTA_EXCEEDED' ? (
+                    <Button size="sm" intent="primary" asChild>
+                      <a href="/settings#api-keys">Add your own key</a>
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => void startGeneration()}>
+                      <RotateCcw className="size-3.5" />
+                      Retry
+                    </Button>
+                  )}
+                  {/* Provider trouble is usually specific to one provider; offer the other. */}
+                  {error.code && PROVIDER_ERROR_CODES.has(error.code) && (
+                    <Button size="sm" onClick={() => void startGeneration(otherProvider)}>
+                      Retry with {PROVIDER_LABELS[otherProvider]}
+                    </Button>
+                  )}
+                </div>
               }
             >
               <p>{error.message}</p>

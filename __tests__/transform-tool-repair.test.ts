@@ -105,7 +105,7 @@ describe('transform tool-failure repair', () => {
     const { saveFiles } = await import('@/lib/projects');
     expect(saveFiles).toHaveBeenCalledTimes(1);
 
-    const savedFiles = (saveFiles as ReturnType<typeof vi.fn>).mock.calls[0][1] as Array<{
+    const savedFiles = (saveFiles as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Array<{
       path: string;
       content: string;
     }>;
@@ -149,7 +149,7 @@ describe('transform tool-failure repair', () => {
     expect(warnings).toBeUndefined();
 
     const { saveFiles } = await import('@/lib/projects');
-    const savedFiles = (saveFiles as ReturnType<typeof vi.fn>).mock.calls[0][1] as Array<{
+    const savedFiles = (saveFiles as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Array<{
       path: string;
       content: string;
     }>;

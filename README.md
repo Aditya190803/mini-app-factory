@@ -23,13 +23,34 @@ or a Cloudflare config file. See `lib/targets.ts`.
 - **Nothing is created without asking.** The deploy dialog shows the exact list
   of Cloudflare resources, each labelled `create` or `reuse`, and does nothing
   until you approve it.
-- **Migrations are guarded.** One that has already been applied cannot be
-  edited afterwards, and a destructive one is refused outright.
-- **Every successful build is restorable.** From the version history in the
-  conversation pane.
+- **Migrations are guarded.** New migrations run automatically only if every
+  statement is on an allowlist (`CREATE`, `ALTER TABLE … ADD/RENAME`,
+  `INSERT`); anything else (`DROP`, `DELETE`, `UPDATE`, triggers, `PRAGMA`)
+  stops the deploy for manual review. An applied migration cannot be edited
+  afterwards. See `disallowedMigrationStatements` in
+  `lib/cloudflare-manifest.ts`.
+- **Resources belong to one project.** Cloudflare resource names are prefixed
+  with the project's Pages name, and a deploy only reuses resources recorded
+  in that project's own state.
+- **Every successful build is restorable.** The version history shows each
+  build with the request that made it and a diff against your current files.
 - **The output is portable.** Ordinary web files and standard Wrangler config.
   Export a zip or push to a repo you own; deleting this account does not take
   your app down.
+
+## Collaboration
+
+Owners can invite people as **editors** (change files, run builds, deploy with
+their own GitHub or Netlify accounts) or **viewers** (read only). Everything
+that touches the owner's Cloudflare account (deploys, secrets, domains, D1, R2,
+teardown), plus publishing, sharing and deletion, stays with the owner. The
+rules live in `convex/auth.ts` and `lib/project-access.ts`.
+
+## Limits
+
+Builds on the shared model keys count against a per-user daily and monthly
+allowance (shown in Settings); bringing your own key skips it. See
+`convex/rateLimits.ts`.
 
 ## Deploy surfaces
 
@@ -80,9 +101,11 @@ a runtime failure in the deploy dialog, not at build time.
 
 ```bash
 bun run typecheck
-bun run lint
-bun run test:ci
+bun run lint            # zero warnings allowed
+bun run test:ci         # unit, route and Convex tests
+bun run test:coverage
 bun run build
+bun run test:e2e        # Playwright smoke tests against the build
 ```
 
 ## Layout

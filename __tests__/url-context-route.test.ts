@@ -5,6 +5,11 @@ vi.mock('@/stack/server', () => ({
   stackServerApp: { getUser: vi.fn() },
 }));
 
+vi.mock('@/lib/rate-limit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
+  consumeRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })),
+}));
+
 vi.mock('@/lib/exa-url-context', () => ({
   fetchExaUrlContext: vi.fn(),
 }));

@@ -1,5 +1,7 @@
+import 'server-only';
+
 import { stripCodeFence } from '@/lib/utils';
-import { getAIClient } from '@/lib/ai-client';
+import { getAIClient, type AIClientSession } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import { executeTool } from '@/lib/tool-executor';
 import { ProjectFile } from '@/lib/page-builder';
@@ -17,6 +19,7 @@ import { resolveGatewayModel } from '@/lib/gateway-models';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 import type { TransformStreamEvent } from '@/lib/transform-stream';
 import { findMigrationDrift, validateGeneratedProject } from '@/lib/generated-project-validation';
+import { RUN_BUDGET_MS, sumUsage } from '@/lib/ai-usage';
 
 const MAX_TRANSFORM_CONTEXT_CHARS = 120_000;
 
@@ -43,6 +46,11 @@ export type TransformWorkInput = {
   modelId?: string;
   providerId?: string;
   finalFiles: ProjectFile[];
+  /**
+   * The filesVersion `finalFiles` was read at. The save is made against it, so edits that land
+   * while the model works are reported as a conflict instead of being overwritten.
+   */
+  filesVersion?: number;
   runtimeConfig: AIRuntimeConfig;
   onEvent: (event: TransformStreamEvent) => void;
   signal?: AbortSignal;
@@ -117,7 +125,7 @@ async function applyToolCalls(
 
   for (let i = 0; i < calls.length; i++) {
     throwIfAborted(signal);
-    const call = calls[i];
+    const call = calls[i]!;
     onEvent({
       status: 'applying',
       index: i + 1,
@@ -192,6 +200,10 @@ export async function runTransformWork(input: TransformWorkInput) {
   } = input;
 
   throwIfAborted(signal);
+  // One budget for every model call in the transform, inside the route's maxDuration.
+  const deadline = Date.now() + RUN_BUDGET_MS;
+  const sessions: AIClientSession[] = [];
+  const usage = () => sumUsage(...sessions.map((session) => session.usage?.()));
 
   let finalFiles = initialFiles.map((f) => ({ ...f }));
 
@@ -268,7 +280,10 @@ Only return the JSON array. No explanations.`;
     model: effectiveModelId,
     providerId: effectiveProviderId,
     systemMessage: { content: systemMessage },
+    signal,
+    deadline,
   });
+  sessions.push(session);
 
   let content = '';
   const originalFiles = finalFiles.map((file) => ({ ...file }));
@@ -383,7 +398,7 @@ Only return the JSON array. No explanations.`;
     ) {
       const activePath = activeFile || 'index.html';
       const idx = finalFiles.findIndex((f) => f.path === activePath);
-      if (idx >= 0) finalFiles[idx].content = stripCodeFence(content);
+      if (idx >= 0) finalFiles[idx]!.content = stripCodeFence(content);
     }
   } finally {
     await session.destroy().catch(() => {});
@@ -400,7 +415,10 @@ Only return the JSON array. No explanations.`;
       model: effectiveModelId,
       providerId: effectiveProviderId,
       systemMessage: { content: systemMessage },
+      signal,
+      deadline,
     });
+    sessions.push(repairSession);
     try {
       const repairResponse = await repairSession.sendAndWait({
         prompt: `${intentBlock}\n\nThe proposed project failed validation:\n- ${validation.errors.join('\n- ')}\n\nUse the available file tools to fix every issue. Return only the JSON array of tool calls.\n\nProject Context:\n${buildProjectContextWithIntent(finalFiles, selectFilesForHtmlEdit(validation.errors.join(' '), finalFiles), MAX_TRANSFORM_CONTEXT_CHARS)}`,
@@ -425,9 +443,17 @@ Only return the JSON array. No explanations.`;
 
   if (projectName) {
     onEvent({ status: 'saving', message: 'Persisting files…' });
+    let filesVersion: number;
     try {
-      await saveFiles(projectName, finalFiles);
+      filesVersion = await saveFiles(projectName, finalFiles, input.filesVersion);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('changed since they were loaded')) {
+        throw Object.assign(
+          new Error('The project files changed while the AI was working, so its result was not saved. Retry the request.'),
+          { code: 'CONFLICT' }
+        );
+      }
       console.error(`[Transform ${requestId}] save failed:`, err);
       throw Object.assign(new Error('Failed to save transformed files'), { code: 'SAVE_FAILED' });
     }
@@ -452,6 +478,8 @@ Only return the JSON array. No explanations.`;
       full: false,
       files: updatedFiles,
       deletedPaths,
+      filesVersion,
+      usage: usage(),
       warnings: describeUnresolved(unresolvedFailures),
     });
     return;
@@ -465,6 +493,7 @@ Only return the JSON array. No explanations.`;
     full: true,
     html: activeHtml,
     files: finalFiles,
+    usage: usage(),
     warnings: describeUnresolved(unresolvedFailures),
   });
 }
@@ -476,6 +505,8 @@ export function classifyTransformError(raw: unknown) {
     return { code: 'ABORTED', message };
   }
   if (lowered.includes('failed to save transformed')) return { code: 'SAVE_FAILED', message };
+  if (lowered.includes('changed while the ai was working')) return { code: 'CONFLICT', message };
+  if (lowered.includes('time budget')) return { code: 'TIMEOUT', message: 'The request ran out of time. Try a smaller change.' };
   if (lowered.includes('invalid payload')) return { code: 'INVALID_PAYLOAD', message };
   if (lowered.includes('rate limit')) return { code: 'RATE_LIMITED', message };
   if (lowered.includes('unauthorized') || lowered.includes('authentication')) {

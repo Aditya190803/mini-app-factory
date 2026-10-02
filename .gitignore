@@ -26,3 +26,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# test coverage
+coverage/
+
+# copied from node_modules by scripts/copy-monaco.mjs
+public/monaco/
+
+# Playwright
+test-results/
+playwright-report/

@@ -8,12 +8,6 @@ import {
   Button,
   IconButton,
   Kbd,
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuLabel,
-  MenuSeparator,
-  MenuTrigger,
   Segmented,
 } from '@/components/kit'
 import { ModelPicker } from '@/components/shell/model-picker'
@@ -26,6 +20,8 @@ type Message = {
   status: string
   files?: string[]
   versionId?: string
+  /** For a failed build: the request that failed, so it can be retried. */
+  retryPrompt?: string
 }
 
 interface EditorSidebarProps {
@@ -42,6 +38,8 @@ interface EditorSidebarProps {
   messages?: Message[]
   versions?: Array<{ id: string; summary: string }>
   onRestoreVersion?: (id: string) => void | Promise<void>
+  /** Opens the version history, where versions are compared before being restored. */
+  onOpenHistory?: () => void
   mode?: 'build' | 'discuss'
   onModeChange?: (mode: 'build' | 'discuss') => void
   filePaths?: string[]
@@ -73,6 +71,7 @@ export default function EditorSidebar({
   messages = [],
   versions = [],
   onRestoreVersion,
+  onOpenHistory,
   mode = 'build',
   onModeChange,
   filePaths = [],
@@ -104,11 +103,22 @@ export default function EditorSidebar({
   const addAttachments = async (files: FileList | null) => {
     if (!files) return
     const next: Array<{ name: string; content: string }> = []
+    const skipped: string[] = []
     for (const file of Array.from(files).slice(0, 3)) {
       // Bigger than this and the file is not context, it is the whole prompt.
-      if (file.size > 64 * 1024) continue
+      if (file.size > 64 * 1024) {
+        skipped.push(file.name)
+        continue
+      }
       next.push({ name: file.name, content: (await file.text()).slice(0, 24_000) })
     }
+    // Say so: oversized files used to vanish without a word.
+    if (skipped.length) {
+      toast.warning(`${skipped.length === 1 ? `${skipped[0]} was` : `${skipped.length} files were`} not attached`, {
+        description: 'Attachments are limited to 64 KB each. Paste the relevant part into the message instead.',
+      })
+    }
+    if (files.length > 3) toast.info('Only the first three files were attached.')
     setAttachments((current) => [...current, ...next].slice(0, 3))
     if (attachmentInput.current) attachmentInput.current.value = ''
   }
@@ -141,35 +151,22 @@ export default function EditorSidebar({
           </p>
         </div>
 
-        {versions.length > 0 && onRestoreVersion && (
-          <Menu>
-            <MenuTrigger asChild>
-              <Button size="sm">
-                <History className="size-3.5" />
-                History
-              </Button>
-            </MenuTrigger>
-            <MenuContent className="max-h-72 w-72 overflow-y-auto">
-              <MenuLabel>Undo to a previous build</MenuLabel>
-              <MenuSeparator />
-              {versions.map((version) => (
-                <MenuItem
-                  key={version.id}
-                  onSelect={() => void onRestoreVersion(version.id)}
-                  className="block truncate"
-                >
-                  {version.summary}
-                </MenuItem>
-              ))}
-            </MenuContent>
-          </Menu>
+        {versions.length > 0 && onOpenHistory && (
+          <Button size="sm" onClick={onOpenHistory}>
+            <History className="size-3.5" />
+            History
+          </Button>
         )}
       </div>
 
       <div
         ref={scrollRef}
         className="scroll-thin flex-1 overflow-y-auto scroll-smooth px-3 py-4"
-        aria-live="polite"
+        // A log announces new messages only. aria-live on the whole pane re-read it on every
+        // change, and the role="alert" on old failures announced them all again on load.
+        role="log"
+        aria-label="Conversation"
+        aria-relevant="additions"
       >
         {messages.length === 0 ? (
           <div className="mx-auto mt-12 max-w-[17rem] text-center">
@@ -222,10 +219,29 @@ export default function EditorSidebar({
                 return (
                   <div
                     key={message.id}
-                    role="alert"
                     className="anim-rise rounded-md border border-[color-mix(in_oklab,var(--destructive)_30%,transparent)] bg-[color-mix(in_oklab,var(--destructive)_8%,transparent)] p-3 text-sm text-[var(--destructive-text)]"
                   >
                     <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    {/* A failed build used to be a dead end: the request was gone from the
+                        composer and the only option was to retype it. */}
+                    {message.retryPrompt && !isTransforming && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button size="sm" onClick={() => void runTransform(message.retryPrompt)}>
+                          <RotateCcw className="size-3.5" />
+                          Retry
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            void runTransform(
+                              `The previous attempt at this request failed with:\n${message.content}\n\nFind and fix the cause, then complete the request:\n${message.retryPrompt}`
+                            )
+                          }
+                        >
+                          Fix and retry
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )
               }
@@ -253,7 +269,7 @@ export default function EditorSidebar({
                         onClick={() => void onRestoreVersion(message.versionId!)}
                       >
                         <History className="size-3.5" />
-                        Undo to this version
+                        Restore this version
                       </Button>
                     </div>
                   ) : null}
@@ -360,7 +376,8 @@ export default function EditorSidebar({
 
               {filePaths.length > 0 && (
                 <label
-                  className="relative grid size-7 place-items-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)]"
+                  // The select inside is invisible, so the label shows its focus.
+                  className="relative grid size-7 place-items-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--foreground)] focus-within:ring-2 focus-within:ring-[var(--ring)]"
                   title="Reference a project file"
                 >
                   <AtSign className="size-3.5" />

@@ -1,4 +1,6 @@
 import 'server-only';
+import { cloudflareSchemas } from '@/lib/cloudflare-schemas';
+import { z } from 'zod';
 
 import { blake3 } from '@noble/hashes/blake3';
 import { normalizeCloudflareProjectName } from '@/lib/deploy-shared';
@@ -39,7 +41,11 @@ export class CloudflareApiError extends Error {
   }
 }
 
-export async function cloudflareRequest<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+/**
+ * Call the Cloudflare API and unwrap its envelope. Pass `schema` when the result is stored or
+ * acted on: the result is validated instead of trusted, and a mismatch is a 502.
+ */
+export async function cloudflareRequest<T>(path: string, token: string, init?: RequestInit, schema?: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -60,11 +66,16 @@ export async function cloudflareRequest<T>(path: string, token: string, init?: R
       errors
     );
   }
-  return payload.result;
+  if (!schema) return payload.result;
+  const parsed = schema.safeParse(payload.result);
+  if (!parsed.success) {
+    throw new CloudflareApiError(`Cloudflare returned an unexpected response for ${path.split('?')[0]}`, 502);
+  }
+  return parsed.data;
 }
 
 export async function listCloudflareAccounts(token: string): Promise<CloudflareAccount[]> {
-  return cloudflareRequest<CloudflareAccount[]>('/accounts?per_page=50', token);
+  return cloudflareRequest('/accounts?per_page=50', token, undefined, cloudflareSchemas.accounts);
 }
 
 function encode(value: string) {
@@ -97,18 +108,18 @@ export async function ensureCloudflarePagesProject(params: {
 }) {
   const path = `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}`;
   try {
-    return await cloudflareRequest<{ name: string; subdomain?: string }>(path, params.token);
+    return await cloudflareRequest(path, params.token, undefined, cloudflareSchemas.pagesProject);
   } catch (error) {
     if (!(error instanceof CloudflareApiError) || error.status !== 404) throw error;
   }
 
-  return cloudflareRequest<{ name: string; subdomain?: string }>(
+  return cloudflareRequest(
     `/accounts/${encode(params.accountId)}/pages/projects`,
     params.token,
     {
       method: 'POST',
       body: JSON.stringify({ name: params.projectName, production_branch: 'main' }),
-    }
+    }, cloudflareSchemas.pagesProject
   );
 }
 
@@ -245,7 +256,7 @@ async function uploadAssets(params: {
   const batches = uploadBatches(uniqueMissing);
 
   for (let index = 0; index < batches.length; index++) {
-    const batch = batches[index];
+    const batch = batches[index]!;
     params.onProgress?.(`Cloudflare: Uploading assets (${index + 1}/${batches.length})`);
     await uploadRequest('/pages/assets/upload', {
       method: 'POST',
@@ -290,10 +301,10 @@ export async function deployCloudflarePages(params: {
   appendFile('_routes.json', 'application/json');
 
   params.onProgress?.('Cloudflare: Creating deployment');
-  return retryCloudflare(() => cloudflareRequest<CloudflareDeployment>(
+  return retryCloudflare(() => cloudflareRequest(
     `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/deployments`,
     params.token,
-    { method: 'POST', body: form }
+    { method: 'POST', body: form }, cloudflareSchemas.deployment
   ));
 }
 
@@ -332,10 +343,10 @@ export async function createCloudflareD1Database(params: {
   accountId: string;
   name: string;
 }) {
-  return cloudflareRequest<{ uuid: string; name: string }>(
+  return cloudflareRequest(
     `/accounts/${encode(params.accountId)}/d1/database`,
     params.token,
-    { method: 'POST', body: JSON.stringify({ name: params.name }) }
+    { method: 'POST', body: JSON.stringify({ name: params.name }) }, cloudflareSchemas.d1Database
   );
 }
 
@@ -377,9 +388,12 @@ export async function applyCloudflareD1Migrations(params: {
     .sort((a, b) => a.path.localeCompare(b.path));
 
   for (const migration of migrations) {
-    if (applied.has(migration.path)) continue;
+    // Wrangler records the file name ("0001_init.sql"), and so do we now, so either tool can
+    // continue where the other left off. Rows written with the full path are still honoured.
+    const name = migration.path.split('/').pop() ?? migration.path;
+    if (applied.has(name) || applied.has(migration.path)) continue;
     params.onProgress?.(`Cloudflare: Applying ${migration.path}`);
-    const escapedName = migration.path.replace(/'/g, "''");
+    const escapedName = name.replace(/'/g, "''");
     const result = await queryCloudflareD1({
       ...params,
       sql: `${migration.content}\nINSERT INTO d1_migrations (name) VALUES ('${escapedName}');`,
@@ -434,9 +448,9 @@ export async function rollbackCloudflarePagesDeployment(params: {
   projectName: string;
   deploymentId: string;
 }) {
-  return cloudflareRequest<CloudflareDeployment>(
+  return cloudflareRequest(
     `/accounts/${encode(params.accountId)}/pages/projects/${encode(params.projectName)}/deployments/${encode(params.deploymentId)}/rollback`,
     params.token,
-    { method: 'POST' }
+    { method: 'POST' }, cloudflareSchemas.deployment
   );
 }

@@ -94,5 +94,5 @@ export async function resolveGatewayModel(
   const family = gatewayModelFamily(trimmed);
   const familyMatch = catalog.find((model) => gatewayModelFamily(model.id) === family);
   if (familyMatch) return familyMatch.id;
-  return catalog.some((model) => model.id === fallback) ? fallback : catalog[0].id;
+  return catalog.some((model) => model.id === fallback) ? fallback : catalog[0]?.id ?? fallback;
 }

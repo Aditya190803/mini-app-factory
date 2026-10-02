@@ -8,7 +8,7 @@ export function inspectProject(files: ProjectFile[], projectName: string) {
   const routePattern = /(?:request\.method\s*===?\s*['"](GET|POST|PUT|PATCH|DELETE|OPTIONS)['"][\s\S]{0,240}?(?:url\.pathname|pathname)\s*===?\s*['"]([^'"]+)['"]|(?:url\.pathname|pathname)\s*===?\s*['"]([^'"]+)['"][\s\S]{0,240}?request\.method\s*===?\s*['"](GET|POST|PUT|PATCH|DELETE|OPTIONS)['"])/g;
   for (const file of files.filter((candidate) => candidate.fileType === 'worker')) {
     for (const match of file.content.matchAll(routePattern)) {
-      routes.push({ method: match[1] || match[4], path: match[2] || match[3], source: file.path });
+      routes.push({ method: (match[1] || match[4])!, path: (match[2] || match[3])!, source: file.path });
     }
   }
   let manifest: ReturnType<typeof parseCloudflareManifest> = null;

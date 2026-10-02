@@ -17,7 +17,7 @@ describe('Cloudflare resource plan route', () => {
     const { POST } = await import('@/app/api/cloudflare/plan/route');
 
     (stackServerApp.getUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'user-1' });
-    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({ name: 'demo' });
+    (getProject as ReturnType<typeof vi.fn>).mockResolvedValue({ name: 'demo', accessRole: 'owner' });
     (getFiles as ReturnType<typeof vi.fn>).mockResolvedValue([{
       path: 'cloudflare.json',
       content: JSON.stringify({ version: 1, bindings: { kv: [{ binding: 'CACHE', name: 'demo-cache' }] } }),

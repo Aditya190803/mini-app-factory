@@ -1,7 +1,15 @@
+import 'server-only';
+
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, streamText } from 'ai';
 import type { ModelMessage, TextPart, ImagePart } from 'ai';
-import { isAllowedProviderModel, resolveSelectedAIModel, type AIProviderId } from '@/lib/ai-admin-config';
+import {
+  DEFAULT_AI_ADMIN_CONFIG,
+  DEFAULT_PROVIDER_MODELS,
+  isAllowedProviderModel,
+  resolveSelectedAIModel,
+  type AIProviderId,
+} from '@/lib/ai-admin-config';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
 
 export type SessionEvent = {
@@ -14,11 +22,25 @@ export type SessionEvent = {
   }
 };
 
+/**
+ * Output cap applied when a caller does not set one. Transforms set none, so a runaway model could
+ * bill up to the provider's maximum on every call.
+ */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 32_000;
+
+import type { AIUsage } from '@/lib/ai-usage';
+
+export type { AIUsage };
+
 export interface AIClient {
   createSession: (opts?: {
     model?: string;
     providerId?: AIProviderId;
     systemMessage?: { content: string };
+    /** Aborts every in-flight and future call on this session (the user pressed Stop). */
+    signal?: AbortSignal;
+    /** Epoch ms after which no new call starts and in-flight calls are cut short. */
+    deadline?: number;
   }) => Promise<AIClientSession>;
   stop?: () => Promise<void>;
 }
@@ -27,7 +49,17 @@ export interface AIClientSession {
   sendAndWait: (opts: { prompt: string; images?: Array<{ url: string }>; maxOutputTokens?: number }, timeout?: number) => Promise<{ data: { content: string } }>;
   stream: (opts: { prompt: string }) => Promise<AsyncIterable<string>>;
   on: (cb: (e: SessionEvent) => void) => () => void;
+  /** Tokens spent by this session so far, summed across calls and fallback attempts. */
+  usage: () => AIUsage;
   destroy: () => Promise<void>;
+}
+
+/** Thrown when a run is cancelled or out of time. Never triggers a provider fallback. */
+export class AIRunStoppedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AIRunStoppedError';
+  }
 }
 
 type UserContentPart = TextPart | ImagePart;
@@ -51,15 +83,6 @@ type ProviderStateMap = Record<AIProviderId, ProviderState>;
 
 let singletonClient: AIClient | null = null;
 
-function loadEnv() {
-  if (process.env.NODE_ENV === 'test') return;
-  try {
-    require('dotenv').config({ path: '.env.local' });
-  } catch {
-    // no-op
-  }
-}
-
 function getFriendlyModelName(modelId: string): string {
   const mapping: Record<string, string> = {
     'big-pickle': 'Big Pickle',
@@ -73,24 +96,45 @@ function getFriendlyModelName(modelId: string): string {
   return mapping[modelId] || modelId;
 }
 
+/**
+ * Whether the user brought their own key. When they did, runs use only their keys: falling back
+ * to the platform key would spend platform money on a request that skipped the platform quota.
+ */
+export function usesOwnKeys(runtimeConfig?: AIRuntimeConfig): boolean {
+  return Object.values(runtimeConfig?.byokConfig ?? {}).some(Boolean);
+}
+
+/**
+ * Server-side model allowlist. The model picker only offers what the admin made visible, but the
+ * request body is caller-controlled, so the check has to happen here too: on the platform's keys
+ * a model must be the provider default or one the admin listed. With the user's own key any model
+ * the provider accepts is fine — they pay for it.
+ */
+export function isModelPermitted(runtimeConfig: AIRuntimeConfig | undefined, providerId: AIProviderId, model: string): boolean {
+  if (runtimeConfig?.byokConfig?.[providerId]) return true;
+  const provider = runtimeConfig?.adminConfig.providers[providerId] ?? DEFAULT_AI_ADMIN_CONFIG.providers[providerId];
+  return model === provider.defaultModel || provider.visibleModels.includes(model) || provider.customModels.includes(model);
+}
+
 function buildProviderStateMap(runtimeConfig?: AIRuntimeConfig): ProviderStateMap {
   const admin = runtimeConfig?.adminConfig.providers;
   const byok = runtimeConfig?.byokConfig;
-  const requestedGatewayModel = admin?.gateway?.defaultModel || process.env.AI_GATEWAY_MODEL || 'claude-sonnet-4-6';
+  const ownKeysOnly = usesOwnKeys(runtimeConfig);
+  const requestedGatewayModel = admin?.gateway?.defaultModel || process.env.AI_GATEWAY_MODEL || DEFAULT_PROVIDER_MODELS.gateway;
 
-  const requestedOpenCodeModel = admin?.opencode?.defaultModel || process.env.OPENCODE_MODEL || 'deepseek-v4-flash-free';
+  const requestedOpenCodeModel = admin?.opencode?.defaultModel || process.env.OPENCODE_MODEL || DEFAULT_PROVIDER_MODELS.opencode;
   const requestedOpenCodeFallback = process.env.OPENCODE_FALLBACK_MODEL;
 
   return {
     gateway: {
       enabled: admin?.gateway?.enabled ?? true,
-      apiKey: byok?.gateway || process.env.AI_GATEWAY_API_KEY,
-      defaultModel: isAllowedProviderModel('gateway', requestedGatewayModel) ? requestedGatewayModel : 'claude-sonnet-4-6',
+      apiKey: ownKeysOnly ? byok?.gateway : process.env.AI_GATEWAY_API_KEY,
+      defaultModel: isAllowedProviderModel('gateway', requestedGatewayModel) ? requestedGatewayModel : DEFAULT_PROVIDER_MODELS.gateway,
     },
     opencode: {
       enabled: admin?.opencode?.enabled ?? true,
-      apiKey: byok?.opencode || process.env.OPENCODE_API_KEY,
-      defaultModel: isAllowedProviderModel('opencode', requestedOpenCodeModel) ? requestedOpenCodeModel : 'deepseek-v4-flash-free',
+      apiKey: ownKeysOnly ? byok?.opencode : process.env.OPENCODE_API_KEY,
+      defaultModel: isAllowedProviderModel('opencode', requestedOpenCodeModel) ? requestedOpenCodeModel : DEFAULT_PROVIDER_MODELS.opencode,
       fallbackModel: requestedOpenCodeFallback && isAllowedProviderModel('opencode', requestedOpenCodeFallback)
         ? requestedOpenCodeFallback
         : undefined,
@@ -139,7 +183,9 @@ function buildFallbackChain(runtimeConfig?: AIRuntimeConfig, opts?: { model?: st
   const order: AIProviderId[] = configuredOrder && configuredOrder.length > 0
     ? configuredOrder
     : ['gateway', 'opencode'];
-  const requested = resolveSelectedAIModel(opts?.model, opts?.providerId);
+  const resolved = resolveSelectedAIModel(opts?.model, opts?.providerId);
+  // A model outside the allowlist is ignored rather than rejected: the run proceeds on the defaults.
+  const requested = resolved && isModelPermitted(runtimeConfig, resolved.providerId, resolved.model) ? resolved : undefined;
   const prioritized = requested
     ? [requested.providerId, ...order.filter((providerId) => providerId !== requested.providerId)]
     : order;
@@ -199,13 +245,17 @@ function isRetryableError(msg: string): boolean {
 async function runWithFallbackChain<T>(
   chain: ProviderStep[],
   task: (step: ProviderStep) => Promise<T>,
-  listeners: Array<(event: SessionEvent) => void>
+  listeners: Array<(event: SessionEvent) => void>,
+  checkStopped: () => void = () => {}
 ): Promise<T> {
   let lastError: unknown;
 
   for (let stepIndex = 0; stepIndex < chain.length; stepIndex++) {
-    const step = chain[stepIndex];
+    const step = chain[stepIndex]!;
     for (let attempt = 1; attempt <= step.maxAttempts; attempt++) {
+      // Cancellation and the time budget end the chain; they are not provider failures to fall
+      // back from.
+      checkStopped();
       try {
         listeners.forEach((listener) => listener({
           type: 'provider.selected',
@@ -218,6 +268,7 @@ async function runWithFallbackChain<T>(
         }));
         return await task(step);
       } catch (err) {
+        if (err instanceof AIRunStoppedError) throw err;
         lastError = err;
         const message = err instanceof Error ? err.message : String(err);
         const retryNote = attempt < step.maxAttempts ? ` (retry ${attempt}/${step.maxAttempts})` : '';
@@ -248,8 +299,6 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
   const canUseSingleton = !runtimeConfig && process.env.NODE_ENV !== 'test';
   if (singletonClient && canUseSingleton) return singletonClient;
 
-  loadEnv();
-
   if (!hasConfiguredProvider(runtimeConfig)) {
     throw new Error('At least one AI provider key must be configured (AI Gateway or OpenCode).');
   }
@@ -258,11 +307,44 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
     createSession: async (opts) => {
       const listeners: Array<(event: SessionEvent) => void> = [];
       const controllers: Set<AbortController> = new Set();
+      const usage: AIUsage = { inputTokens: 0, outputTokens: 0, calls: 0 };
       const chain = buildFallbackChain(runtimeConfig, { model: opts?.model, providerId: opts?.providerId });
 
       if (chain.length === 0) {
         throw new Error('No enabled provider with a valid key is available.');
       }
+
+      const checkStopped = () => {
+        if (opts?.signal?.aborted) throw new AIRunStoppedError('The run was cancelled.');
+        if (opts?.deadline !== undefined && Date.now() >= opts.deadline) {
+          throw new AIRunStoppedError('The run exceeded its time budget.');
+        }
+      };
+
+      /** A controller that aborts on timeout, on the caller's signal, and at the deadline. */
+      const startCall = (timeout: number) => {
+        const controller = new AbortController();
+        controllers.add(controller);
+        const budget = opts?.deadline === undefined ? timeout : Math.min(timeout, Math.max(0, opts.deadline - Date.now()));
+        const timeoutId = setTimeout(() => controller.abort(), budget);
+        const onAbort = () => controller.abort();
+        opts?.signal?.addEventListener('abort', onAbort);
+        return {
+          controller,
+          done: () => {
+            clearTimeout(timeoutId);
+            opts?.signal?.removeEventListener('abort', onAbort);
+            controllers.delete(controller);
+          },
+        };
+      };
+
+      const recordUsage = (model: string, value?: { inputTokens?: number; outputTokens?: number }) => {
+        usage.calls += 1;
+        usage.model = model;
+        usage.inputTokens += value?.inputTokens ?? 0;
+        usage.outputTokens += value?.outputTokens ?? 0;
+      };
 
       const session: AIClientSession = {
         on(cb: (event: SessionEvent) => void) {
@@ -275,9 +357,7 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
         async sendAndWait({ prompt, images, maxOutputTokens }: { prompt: string; images?: Array<{ url: string }>; maxOutputTokens?: number }, timeout = 180000) {
           return runWithFallbackChain(chain, async (step) => {
-            const controller = new AbortController();
-            controllers.add(controller);
-            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            const call = startCall(timeout);
 
             try {
               const messages: ModelMessage[] = [];
@@ -294,18 +374,20 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
                 model: step.createModel() as never,
                 system: opts?.systemMessage?.content,
                 messages,
-                maxOutputTokens,
+                maxOutputTokens: maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
                 maxRetries: 0,
-                abortSignal: controller.signal,
+                abortSignal: call.controller.signal,
                 providerOptions: step.providerId === 'opencode'
                   ? { opencode: { reasoningEffort: 'none', textVerbosity: 'low' } }
                   : undefined,
               });
 
+              recordUsage(step.model, result.usage);
               const content = result.text || '';
               listeners.forEach((listener) => listener({ type: 'assistant.message', data: { content } }));
               return { data: { content } };
             } catch (err: unknown) {
+              checkStopped();
               let message = err instanceof Error ? err.message : String(err);
               const isAbort = err instanceof Error && err.name === 'AbortError';
 
@@ -319,35 +401,42 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
               throw new Error(message);
             } finally {
-              clearTimeout(timeoutId);
-              controllers.delete(controller);
+              call.done();
             }
-          }, listeners);
+          }, listeners, checkStopped);
         },
 
         async stream({ prompt }: { prompt: string }) {
           return runWithFallbackChain(chain, async (step) => {
+            // Only the connection phase is timed; the caller's signal keeps working for the
+            // whole stream because the controller stays registered until destroy().
             const controller = new AbortController();
             controllers.add(controller);
+            opts?.signal?.addEventListener('abort', () => controller.abort(), { once: true });
             const streamTimeout = setTimeout(() => controller.abort(), 60000);
 
             try {
-              const result = await streamText({
+              const result = streamText({
                 model: step.createModel() as never,
                 system: opts?.systemMessage?.content,
                 messages: [{ role: 'user', content: prompt }],
+                maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
                 maxRetries: 0,
                 abortSignal: controller.signal,
+                onFinish: (event) => recordUsage(step.model, event.usage),
               });
-
-              clearTimeout(streamTimeout);
               return result.textStream;
             } catch (err: unknown) {
-              clearTimeout(streamTimeout);
               const message = err instanceof Error ? err.message : String(err);
               throw new Error(message);
+            } finally {
+              clearTimeout(streamTimeout);
             }
-          }, listeners);
+          }, listeners, checkStopped);
+        },
+
+        usage() {
+          return { ...usage };
         },
 
         async destroy() {
@@ -366,4 +455,3 @@ export async function getAIClient(runtimeConfig?: AIRuntimeConfig): Promise<AICl
 
   return client;
 }
-

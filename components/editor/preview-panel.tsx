@@ -25,6 +25,8 @@ interface PreviewPanelProps {
   isDeployingPreview?: boolean
   onDeployLivePreview?: () => void | Promise<void>
   onDeleteLivePreview?: () => void | Promise<void>
+  /** A link inside the preview was clicked; `path` is relative to the project root. */
+  onNavigate?: (path: string) => void
 }
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile'
@@ -54,6 +56,7 @@ export default function PreviewPanel({
   isDeployingPreview,
   onDeployLivePreview,
   onDeleteLivePreview,
+  onNavigate,
 }: PreviewPanelProps) {
   const [mode, setMode] = React.useState<ViewportMode>('desktop')
   const [refreshKey, setRefreshKey] = React.useState(0)
@@ -70,6 +73,18 @@ export default function PreviewPanel({
   const lastFilesRef = React.useRef<ProjectFile[]>(files)
   const vfsVersionRef = React.useRef(0)
   const vfsInitializedRef = React.useRef(false)
+  /**
+   * The document the frame is showing. Deliberately not `previewHtml` itself: srcDoc changes
+   * reload the frame, and previewHtml is rebuilt on every keystroke, which reloaded the preview
+   * (and threw away the CSS hot-swap below) while typing. Style-only edits never touch it; other
+   * edits replace it once typing pauses.
+   */
+  const [frameDoc, setFrameDoc] = React.useState(previewHtml)
+  const hotSwappedRef = React.useRef(false)
+  const onNavigateRef = React.useRef(onNavigate)
+  React.useEffect(() => {
+    onNavigateRef.current = onNavigate
+  }, [onNavigate])
 
   const hasWorker = files.some((file) => file.fileType === 'worker')
 
@@ -86,6 +101,7 @@ export default function PreviewPanel({
   React.useEffect(() => {
     const changed = files.filter((file, index) => file.content !== lastFilesRef.current[index]?.content)
     const stylesOnly = changed.length > 0 && changed.every((file) => file.fileType === 'style')
+    hotSwappedRef.current = stylesOnly && Boolean(iframeRef.current?.contentWindow)
 
     if (stylesOnly && iframeRef.current?.contentWindow) {
       for (const style of changed) {
@@ -112,9 +128,26 @@ export default function PreviewPanel({
     lastFilesRef.current = files
   }, [files])
 
+  // Runs after the files effect above, so it knows whether that change was hot-swapped.
+  React.useEffect(() => {
+    if (hotSwappedRef.current) return
+    const timer = window.setTimeout(() => setFrameDoc(previewHtml), 400)
+    return () => window.clearTimeout(timer)
+  }, [previewHtml])
+
   React.useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type !== 'element-selected') return
+      // Only this preview frame may drive the editor. Any other window (an opener, another
+      // embed) can post messages too.
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return
+      const data: unknown = event.data
+      if (!data || typeof data !== 'object') return
+      const message = data as { type?: unknown; path?: unknown }
+      if (message.type === 'navigate' && typeof message.path === 'string') {
+        onNavigateRef.current?.(message.path.replace(/^\/+/, ''))
+        return
+      }
+      if (message.type !== 'element-selected') return
       const { path, elementHtml, x, y, selector } = event.data
       const frame = iframeRef.current
       if (!frame) return
@@ -223,7 +256,7 @@ export default function PreviewPanel({
           <iframe
             key={refreshKey}
             ref={iframeRef}
-            {...(livePreviewUrl ? { src: livePreviewUrl } : { srcDoc: previewHtml })}
+            {...(livePreviewUrl ? { src: livePreviewUrl } : { srcDoc: frameDoc })}
             className="size-full border-0"
             sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
             title="Project preview"

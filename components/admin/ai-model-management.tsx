@@ -15,7 +15,6 @@ import {
   emptyProviderRecord,
   sanitizeAIAdminConfig,
 } from '@/lib/ai-admin-config';
-import { setStoredAIAdminConfig } from '@/lib/ai-admin-client';
 
 type ProviderCatalogModel = {
   id: string;
@@ -165,7 +164,7 @@ export default function AIModelManagement() {
       const data = await resp.json();
       const sanitized = sanitizeAIAdminConfig(data.adminConfig ?? adminConfig);
       setAdminConfig(sanitized);
-      setStoredAIAdminConfig(sanitized);      setSaveMessage('Saved');
+      setSaveMessage('Saved');
       toast.success('Saved', {
         id: toastId,
         description: 'Model visibility settings updated successfully.',

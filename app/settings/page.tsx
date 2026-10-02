@@ -27,6 +27,8 @@ import { ExternalLink, Eye, EyeOff, FlaskConical, KeyRound, Trash2 } from 'lucid
 import { AI_PROVIDER_IDS, PROVIDER_KEY_URLS, PROVIDER_LABELS, type AIProviderId, type ProviderCustomModelsConfig, emptyProviderRecord } from '@/lib/ai-admin-config';
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 import CloudflareConnect from '@/components/cloudflare-connect';
+import { AiQuota } from '@/components/ai-quota';
+import { readApiResponse } from '@/lib/api-fetch';
 
 type IntegrationStatus = {
   githubConnected: boolean;
@@ -120,15 +122,14 @@ export default function SettingsPage() {
   const persistBYOK = async (providerId: AIProviderId, key: string) => {
     setSaveState((prev) => ({ ...prev, [providerId]: 'saving' }));
     try {
-      const resp = await fetch('/api/ai/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ byokConfig: { [providerId]: key } }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save API key');
-      }
+      const data = await readApiResponse<{ byokStatus?: Record<string, boolean> }>(
+        await fetch('/api/ai/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ byokConfig: { [providerId]: key } }),
+        }),
+        'Failed to save API key'
+      );
       if (data.byokStatus && typeof data.byokStatus === 'object') {
         setByokStatus(data.byokStatus);
       }
@@ -442,6 +443,15 @@ export default function SettingsPage() {
           </Section>
 
           <Section
+            id="ai-usage"
+            title="AI usage"
+            description="Builds, edits and questions on the shared keys count against a daily and a monthly allowance."
+          >
+            <AiQuota hasOwnKey={AI_PROVIDER_IDS.some((providerId) => Boolean(byokStatus[providerId]))} />
+          </Section>
+
+          <Section
+            id="api-keys"
             title="Your own API keys"
             description="Optional. A key here is used instead of the shared one for that provider. Keys are stored encrypted and are never sent back to this page, which is why a saved key shows as present rather than as text."
           >

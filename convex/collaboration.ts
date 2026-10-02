@@ -33,6 +33,22 @@ export const createInvite = mutation({
   },
 });
 
+/** What an invitation grants, shown before the user decides to accept it. */
+export const getInvite = query({
+  // A string, not v.id: the value comes straight from the URL, and a malformed one should read
+  // as "invalid invitation" rather than throw a validation error.
+  args: { inviteId: v.string() },
+  handler: async (ctx, args) => {
+    await requireUserId(ctx);
+    const inviteId = ctx.db.normalizeId('projectInvites', args.inviteId);
+    const invite = inviteId ? await ctx.db.get(inviteId) : null;
+    if (!invite || invite.revokedAt || invite.expiresAt <= Date.now() || invite.useCount >= invite.maxUses) return null;
+    const project = await ctx.db.get(invite.projectId);
+    if (!project) return null;
+    return { projectName: project.projectName, role: invite.role, expiresAt: invite.expiresAt };
+  },
+});
+
 export const acceptInvite = mutation({
   args: { inviteId: v.id('projectInvites') },
   handler: async (ctx, args) => {
@@ -43,7 +59,10 @@ export const acceptInvite = mutation({
     if (!project) throw new Error('Project not found');
     if (project.userId === userId) return { projectName: project.projectName };
     const existing = await ctx.db.query('projectMembers').withIndex('by_project_user', (q) => q.eq('projectId', invite.projectId).eq('userId', userId)).first();
-    if (existing) await ctx.db.patch(existing._id, { role: invite.role });
+    // Never downgrade: accepting a viewer link must not strip an existing editor's access.
+    if (existing) {
+      if (existing.role === 'viewer' && invite.role === 'editor') await ctx.db.patch(existing._id, { role: invite.role });
+    }
     else await ctx.db.insert('projectMembers', { projectId: invite.projectId, userId, role: invite.role, createdAt: Date.now() });
     await ctx.db.patch(invite._id, { useCount: invite.useCount + 1 });
     return { projectName: project.projectName };

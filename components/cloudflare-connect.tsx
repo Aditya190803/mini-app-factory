@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiResponse } from '@/lib/api-fetch'
 import * as React from 'react'
 import { Cloud, ExternalLink } from 'lucide-react'
 import { Button, Callout, Field, Input, StatusDot } from '@/components/kit'
@@ -55,8 +56,7 @@ export default function CloudflareConnect({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: value }),
       })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'Could not save that token')
+      const data = await readApiResponse(response, 'Could not save that token');
       setToken('')
       onConnected?.(data.account)
     } catch (cause) {
@@ -71,8 +71,7 @@ export default function CloudflareConnect({
     setError('')
     try {
       const response = await fetch('/api/integrations/cloudflare/accounts')
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'Could not load your Cloudflare accounts')
+      const data = await readApiResponse(response, 'Could not load your Cloudflare accounts');
       setAccounts(data.accounts || [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load your Cloudflare accounts')
@@ -90,8 +89,7 @@ export default function CloudflareConnect({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId }),
       })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || 'Could not switch Cloudflare account')
+      const data = await readApiResponse(response, 'Could not switch Cloudflare account');
       setAccounts([])
       onConnected?.(data.account)
     } catch (cause) {

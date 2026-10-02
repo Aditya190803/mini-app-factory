@@ -1,16 +1,31 @@
 import { z } from "zod";
+import type { Doc } from "@/convex/_generated/dataModel";
+
+/**
+ * The one definition of a project as the Next.js side sees it.
+ *
+ * The shape used to be written out three times — a TypeScript interface in lib/projects.ts, this
+ * zod schema, and the Convex schema — and they had drifted (this schema had no `globalSeo`, so it
+ * was always undefined on the server). Now the zod schema is the definition, `ProjectMetadata`
+ * is inferred from it, and the assertion below fails to compile if a field here stops matching
+ * the Convex schema, which stays the source of truth for storage.
+ */
+const seoEntry = z.object({
+  path: z.string(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  ogImage: z.string().optional(),
+});
 
 const projectRecordSchema = z.object({
   projectName: z.string(),
   prompt: z.string(),
   createdAt: z.coerce.number(),
   updatedAt: z.coerce.number().optional(),
-  status: z.union([
-    z.literal('pending'),
-    z.literal('generating'),
-    z.literal('completed'),
-    z.literal('error'),
-  ]),
+  status: z.enum(['pending', 'generating', 'completed', 'error']),
+  accessRole: z.enum(['owner', 'editor', 'viewer']).optional(),
+  target: z.enum(['static', 'edge']).optional(),
+  filesVersion: z.number().optional(),
   html: z.string().optional(),
   isPublished: z.boolean().optional(),
   userId: z.string().optional(),
@@ -22,6 +37,8 @@ const projectRecordSchema = z.object({
   selectedModel: z.string().optional(),
   providerId: z.string().optional(),
   favicon: z.string().optional(),
+  globalSeo: z.object({ siteName: z.string().optional(), description: z.string().optional(), ogImage: z.string().optional() }).optional(),
+  seoData: z.array(seoEntry).optional(),
   deploymentUrl: z.string().optional(),
   repoUrl: z.string().optional(),
   deployProvider: z.string().optional(),
@@ -32,74 +49,37 @@ const projectRecordSchema = z.object({
   cloudflareD1DatabaseId: z.string().optional(),
   cloudflareD1DatabaseName: z.string().optional(),
   cloudflareCustomDomain: z.string().optional(),
-  cloudflareEnvVarsEncrypted: z.string().optional(),
   cloudflareResourcesJson: z.string().optional(),
   cloudflarePreviewProjectName: z.string().optional(),
   cloudflarePreviewDeploymentId: z.string().optional(),
   cloudflarePreviewUrl: z.string().optional(),
   cloudflarePreviewResourcesJson: z.string().optional(),
   cloudflarePreviewExpiresAt: z.coerce.number().optional(),
-  seoData: z.array(z.object({
-    path: z.string(),
-    title: z.string().optional(),
-    description: z.string().optional(),
-    ogImage: z.string().optional(),
-  })).optional(),
-}).passthrough();
+});
+
+type ProjectRecord = z.infer<typeof projectRecordSchema>;
+
+// Compile-time drift check: every field here must exist on the Convex document with a compatible
+// type (accessRole is added by the getProject query, not stored).
+type StoredFields = Omit<ProjectRecord, 'accessRole'>;
+type AssertAssignable<T extends Partial<Record<keyof StoredFields, unknown>>> = T;
+export type _ProjectSchemaInSync = AssertAssignable<{ [K in keyof StoredFields]: Doc<'projects'>[K] }>;
+const _storedMatchesConvex: (doc: Doc<'projects'>) => Partial<StoredFields> = (doc) => doc;
+void _storedMatchesConvex;
+
+export type ProjectMetadata = Omit<ProjectRecord, 'projectName'> & { name: string };
 
 export const projectFileRecordSchema = z.object({
   path: z.string(),
   content: z.string(),
-  language: z.union([z.literal('html'), z.literal('css'), z.literal('javascript'), z.literal('sql'), z.literal('json')]),
-  fileType: z.union([
-    z.literal('page'),
-    z.literal('partial'),
-    z.literal('style'),
-    z.literal('script'),
-    z.literal('worker'),
-    z.literal('migration'),
-    z.literal('config'),
-  ]),
+  language: z.enum(['html', 'css', 'javascript', 'sql', 'json']),
+  fileType: z.enum(['page', 'partial', 'style', 'script', 'worker', 'migration', 'config']),
   createdAt: z.coerce.number().optional(),
   updatedAt: z.coerce.number().optional(),
 }).passthrough();
 
-export function normalizeProjectMetadata(record: unknown) {
-  const parsed = projectRecordSchema.parse(record);
-  return {
-    name: parsed.projectName,
-    prompt: parsed.prompt,
-    createdAt: parsed.createdAt,
-    updatedAt: parsed.updatedAt,
-    status: parsed.status,
-    html: parsed.html,
-    isPublished: parsed.isPublished,
-    userId: parsed.userId,
-    isMultiPage: parsed.isMultiPage,
-    pageCount: parsed.pageCount,
-    description: parsed.description,
-    referenceUrl: parsed.referenceUrl,
-    projectInstructions: parsed.projectInstructions,
-    selectedModel: parsed.selectedModel,
-    providerId: parsed.providerId,
-    favicon: parsed.favicon,
-    deploymentUrl: parsed.deploymentUrl,
-    repoUrl: parsed.repoUrl,
-    deployProvider: parsed.deployProvider,
-    deployedAt: parsed.deployedAt,
-    netlifySiteName: parsed.netlifySiteName,
-    cloudflareProjectName: parsed.cloudflareProjectName,
-    cloudflareDeploymentId: parsed.cloudflareDeploymentId,
-    cloudflareD1DatabaseId: parsed.cloudflareD1DatabaseId,
-    cloudflareD1DatabaseName: parsed.cloudflareD1DatabaseName,
-    cloudflareCustomDomain: parsed.cloudflareCustomDomain,
-    cloudflareEnvVarsEncrypted: parsed.cloudflareEnvVarsEncrypted,
-    cloudflareResourcesJson: parsed.cloudflareResourcesJson,
-    cloudflarePreviewProjectName: parsed.cloudflarePreviewProjectName,
-    cloudflarePreviewDeploymentId: parsed.cloudflarePreviewDeploymentId,
-    cloudflarePreviewUrl: parsed.cloudflarePreviewUrl,
-    cloudflarePreviewResourcesJson: parsed.cloudflarePreviewResourcesJson,
-    cloudflarePreviewExpiresAt: parsed.cloudflarePreviewExpiresAt,
-    seoData: parsed.seoData,
-  };
+/** Validate a Convex project record and rename `projectName` to `name`. Unknown fields are dropped. */
+export function normalizeProjectMetadata(record: unknown): ProjectMetadata {
+  const { projectName, ...rest } = projectRecordSchema.parse(record);
+  return { name: projectName, ...rest };
 }

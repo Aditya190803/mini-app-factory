@@ -1,3 +1,5 @@
+import 'server-only';
+
 import * as cheerio from 'cheerio';
 import * as csstree from 'css-tree';
 import path from 'path';
@@ -180,7 +182,10 @@ export async function executeTool(
   args: Record<string, unknown>,
   files: ProjectFile[]
 ): Promise<ToolResult> {
-  const fileList = [...files];
+  // Copy the file objects, not just the array: several handlers assign `file.content` in place,
+  // so a failing batchEdit used to leave its earlier steps applied to the caller's files, and the
+  // retry then applied them twice.
+  const fileList = files.map((file) => ({ ...file }));
 
   const validated = validateToolCall(toolName, args);
   if (!validated.success) {
@@ -257,7 +262,7 @@ function handleReplaceContent(args: { file: string; selector: string; oldContent
     const parseOpeningTag = (value: string) => {
       const match = value.trim().match(/^<([a-zA-Z][\w:-]*)([^>]*)>$/);
       if (!match) return null;
-      const tag = match[1].toLowerCase();
+      const tag = match[1]!.toLowerCase();
       const attrsPart = match[2] || '';
       try {
         const fragment = cheerio.load(`<${tag}${attrsPart}></${tag}>`, null, false);
@@ -409,7 +414,7 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
 
     if (position === 'prepend' || position === 'append') {
       const ascending = [...ranges].sort((a, b) => a.start - b.start);
-      const anchor = ascending[0];
+      const anchor = ascending[0]!;
       const ruleText = anchor.text;
       
       const firstBrace = ruleText.indexOf('{');
@@ -434,7 +439,7 @@ function handleInsertContent(args: { file: string; position: 'before' | 'after' 
     }
 
     const ascending = [...ranges].sort((a, b) => a.start - b.start);
-    const anchor = ascending[0];
+    const anchor = ascending[0]!;
     const insertion = content.endsWith('\n') ? content : `${content}\n`;
 
     if (position === 'before') {

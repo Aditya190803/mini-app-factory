@@ -78,11 +78,6 @@ describe('Convex authorization', () => {
       ).rejects.toThrow();
     });
 
-    test('cannot generate an upload URL', async () => {
-      const t = setup();
-      await expect(t.mutation(api.uploads.generateUploadUrl, {})).rejects.toThrow();
-    });
-
     test('gets null for an unpublished project', async () => {
       const t = setup();
       await makeProject(t, ALICE, 'alice-private');
@@ -274,7 +269,7 @@ describe('Convex authorization', () => {
       const second = await t
         .withIdentity(ALICE)
         .query(api.projects.getProject, { projectName: 'alice-second' });
-      const fileId = await t.withIdentity(ALICE).mutation(api.files.saveFile, {
+      const { fileId } = await t.withIdentity(ALICE).mutation(api.files.saveFile, {
         projectId: first!._id,
         path: 'index.html',
         content: '<h1>x</h1>',
@@ -285,7 +280,7 @@ describe('Convex authorization', () => {
       await expect(
         t.withIdentity(ALICE).mutation(api.files.recordEdit, {
           projectId: second!._id,
-          fileId,
+          fileId: fileId!,
           operation: '{}',
           previousContent: '<h1>x</h1>',
         })
@@ -411,8 +406,8 @@ describe('Convex authorization', () => {
 
       const entries = await t.withIdentity(ADMIN).query(api.aiSettings.listAdminAudit, {});
       expect(entries).toHaveLength(1);
-      expect(entries[0].userId).toBe(ADMIN.subject);
-      expect(entries[0].email).toBe(ADMIN.email);
+      expect(entries[0]!.userId).toBe(ADMIN.subject);
+      expect(entries[0]!.email).toBe(ADMIN.email);
     });
   });
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stackServerApp } from '@/stack/server';
 import { assembleFullPage } from '@/lib/page-builder';
-import { assertCanAccessProject } from '@/lib/project-access';
+import { assertProjectRole } from '@/lib/project-access';
 import { getFile, getFiles, getProject } from '@/lib/projects';
 import { userContentHeaders } from '@/lib/user-content-headers';
 
@@ -16,7 +16,7 @@ export async function GET(
 
   const { projectName, path: segments } = await params;
   const projectRecord = await getProject(projectName);
-  const access = assertCanAccessProject(projectRecord, user?.id);
+  const access = assertProjectRole(projectRecord, user?.id, 'viewer');
   if (!access.ok) {
     const status = access.status === 404 ? 404 : access.status;
     return new NextResponse(access.message, { status });

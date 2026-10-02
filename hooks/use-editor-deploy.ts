@@ -17,6 +17,8 @@ import { DEFAULT_DEPLOY_SURFACE } from '@/lib/targets';
 import type { FunctionArgs } from 'convex/server';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
+import { readApiResponse } from '@/lib/api-fetch';
+import { track } from '@vercel/analytics';
 
 export type DeployOption = 'github-netlify' | 'github-only' | 'cloudflare' | 'maf-hosted';
 
@@ -51,6 +53,11 @@ type UseEditorDeployArgs = {
   addDeploymentHistory: (
     args: FunctionArgs<typeof api.deployments.addDeploymentHistory>
   ) => Promise<unknown>;
+  /**
+   * Save any unsaved editor changes. Deploys read the stored files, so without this the last
+   * couple of seconds of typing (the autosave debounce) silently missed the deploy.
+   */
+  flushSave?: () => Promise<void>;
 };
 
 export function useEditorDeploy(args: UseEditorDeployArgs) {
@@ -63,6 +70,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     saveProject,
     publishProject,
     addDeploymentHistory,
+    flushSave,
   } = args;
 
   const [isDeployDialogOpen, setIsDeployDialogOpen] = useState(false);
@@ -75,6 +83,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     cloudflareOAuthConfigured: false,
     cloudflareAccountName: undefined as string | undefined,
   });
+  /** False until the first status check answers, so the dialog does not flash "not connected". */
+  const [integrationStatusLoaded, setIntegrationStatusLoaded] = useState(false);
   const [githubOrgs, setGithubOrgs] = useState<string[]>([]);
   const [githubOrg, setGithubOrg] = useState('personal');
   const [repoVisibility, setRepoVisibility] = useState<'private' | 'public'>('private');
@@ -153,6 +163,8 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       });
     } catch {
       setIntegrationStatus(disconnected);
+    } finally {
+      setIntegrationStatusLoaded(true);
     }
   }, []);
 
@@ -225,16 +237,22 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setResourcePlan(null);
   }, [deployOption]);
 
+  // Seed the result from the stored deployment when the dialog opens. It depended on the whole
+  // projectData object, so every unrelated Convex update (an autosave bumping updatedAt) replaced
+  // a fresh result, deployment id and preview URL included, with the stored subset.
+  const storedRepoUrl = projectData?.repoUrl;
+  const storedDeploymentUrl = projectData?.deploymentUrl;
+  const storedNetlifySiteName = projectData?.netlifySiteName;
   useEffect(() => {
-    if (!isDeployDialogOpen || !projectData) return;
-    if (projectData.repoUrl || projectData.deploymentUrl || projectData.netlifySiteName) {
-      setDeployResult({
-        repoUrl: projectData.repoUrl ?? undefined,
-        deploymentUrl: projectData.deploymentUrl ?? undefined,
-        netlifySiteName: projectData.netlifySiteName ?? undefined,
+    if (!isDeployDialogOpen) return;
+    if (storedRepoUrl || storedDeploymentUrl || storedNetlifySiteName) {
+      setDeployResult((prev) => prev ?? {
+        repoUrl: storedRepoUrl ?? undefined,
+        deploymentUrl: storedDeploymentUrl ?? undefined,
+        netlifySiteName: storedNetlifySiteName ?? undefined,
       });
     }
-  }, [isDeployDialogOpen, projectData?.repoUrl, projectData?.deploymentUrl, projectData?.netlifySiteName, projectData]);
+  }, [isDeployDialogOpen, storedRepoUrl, storedDeploymentUrl, storedNetlifySiteName]);
 
   useEffect(() => {
     if (!repoValidation.valid) {
@@ -347,11 +365,15 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
       window.location.href = '/handler/sign-in';
       return;
     }
+    // Open the tab before any await: browsers only allow window.open inside the click's user
+    // activation, and Safari and Firefox blocked it once it ran after the publish round-trips.
+    const popup = window.open('about:blank', '_blank');
     setIsDeploying(true);
     setDeployError(null);
     setDeployResult(null);
     setDeployNotice(null);
     try {
+      await flushSave?.();
       const resultsPath = `/results/${projectName}`;
       const resultsUrl = `${window.location.origin}${resultsPath}`;
       await persistDeployMeta({ deploymentUrl: resultsUrl, deployProvider: 'maf-hosted', isPublished: true });
@@ -364,8 +386,10 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
           deploymentUrl: resultsUrl,
         });
       }
-      window.open(resultsPath, '_blank');
+      if (popup) popup.location.href = resultsPath;
+      else window.open(resultsPath, '_blank');
     } catch (err) {
+      popup?.close();
       const normalized = normalizeDeployError(err instanceof Error ? err.message : 'Publish failed');
       setDeployError(normalized);
       toast.error('Deploy failed', { description: normalized });
@@ -379,6 +403,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     publishProject,
     projectData?._id,
     addDeploymentHistory,
+    flushSave,
   ]);
 
   const runDeploy = useCallback(async (confirmCloudflareResources = false) => {
@@ -397,6 +422,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setDeployResult(null);
     setDeployNotice(null);
     try {
+      await flushSave?.();
       const data = await performDeploy(
         {
           projectName,
@@ -412,6 +438,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         },
         (status) => setDeployStatus(status)
       );
+      track('deployed', { provider: deployOption });
       setDeployResult({
         repoUrl: data.repoUrl,
         deploymentUrl: data.deploymentUrl,
@@ -461,6 +488,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     projectData?._id,
     addDeploymentHistory,
     fetchIntegrationStatus,
+    flushSave,
   ]);
 
   const handleDeploy = useCallback(async () => {
@@ -481,8 +509,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, cloudflareProjectName: normalizedCloudflareProjectName }),
       });
-      const plan = await response.json();
-      if (!response.ok) throw new Error(plan.error || 'Unable to plan Cloudflare resources');
+      const plan = await readApiResponse(response, 'Unable to plan Cloudflare resources');
       if (plan.needsConfirmation) {
         setResourcePlan(plan.actions);
         return;
@@ -538,6 +565,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
     setGithubOrg,
     githubOrgs,
     integrationStatus,
+    integrationStatusLoaded,
     repoCheck,
     deployResult,
     deployError,
