@@ -28,6 +28,7 @@ import { AI_PROVIDER_IDS, PROVIDER_KEY_URLS, PROVIDER_LABELS, type AIProviderId,
 import { purgeLegacyStoredBYOK } from '@/lib/ai-admin-client';
 import CloudflareConnect from '@/components/cloudflare-connect';
 import { AiQuota } from '@/components/ai-quota';
+import { readApiResponse } from '@/lib/api-fetch';
 
 type IntegrationStatus = {
   githubConnected: boolean;
@@ -121,15 +122,14 @@ export default function SettingsPage() {
   const persistBYOK = async (providerId: AIProviderId, key: string) => {
     setSaveState((prev) => ({ ...prev, [providerId]: 'saving' }));
     try {
-      const resp = await fetch('/api/ai/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ byokConfig: { [providerId]: key } }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save API key');
-      }
+      const data = await readApiResponse<{ byokStatus?: Record<string, boolean> }>(
+        await fetch('/api/ai/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ byokConfig: { [providerId]: key } }),
+        }),
+        'Failed to save API key'
+      );
       if (data.byokStatus && typeof data.byokStatus === 'object') {
         setByokStatus(data.byokStatus);
       }

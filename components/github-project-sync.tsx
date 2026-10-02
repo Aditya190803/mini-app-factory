@@ -1,5 +1,6 @@
 'use client'
 
+import { readApiResponse } from '@/lib/api-fetch'
 import * as React from 'react'
 import { toast } from 'sonner'
 import { GitBranch, RefreshCw } from 'lucide-react'
@@ -45,8 +46,7 @@ export default function GitHubProjectSync({
             }
           : undefined
       )
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'The sync failed')
+      const data = await readApiResponse(response, 'The sync failed');
       setPreview(data)
       if (method === 'POST') {
         toast.success('Pulled from GitHub', {

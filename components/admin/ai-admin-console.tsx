@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input } from '@/components/kit';
 import RunFailures from '@/components/admin/run-failures';
+import { apiFetch } from '@/lib/api-fetch';
 import { TopBar } from '@/components/shell/top-bar';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
@@ -91,17 +92,12 @@ export default function AIAdminConsole() {
   const persist = async (nextConfig: typeof aiConfig) => {
     setSaveState('saving');
     try {
-      const resp = await fetch('/api/ai/settings', {
+      // apiFetch throws on a failed save. This used to fall through to "saved" on any status.
+      const data = await apiFetch<{ adminConfig?: typeof aiConfig }>('/api/ai/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminConfig: nextConfig }),
+        json: { adminConfig: nextConfig },
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.adminConfig) {
-          setAiConfig(data.adminConfig);
-        }
-      }
+      if (data.adminConfig) setAiConfig(data.adminConfig);
       void loadAudit();
       setSaveState('saved');
       setTimeout(() => setSaveState((prev) => (prev === 'saved' ? 'idle' : prev)), 1200);

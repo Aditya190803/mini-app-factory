@@ -64,3 +64,20 @@ export async function apiFetch<T>(
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+
+/**
+ * Parse a response that has already been fetched: the JSON body on success, an ApiRequestError
+ * (with the route's `error`, `code` and `requestId`) on failure. `fallback` is the message when the
+ * body carries none.
+ */
+// Typed like Response.json(): call sites read the fields they expect.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function readApiResponse<T = any>(response: Response, fallback?: string): Promise<T> {
+  if (!response.ok) {
+    const error = await readApiError(response);
+    if (fallback && error.message.startsWith('Request failed (')) error.message = fallback;
+    throw new ApiRequestError(error);
+  }
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}

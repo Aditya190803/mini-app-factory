@@ -17,6 +17,7 @@ import { DEFAULT_DEPLOY_SURFACE } from '@/lib/targets';
 import type { FunctionArgs } from 'convex/server';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
+import { readApiResponse } from '@/lib/api-fetch';
 
 export type DeployOption = 'github-netlify' | 'github-only' | 'cloudflare' | 'maf-hosted';
 
@@ -506,8 +507,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, cloudflareProjectName: normalizedCloudflareProjectName }),
       });
-      const plan = await response.json();
-      if (!response.ok) throw new Error(plan.error || 'Unable to plan Cloudflare resources');
+      const plan = await readApiResponse(response, 'Unable to plan Cloudflare resources');
       if (plan.needsConfirmation) {
         setResourcePlan(plan.actions);
         return;
