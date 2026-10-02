@@ -1,3 +1,5 @@
+import 'server-only';
+
 /** Thread-safe SSE writer for ReadableStream controllers. */
 export function createSSEWriter(
   controller: ReadableStreamDefaultController<Uint8Array>,

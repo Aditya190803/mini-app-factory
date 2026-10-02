@@ -1,3 +1,5 @@
+import 'server-only';
+
 /** Max text from Exa passed into generation prompts. */
 const EXA_TEXT_MAX_CHARS = 12_000;
 

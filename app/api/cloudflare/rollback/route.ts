@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { upstreamErrorResponse, apiError } from '@/lib/api-route';
 import { ensureCloudflarePagesProject, rollbackCloudflarePagesDeployment } from '@/lib/cloudflare';
 import { cloudflarePagesUrl } from '@/lib/cloudflare-deploy';
 import { parseCloudflareResourceState } from '@/lib/cloudflare-manifest';
@@ -13,17 +14,17 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid rollback target' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid rollback target', 'INVALID_REQUEST');
 
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   const { project } = access;
   if (!project.cloudflareProjectName) {
-    return Response.json({ error: 'Project has no Cloudflare deployment' }, { status: 400 });
+    return apiError(400, 'Project has no Cloudflare deployment', 'INVALID_REQUEST');
   }
   const integration = await getIntegrationTokens();
   if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) {
-    return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+    return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
   }
 
   try {
@@ -53,9 +54,6 @@ export async function POST(req: Request) {
     ];
     return Response.json({ deployment, notRolledBack });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : 'Rollback failed' },
-      { status: 400 }
-    );
+    return upstreamErrorResponse(error, 'Rollback failed');
   }
 }

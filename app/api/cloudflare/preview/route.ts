@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiError, upstreamErrorResponse } from '@/lib/api-route';
 import { deployProjectToCloudflare } from '@/lib/cloudflare-deploy';
 import { hasPreview, MAX_PREVIEWS_PER_USER, PREVIEW_TTL_MS, reapExpiredPreviews, teardownCloudflarePreview } from '@/lib/cloudflare-preview';
 import { normalizeCloudflareProjectName } from '@/lib/deploy-shared';
@@ -13,12 +14,12 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   const { project } = access;
   const [files, integration] = await Promise.all([getFiles(parsed.data.projectName), getIntegrationTokens()]);
-  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
   const token = integration.cloudflareApiToken;
   const accountId = integration.cloudflareAccountId;
 
@@ -44,17 +45,20 @@ export async function POST(request: Request) {
     return Response.json({ ...result, expiresAt: Date.now() + PREVIEW_TTL_MS });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Preview deployment failed';
-    return Response.json({ error: message, needsConfirmation: message.includes('requires confirmation') }, { status: 400 });
+    if (message.includes('requires confirmation')) {
+      return apiError(409, message, 'NEEDS_CONFIRMATION', { needsConfirmation: true });
+    }
+    return upstreamErrorResponse(error, 'Preview deployment failed');
   }
 }
 
 export async function DELETE(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   const integration = await getIntegrationTokens();
-  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
   const failures = await teardownCloudflarePreview({
     token: integration.cloudflareApiToken,
     accountId: integration.cloudflareAccountId,

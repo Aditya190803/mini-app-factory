@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { getProject, type ProjectMetadata } from '@/lib/projects';
 import { stackServerApp } from '@/stack/server';
 

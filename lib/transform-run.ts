@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { stripCodeFence } from '@/lib/utils';
 import { getAIClient, type AIClientSession } from '@/lib/ai-client';
 import { parseMultiFileOutput } from '@/lib/file-parser';

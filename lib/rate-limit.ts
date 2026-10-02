@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { api } from '@/convex/_generated/api';
 import type { RateLimitBucket } from '@/convex/rateLimits';
 

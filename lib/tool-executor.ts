@@ -1,3 +1,5 @@
+import 'server-only';
+
 import * as cheerio from 'cheerio';
 import * as csstree from 'css-tree';
 import path from 'path';

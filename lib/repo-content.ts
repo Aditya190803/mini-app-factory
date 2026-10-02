@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { getAIClient } from "@/lib/ai-client";
 
 const FALLBACK_ATTRIBUTION = "Made by [Mini App Factory](https://github.com/Aditya190803/mini-app-factory)";

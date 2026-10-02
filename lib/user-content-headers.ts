@@ -1,3 +1,5 @@
+import 'server-only';
+
 /**
  * Response headers for the routes that serve model-generated, user-controlled HTML/CSS/JS
  * (`/results/*` and `/preview/*`).

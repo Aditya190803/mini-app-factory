@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiError } from '@/lib/api-route';
 import { configureCloudflarePagesProject } from '@/lib/cloudflare';
 import { cloudflareEnvVarsContext, readCloudflareEnvVars } from '@/lib/cloudflare-deploy';
 import { getIntegrationTokens } from '@/lib/integrations';
@@ -19,7 +20,7 @@ const secretSchema = z.object({
 export async function GET(req: Request) {
   const projectName = new URL(req.url).searchParams.get('projectName') ?? '';
   if (!projectNameSchema.safeParse(projectName).success) {
-    return Response.json({ error: 'Invalid project name' }, { status: 400 });
+    return apiError(400, 'Invalid project name', 'INVALID_REQUEST');
   }
   const access = await requireProjectRole(projectName, 'owner');
   if (!access.ok) return access.response;
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const parsed = secretSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid secret' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid secret', 'INVALID_REQUEST');
 
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;

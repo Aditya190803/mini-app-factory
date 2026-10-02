@@ -1,4 +1,16 @@
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
+
+/**
+ * Load HTML as a full document. `cheerio/slim` (htmlparser2 only) keeps the editor bundle free of
+ * parse5 and undici, which the full `cheerio` entry pulled into the browser. Unlike parse5 it does
+ * not invent <html>/<head>/<body> for a fragment, so do that here: the code below injects styles,
+ * scripts and the preview bridge into head and body.
+ */
+function loadDocument(html: string) {
+  const $ = cheerio.load(html);
+  if ($('body').length > 0) return $;
+  return cheerio.load(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`);
+}
 
 export interface ProjectFile {
   path: string;
@@ -46,7 +58,7 @@ export function assembleFullPage(
   if (!pageFile) return '';
 
   const html = resolveIncludes(pageFile.content, files, isEditorPreview);
-  const $ = cheerio.load(html);
+  const $ = loadDocument(html);
 
   if (isEditorPreview) {
     $('body').attr('data-source-file', pagePath);
@@ -391,7 +403,7 @@ export function extractInlineAssets(html: string): {
   styles: string, 
   scripts: string 
 } {
-  const $ = cheerio.load(html);
+  const $ = loadDocument(html);
   let styles = '';
   let scripts = '';
 

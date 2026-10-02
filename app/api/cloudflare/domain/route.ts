@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { upstreamErrorResponse, apiError } from '@/lib/api-route';
 import { addCloudflarePagesDomain, getCloudflarePagesDomain, listCloudflareZones, removeCloudflarePagesDomain } from '@/lib/cloudflare';
 import { getIntegrationTokens } from '@/lib/integrations';
 import { updateCloudflareProjectConfig, type ProjectMetadata } from '@/lib/projects';
@@ -23,7 +24,7 @@ async function context(project: ProjectMetadata) {
 
 export async function GET(req: Request) {
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
-  if (!parsed.success) return Response.json({ error: 'Invalid project' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid project', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   try {
@@ -34,13 +35,13 @@ export async function GET(req: Request) {
       : null;
     return Response.json({ zones: zones.filter((zone) => zone.status === 'active' && zone.type === 'full'), domain });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to load domains' }, { status: 400 });
+    return upstreamErrorResponse(error, 'Unable to load domains');
   }
 }
 
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid project or domain' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid project or domain', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
 
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     const { project, token, accountId, pagesProjectName } = await context(access.project);
     const zones = await listCloudflareZones({ token, accountId });
     const zone = zones.find((candidate) => candidate.status === 'active' && candidate.type === 'full' && (parsed.data.domain === candidate.name || parsed.data.domain.endsWith(`.${candidate.name}`)));
-    if (!zone) return Response.json({ error: 'Choose a domain from an active zone in the connected Cloudflare account' }, { status: 400 });
+    if (!zone) return apiError(400, 'Choose a domain from an active zone in the connected Cloudflare account', 'INVALID_REQUEST');
     if (project.cloudflareCustomDomain && project.cloudflareCustomDomain !== parsed.data.domain) {
       await removeCloudflarePagesDomain({ token, accountId, projectName: pagesProjectName, domain: project.cloudflareCustomDomain });
     }
@@ -64,16 +65,13 @@ export async function POST(req: Request) {
     });
     return Response.json({ domain });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : 'Unable to add domain' },
-      { status: 400 }
-    );
+    return upstreamErrorResponse(error, 'Unable to add domain');
   }
 }
 
 export async function DELETE(req: Request) {
   const parsed = querySchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid project' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid project', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   try {
@@ -84,6 +82,6 @@ export async function DELETE(req: Request) {
     }
     return Response.json({ removed: true });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to remove domain' }, { status: 400 });
+    return upstreamErrorResponse(error, 'Unable to remove domain');
   }
 }

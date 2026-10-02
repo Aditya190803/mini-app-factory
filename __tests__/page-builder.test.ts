@@ -59,4 +59,13 @@ describe('page-builder', () => {
     const result = assembleFullPage('index.html', filesNoHead, 'my-project');
     expect(result).toContain('<head><base href="/results/my-project/"></head>');
   });
+  test('assembleFullPage gives a bare fragment a document, so styles and scripts still land', () => {
+    const html = assembleFullPage('index.html', [
+      { path: 'index.html', content: '<main>Fragment</main>', language: 'html', fileType: 'page' },
+      { path: 'styles.css', content: 'main { color: red; }', language: 'css', fileType: 'style' },
+    ], 'demo', undefined, true);
+    expect(html).toMatch(/<head>[\s\S]*main \{ color: red; \}[\s\S]*<\/head>/);
+    expect(html).toContain('<main>Fragment</main>');
+    expect(html).toContain('id="preview-bridge"');
+  });
 });

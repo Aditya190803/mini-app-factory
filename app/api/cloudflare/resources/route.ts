@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiError } from '@/lib/api-route';
 import { teardownCloudflareProduction } from '@/lib/cloudflare-preview';
 import { getIntegrationTokens } from '@/lib/integrations';
 import { requireProjectRole } from '@/lib/project-access';
@@ -16,18 +17,18 @@ const schema = z.object({
  */
 export async function DELETE(request: Request) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   if (parsed.data.confirmName !== access.project.name) {
-    return Response.json({ error: 'Type the project name to confirm' }, { status: 400 });
+    return apiError(400, 'Type the project name to confirm', 'INVALID_REQUEST');
   }
   if (!access.project.cloudflareProjectName && !access.project.cloudflareResourcesJson) {
-    return Response.json({ error: 'This project has no Cloudflare deployment' }, { status: 400 });
+    return apiError(400, 'This project has no Cloudflare deployment', 'INVALID_REQUEST');
   }
   const integration = await getIntegrationTokens();
   if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) {
-    return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+    return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
   }
   const failures = await teardownCloudflareProduction({
     token: integration.cloudflareApiToken,

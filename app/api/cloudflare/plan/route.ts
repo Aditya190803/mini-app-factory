@@ -1,4 +1,5 @@
 import { getFiles } from '@/lib/projects';
+import { upstreamErrorResponse, apiError } from '@/lib/api-route';
 import { requireProjectRole } from '@/lib/project-access';
 import { getIntegrationTokens } from '@/lib/integrations';
 import { normalizeCloudflareProjectName } from '@/lib/deploy-shared';
@@ -13,7 +14,7 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: 'Invalid request' }, { status: 400 });
+  if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
   const access = await requireProjectRole(parsed.data.projectName, 'owner');
   if (!access.ok) return access.response;
   const { project } = access;
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
       getIntegrationTokens(),
     ]);
     if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) {
-      return Response.json({ error: 'Cloudflare connection required' }, { status: 400 });
+      return apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED');
     }
 
     const cloudflareProjectName = normalizeCloudflareProjectName(
@@ -45,9 +46,6 @@ export async function POST(req: Request) {
       needsConfirmation: actions.some((action) => action.action === 'create'),
     });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : 'Unable to plan Cloudflare resources' },
-      { status: 400 }
-    );
+    return upstreamErrorResponse(error, 'Unable to plan Cloudflare resources');
   }
 }
