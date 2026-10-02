@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
@@ -8,6 +8,8 @@ export default defineConfig({
     // Cold runs spend ~45s just collecting modules (Next route handlers pull in a lot), which
     // pushed several route tests past the 5s default and made CI flaky. The same tests finish in
     // well under a second once warm — this is startup cost, not slow tests.
+    // Playwright owns e2e/.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     testTimeout: 30_000,
     coverage: {
       provider: 'v8',

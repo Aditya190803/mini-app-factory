@@ -16,17 +16,17 @@ function projectBuckets(resourcesJson?: string) {
 
 async function context(projectName: string, bucket: string) {
   const access = await requireProjectRole(projectName, 'owner');
-  if (!access.ok) return { error: access.response } as const;
-  if (!projectBuckets(access.project.cloudflareResourcesJson).includes(bucket)) return { error: Response.json({ error: 'Bucket is not bound to this project' }, { status: 403 }) } as const;
+  if (!access.ok) return { ok: false, error: access.response } as const;
+  if (!projectBuckets(access.project.cloudflareResourcesJson).includes(bucket)) return { ok: false, error: apiError(403, 'Bucket is not bound to this project', 'FORBIDDEN') } as const;
   const integration = await getIntegrationTokens();
-  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return { error: apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED') } as const;
-  return { token: integration.cloudflareApiToken, accountId: integration.cloudflareAccountId } as const;
+  if (!integration?.cloudflareApiToken || !integration.cloudflareAccountId) return { ok: false, error: apiError(400, 'Cloudflare connection required', 'CLOUDFLARE_NOT_CONNECTED') } as const;
+  return { ok: true, token: integration.cloudflareApiToken, accountId: integration.cloudflareAccountId } as const;
 }
 
 export async function GET(req: Request) {
   const parsed = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
   if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
-  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if ('error' in ctx) return ctx.error;
+  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if (!ctx.ok) return ctx.error;
   try {
     const params = new URLSearchParams({ per_page: '200' });
     if (parsed.data.prefix) params.set('prefix', parsed.data.prefix);
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const file = form.get('file');
   if (!parsed.success || !(file instanceof File)) return apiError(400, 'Invalid upload', 'INVALID_REQUEST');
   if (file.size > 10 * 1024 * 1024) return Response.json({ error: 'Uploads are limited to 10 MB' }, { status: 413 });
-  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if ('error' in ctx) return ctx.error;
+  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if (!ctx.ok) return ctx.error;
   const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(ctx.accountId)}/r2/buckets/${encodeURIComponent(parsed.data.bucket)}/objects/${parsed.data.key.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers: { Authorization: `Bearer ${ctx.token}`, 'Content-Type': file.type || 'application/octet-stream' }, body: await file.arrayBuffer() });
   const payload = await response.json().catch(() => null) as { success?: boolean; errors?: Array<{ message?: string }> } | null;
   if (!response.ok || !payload?.success) {
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const parsed = deleteSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return apiError(400, 'Invalid request', 'INVALID_REQUEST');
-  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if ('error' in ctx) return ctx.error;
+  const ctx = await context(parsed.data.projectName, parsed.data.bucket); if (!ctx.ok) return ctx.error;
   try {
     await cloudflareRequest(`/accounts/${encodeURIComponent(ctx.accountId)}/r2/buckets/${encodeURIComponent(parsed.data.bucket)}/objects/${parsed.data.key.split('/').map(encodeURIComponent).join('/')}`, ctx.token, { method: 'DELETE' });
     return Response.json({ deleted: parsed.data.key });
