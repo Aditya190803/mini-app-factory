@@ -18,6 +18,7 @@ import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
 import type * as files from "../files.js";
 import type * as integrations from "../integrations.js";
+import type * as migrations from "../migrations.js";
 import type * as projects from "../projects.js";
 import type * as rateLimits from "../rateLimits.js";
 
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   deployments: typeof deployments;
   files: typeof files;
   integrations: typeof integrations;
+  migrations: typeof migrations;
   projects: typeof projects;
   rateLimits: typeof rateLimits;
 }>;

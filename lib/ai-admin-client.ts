@@ -1,33 +1,13 @@
 import {
-  AI_ADMIN_CONFIG_STORAGE_KEY,
   AI_BYOK_STORAGE_KEY,
   AI_SELECTED_MODEL_STORAGE_KEY,
-  DEFAULT_AI_ADMIN_CONFIG,
-  type AIAdminConfig,
   type StoredSelectedModel,
   resolveSelectedAIModel,
-  sanitizeAIAdminConfig,
 } from '@/lib/ai-admin-config';
 
 const isBrowser = () => typeof window !== 'undefined';
 
-export function getStoredAIAdminConfig(): AIAdminConfig {
-  if (!isBrowser()) return DEFAULT_AI_ADMIN_CONFIG;
-  const raw = window.localStorage.getItem(AI_ADMIN_CONFIG_STORAGE_KEY);
-  if (!raw) return DEFAULT_AI_ADMIN_CONFIG;
-
-  try {
-    const parsed = JSON.parse(raw);
-    return sanitizeAIAdminConfig(parsed);
-  } catch {
-    return DEFAULT_AI_ADMIN_CONFIG;
-  }
-}
-
-export function setStoredAIAdminConfig(config: AIAdminConfig): void {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(AI_ADMIN_CONFIG_STORAGE_KEY, JSON.stringify(sanitizeAIAdminConfig(config)));
-}
+const LEGACY_ADMIN_CONFIG_KEY = 'mini_app_factory_ai_admin_config_v1';
 
 /**
  * BYOK provider keys are no longer mirrored into localStorage — they live only in Convex and are
@@ -42,6 +22,8 @@ export function purgeLegacyStoredBYOK(): void {
   if (!isBrowser()) return;
   try {
     window.localStorage.removeItem(AI_BYOK_STORAGE_KEY);
+    // The admin model config used to be mirrored here too; the server is the only source now.
+    window.localStorage.removeItem(LEGACY_ADMIN_CONFIG_KEY);
   } catch {
     // Private-mode or storage-disabled browsers: nothing to purge.
   }
@@ -75,16 +57,4 @@ export function setStoredSelectedModel(value: StoredSelectedModel): void {
     AI_SELECTED_MODEL_STORAGE_KEY,
     JSON.stringify({ id: resolved.model, providerId: resolved.providerId }),
   );
-}
-
-/**
- * Kept as a pass-through so call sites don't all have to change.
- *
- * This used to attach `x-maf-ai-config` and `x-maf-ai-byok` headers, the latter carrying
- * base64-encoded provider API keys. No server route has read either header since AI settings
- * moved into Convex — so the only thing it accomplished was transmitting live secrets on every
- * request, where any proxy or APM that captures headers would log them. Removed.
- */
-export function withAIAdminHeaders(initial?: HeadersInit): HeadersInit {
-  return new Headers(initial || {});
 }

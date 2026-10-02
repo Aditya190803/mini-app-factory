@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 import { consumeTransformStream, type TransformCompletePayload, type TransformStreamEvent } from '@/lib/transform-stream';
 import { transformEventToProgress, type TransformProgressState } from '@/components/editor/transform-progress';
 import {
@@ -94,7 +93,7 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
       try {
         const response = await fetch('/api/transform', {
           method: 'POST',
-          headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
           signal: ac.signal,
         });

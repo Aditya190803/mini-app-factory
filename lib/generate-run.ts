@@ -280,8 +280,8 @@ export async function runGeneration(params: {
     try {
       const proj = await getProject(projectName);
       if (proj) {
+        // The reason lives on the run record (finishRun), which the editor reads.
         proj.status = 'error';
-        proj.error = cancelled ? 'Build cancelled.' : errorInfo.message;
         await saveProject(proj);
       }
     } catch { /* the project may be gone */ }

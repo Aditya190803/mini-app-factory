@@ -31,7 +31,6 @@ export function isAIProviderId(value: unknown): value is AIProviderId {
   return typeof value === 'string' && (AI_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
-export const AI_ADMIN_CONFIG_STORAGE_KEY = 'mini_app_factory_ai_admin_config_v1';
 export const AI_BYOK_STORAGE_KEY = 'mini_app_factory_ai_byok_v1';
 export const AI_SELECTED_MODEL_STORAGE_KEY = 'mini_app_factory_selected_model_v1';
 

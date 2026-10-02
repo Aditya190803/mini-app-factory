@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectFile } from '@/lib/page-builder';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 
 /** Export the project as a zip, with an AI-written README when the route can produce one. */
 export function useZipExport(params: { projectName: string; initialPrompt: string; getFiles: () => ProjectFile[] }) {
@@ -26,7 +25,7 @@ export function useZipExport(params: { projectName: string; initialPrompt: strin
         // The route reads the project's files itself; its schema rejects a `files` key.
         const response = await fetch('/api/generate/readme', {
           method: 'POST',
-          headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ projectName, prompt: initialPrompt }),
         });
         if (response.ok) {

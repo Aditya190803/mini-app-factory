@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { AccountMenu } from '@/components/shell/account-menu';
 import { Shield, Settings2, ArrowUp, ArrowDown } from 'lucide-react';
 import { AI_PROVIDER_IDS, PROVIDER_LABELS, type AIProviderId, emptyProviderRecord } from '@/lib/ai-admin-config';
-import { getStoredAIAdminConfig, setStoredAIAdminConfig } from '@/lib/ai-admin-client';
+import { DEFAULT_AI_ADMIN_CONFIG } from '@/lib/ai-admin-config';
 
 const providerLabel = PROVIDER_LABELS;
 
@@ -35,7 +35,7 @@ export default function AIAdminConsole() {
     detailsJson: string;
     createdAt: number;
   }>>([]);
-  const [aiConfig, setAiConfig] = useState(() => getStoredAIAdminConfig());
+  const [aiConfig, setAiConfig] = useState(DEFAULT_AI_ADMIN_CONFIG);
   const [newModelInput, setNewModelInput] = useState<Record<AIProviderId, string>>(() => emptyProviderRecord(''));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -56,7 +56,6 @@ export default function AIAdminConsole() {
           const data = await settingsResp.json();
           if (data.adminConfig) {
             setAiConfig(data.adminConfig);
-            setStoredAIAdminConfig(data.adminConfig);
           }
         }
 
@@ -91,7 +90,6 @@ export default function AIAdminConsole() {
 
   const persist = async (nextConfig: typeof aiConfig) => {
     setSaveState('saving');
-    setStoredAIAdminConfig(nextConfig);
     try {
       const resp = await fetch('/api/ai/settings', {
         method: 'POST',
@@ -102,7 +100,6 @@ export default function AIAdminConsole() {
         const data = await resp.json();
         if (data.adminConfig) {
           setAiConfig(data.adminConfig);
-          setStoredAIAdminConfig(data.adminConfig);
         }
       }
       void loadAudit();

@@ -12,7 +12,6 @@ import EditorWorkspace from '@/components/editor-workspace';
 import type { ProjectMetadata } from '@/lib/projects';
 import type { ProjectFile } from '@/lib/page-builder';
 import { readStream } from '@/lib/stream-utils';
-import { withAIAdminHeaders } from '@/lib/ai-admin-client';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
@@ -49,7 +48,7 @@ function ActivityIcon({ activity }: { activity: Activity }) {
 
 export default function ProjectView({ projectName, initialProject }: ProjectViewProps) {
   const router = useRouter();
-  const [project, setProject] = useState(initialProject);
+  const [project, setProject] = useState<ProjectMetadata & { files?: ProjectFile[] }>(initialProject);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
@@ -65,6 +64,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   }, []);
   const projectRecord = useQuery(api.projects.getProject, { projectName });
   const otherProvider: 'gateway' | 'opencode' = projectRecord?.providerId === 'opencode' ? 'gateway' : 'opencode';
+  const latestRun = useQuery(api.conversations.getLatestRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const activeRun = useQuery(api.conversations.getActiveRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const persistedEvents = useQuery(
     api.conversations.listRunEvents,
@@ -133,7 +133,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, prompt: project.prompt, ...(providerId ? { providerId } : {}) }),
         signal: controller.signal,
       });
@@ -198,7 +198,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
   // has a run in flight (the page was reloaded mid-build) rehydrates from the
   // persisted events and polls instead of starting a second run.
   useEffect(() => {
-    if (project.status === 'completed' || hasStarted.current || activeRun === undefined) return;
+    if (project.status === 'completed' || hasStarted.current || activeRun === undefined || latestRun === undefined) return;
     if (activeRun) {
       hasStarted.current = true;
       setActivities(
@@ -218,13 +218,13 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     if (project.status !== 'pending') {
       hasStarted.current = true;
       setError({
-        message: project.error || 'The last build did not finish. Retry when you are ready.',
-        code: 'RUN_INTERRUPTED',
+        message: (latestRun?.status === 'failed' && latestRun.errorMessage) || 'The last build did not finish. Retry when you are ready.',
+        code: (latestRun?.status === 'failed' && latestRun.errorCode) || 'RUN_INTERRUPTED',
       });
       return;
     }
     void startGeneration();
-  }, [activeRun, persistedEvents, pollForCompletion, project.error, project.status, startGeneration]);
+  }, [activeRun, latestRun, persistedEvents, pollForCompletion, project.status, startGeneration]);
 
   useEffect(() => {
     if (!hasStarted.current || !persistedEvents?.length || completed.current) return;

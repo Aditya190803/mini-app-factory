@@ -11,7 +11,7 @@ import { resolveTarget } from '@/lib/targets';
 import { type ProjectFile, assembleFullPage } from '@/lib/page-builder';
 import { toast } from 'sonner';
 import { useConfirm } from '@/hooks/use-confirm';
-import { withAIAdminHeaders, getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
+import { getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client';
 import { readApiError } from '@/lib/api-fetch';
 import {
   deleteItem,
@@ -328,7 +328,7 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
     try {
       const response = await fetch('/api/discuss', {
         method: 'POST',
-        headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, prompt, modelId: selectedModel.id || undefined, providerId: selectedModel.providerId || undefined }),
         signal: controller.signal,
       });

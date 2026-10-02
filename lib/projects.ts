@@ -1,5 +1,5 @@
 import { api } from "@/convex/_generated/api";
-import { normalizeProjectMetadata, projectFileRecordSchema } from "./project-metadata";
+import { normalizeProjectMetadata, projectFileRecordSchema, type ProjectMetadata } from "./project-metadata";
 import { getAuthedConvexClient, getPublicConvexClient } from "./convex-server";
 
 import { ProjectFile } from "./page-builder";
@@ -14,52 +14,7 @@ import { ProjectFile } from "./page-builder";
  */
 const getConvex = getAuthedConvexClient;
 
-export interface ProjectMetadata {
-  name: string;
-  prompt: string;
-  createdAt: number;
-  updatedAt?: number;
-  status: 'pending' | 'generating' | 'completed' | 'error';
-  /** The caller's role, from Convex. See lib/project-access.ts. */
-  accessRole?: 'owner' | 'editor' | 'viewer';
-  target?: 'static' | 'edge';
-  filesVersion?: number;
-  html?: string;
-  error?: string;
-  isPublished?: boolean;
-  userId?: string;
-  isMultiPage?: boolean;
-  pageCount?: number;
-  description?: string;
-  referenceUrl?: string;
-  projectInstructions?: string;
-  selectedModel?: string;
-  providerId?: string;
-  favicon?: string;
-  deploymentUrl?: string;
-  repoUrl?: string;
-  deployProvider?: string;
-  deployedAt?: number;
-  netlifySiteName?: string;
-  cloudflareProjectName?: string;
-  cloudflareDeploymentId?: string;
-  cloudflareD1DatabaseId?: string;
-  cloudflareD1DatabaseName?: string;
-  cloudflareCustomDomain?: string;
-  cloudflareResourcesJson?: string;
-  cloudflarePreviewProjectName?: string;
-  cloudflarePreviewDeploymentId?: string;
-  cloudflarePreviewUrl?: string;
-  cloudflarePreviewResourcesJson?: string;
-  cloudflarePreviewExpiresAt?: number;
-  globalSeo?: {
-    siteName?: string;
-    description?: string;
-    ogImage?: string;
-  };
-  seoData?: Array<{ path: string, title?: string, description?: string, ogImage?: string }>;
-  files?: ProjectFile[];
-}
+export type { ProjectMetadata };
 
 export interface PublishedProjectMetadata {
   name: string;
@@ -71,7 +26,7 @@ export interface PublishedProjectMetadata {
 }
 
 function toProjectMetadata(record: unknown): ProjectMetadata {
-  return normalizeProjectMetadata(record) as ProjectMetadata;
+  return normalizeProjectMetadata(record);
 }
 
 export async function projectExists(name: string): Promise<boolean> {

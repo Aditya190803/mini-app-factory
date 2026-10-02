@@ -248,6 +248,16 @@ export const getActiveRun = query({
   },
 });
 
+/** The most recent run, with its outcome. The editor shows why the last build failed from this. */
+export const getLatestRun = query({
+  args: { projectId: v.id('projects') },
+  handler: async (ctx, { projectId }) => {
+    await requireProjectReadAccessById(ctx, projectId);
+    const run = await ctx.db.query('generationRuns').withIndex('by_project_time', (q) => q.eq('projectId', projectId)).order('desc').first();
+    return run ? { _id: run._id, kind: run.kind, status: run.status, errorCode: run.errorCode, errorMessage: run.errorMessage } : null;
+  },
+});
+
 export const listRunEvents = query({
   args: { projectId: v.id('projects'), runId: v.id('generationRuns'), afterSequence: v.optional(v.number()) },
   handler: async (ctx, args) => {

@@ -7,7 +7,7 @@ import { ArrowUp, Link2, TriangleAlert, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, IconButton, Kbd, Callout, PlateFrame } from '@/components/kit'
 import { ModelPicker } from '@/components/shell/model-picker'
-import { getStoredSelectedModel, setStoredSelectedModel, withAIAdminHeaders } from '@/lib/ai-admin-client'
+import { getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client'
 import { isHttpUrl } from '@/lib/url-reference'
 import { COMPOSER_STARTERS, EDGE_TEMPLATES } from '@/lib/constants'
 
@@ -111,7 +111,7 @@ export function Composer({ className }: { className?: string }) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const response = await fetch('/api/check-name', {
           method: 'POST',
-          headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: slugify(prompt),
             prompt: prompt.trim(),
