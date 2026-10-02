@@ -18,6 +18,7 @@ import type { FunctionArgs } from 'convex/server';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
 import { readApiResponse } from '@/lib/api-fetch';
+import { track } from '@vercel/analytics';
 
 export type DeployOption = 'github-netlify' | 'github-only' | 'cloudflare' | 'maf-hosted';
 
@@ -437,6 +438,7 @@ export function useEditorDeploy(args: UseEditorDeployArgs) {
         },
         (status) => setDeployStatus(status)
       );
+      track('deployed', { provider: deployOption });
       setDeployResult({
         repoUrl: data.repoUrl,
         deploymentUrl: data.deploymentUrl,

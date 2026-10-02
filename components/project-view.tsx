@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Check, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
 import { Badge, Button, Callout, Spinner, StatusDot } from '@/components/kit';
 import { PROVIDER_LABELS } from '@/lib/ai-admin-config';
+import { track } from '@vercel/analytics';
 
 /** Failures that another provider may well not have. */
 const PROVIDER_ERROR_CODES = new Set(['AI_PROVIDER_ERROR', 'AI_TIMEOUT', 'AI_NETWORK_ERROR', 'AI_AUTH_ERROR', 'AI_ERROR', 'RUN_TIMEOUT']);
@@ -153,6 +154,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
           return;
         }
         if (data.status === 'completed') {
+          track('first_build_completed');
           completed.current = true;
           setActivities((current) => current.map((item) => ({ ...item, state: 'complete' })));
           const result = data as { html?: string; files?: ProjectFile[] };

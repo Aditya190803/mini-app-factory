@@ -1,5 +1,6 @@
 import React from 'react'
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { StackProvider } from '@stackframe/stack'
 import { StackTheme } from '@/components/stack-theme'
@@ -12,6 +13,7 @@ import { TooltipProvider } from '@/components/kit'
 import { Toaster } from '@/components/kit/toaster'
 import { SiteFooter } from '@/components/shell/footer'
 import { APP_DESCRIPTION, APP_NAME } from '@/lib/constants'
+import { Wordmark } from '@/components/brand/mark'
 import './globals.css'
 
 const geistSans = Geist({
@@ -58,7 +60,25 @@ export const viewport: Viewport = {
   ],
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+/**
+ * Shown while the auth session resolves. It used to be an empty block, so every page was blank
+ * until Stack Auth answered.
+ */
+function AppLoading() {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-[var(--background)]" role="status" aria-live="polite">
+      <div className="flex flex-col items-center gap-3 text-sm text-[var(--muted-foreground)]">
+        <Wordmark />
+        <span>Loading</span>
+      </div>
+    </div>
+  )
+}
+
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // With an enforced CSP (proxy.ts) scripts need the per-request nonce, which means rendering
+  // dynamically. Report-only mode keeps pages static.
+  const nonce = process.env.CSP_ENFORCE === '1' ? (await headers()).get('x-nonce') ?? undefined : undefined
   return (
     <html
       lang="en"
@@ -71,8 +91,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           a desk in the evening, reading generated files. System still wins if
           the user has expressed a preference at the OS level.
         */}
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <React.Suspense fallback={<div className="min-h-dvh bg-[var(--background)]" />}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange nonce={nonce}>
+          <React.Suspense fallback={<AppLoading />}>
             <StackProvider app={stackClientApp}>
               <StackTheme>
                 <ConvexClientProvider>

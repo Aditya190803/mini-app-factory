@@ -10,6 +10,7 @@ import { ModelPicker } from '@/components/shell/model-picker'
 import { getStoredSelectedModel, setStoredSelectedModel } from '@/lib/ai-admin-client'
 import { isHttpUrl } from '@/lib/url-reference'
 import { COMPOSER_STARTERS, EDGE_TEMPLATES } from '@/lib/constants'
+import { track } from '@vercel/analytics'
 
 const DRAFT_KEY = 'maf:composer-draft'
 
@@ -124,6 +125,7 @@ export function Composer({ className }: { className?: string }) {
 
         if (response.ok) {
           const data = await response.json()
+          track('project_created', { target: target ?? 'auto', template: EDGE_TEMPLATES.some((t) => t.prompt === prompt) })
           router.push(`/edit/${data.name}`)
           return
         }
