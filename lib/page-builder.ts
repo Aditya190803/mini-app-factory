@@ -45,7 +45,7 @@ export function assembleFullPage(
   const pageFile = files.find(f => f.path === pagePath);
   if (!pageFile) return '';
 
-  let html = resolveIncludes(pageFile.content, files, isEditorPreview);
+  const html = resolveIncludes(pageFile.content, files, isEditorPreview);
   const $ = cheerio.load(html);
 
   if (isEditorPreview) {

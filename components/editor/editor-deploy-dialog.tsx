@@ -137,6 +137,7 @@ export default function EditorDeployDialog({ projectName, deploy, target }: Prop
                 return (
                   <label
                     key={surface.id}
+                    aria-label={surface.label}
                     className={cn(
                       'flex cursor-pointer items-start gap-3 rounded-lg border p-3',
                       'transition-colors duration-[var(--dur-1)]',

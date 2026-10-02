@@ -93,6 +93,20 @@ export const listVersions = query({
   },
 });
 
+/** The oldest version, which is the first build. "Reset" restores it. */
+export const getFirstVersion = query({
+  args: { projectId: v.id('projects') },
+  handler: async (ctx, { projectId }) => {
+    await requireProjectReadAccessById(ctx, projectId);
+    const first = await ctx.db
+      .query('projectVersions')
+      .withIndex('by_project_time', (q) => q.eq('projectId', projectId))
+      .order('asc')
+      .first();
+    return first ? { _id: first._id, summary: first.summary, createdAt: first.createdAt } : null;
+  },
+});
+
 async function readSnapshot(ctx: QueryCtx | MutationCtx, version: Doc<'projectVersions'>): Promise<string> {
   if (version.filesJson !== undefined) return version.filesJson; // legacy single-document snapshot
   const chunks = await ctx.db

@@ -59,9 +59,16 @@ export function Composer({ className }: { className?: string }) {
     }
     setModel(getStoredSelectedModel())
     setModelReady(true)
-    // This is the primary action on the page it lives on, so it takes focus.
-    textareaRef.current?.focus()
+    // This is the primary action on the page it lives on, so it takes focus — but only with a
+    // precise pointer. On a phone, focusing on load pops the keyboard over the page.
+    if (window.matchMedia('(pointer: fine)').matches) textareaRef.current?.focus()
   }, [])
+
+  const referenceRef = React.useRef<HTMLInputElement>(null)
+  // The reference field appears because the user asked for it, so moving focus there is expected.
+  React.useEffect(() => {
+    if (showReference) referenceRef.current?.focus()
+  }, [showReference])
 
   React.useEffect(() => {
     if (!modelReady) return
@@ -186,13 +193,13 @@ export function Composer({ className }: { className?: string }) {
             </div>
             <input
               id={refId}
+              ref={referenceRef}
               type="url"
               value={referenceUrl}
               onChange={(event) => setReferenceUrl(event.target.value)}
               onKeyDown={onKeyDown}
               placeholder="https://example.com"
               disabled={busy}
-              autoFocus
               className="mt-1.5 h-8 w-full rounded-md border border-[var(--rule-strong)] bg-[var(--background)] px-2.5 text-sm outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus-visible:border-[var(--ring)]"
             />
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">

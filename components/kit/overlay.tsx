@@ -26,9 +26,18 @@ export function ModalContent({
   description,
   footer,
   size = 'md',
+  initialFocusRef,
+  dismissible = true,
 }: {
   className?: string
   children?: React.ReactNode
+  /**
+   * The element to focus when the dialog opens. Without it Radix focuses the first focusable
+   * element, which is the close button. Use this instead of `autoFocus` on the field.
+   */
+  initialFocusRef?: React.RefObject<HTMLElement | null>
+  /** False while work is in progress that closing would orphan (Esc and the overlay do nothing). */
+  dismissible?: boolean
   title: React.ReactNode
   /** Required. A dialog with no described purpose is a dialog nobody trusts. */
   description: React.ReactNode
@@ -45,6 +54,17 @@ export function ModalContent({
         )}
       />
       <DialogPrimitive.Content
+        onOpenAutoFocus={(event) => {
+          if (!initialFocusRef?.current) return
+          event.preventDefault()
+          initialFocusRef.current.focus()
+        }}
+        onEscapeKeyDown={(event) => {
+          if (!dismissible) event.preventDefault()
+        }}
+        onInteractOutside={(event) => {
+          if (!dismissible) event.preventDefault()
+        }}
         className={cn(
           'fixed left-1/2 top-1/2 z-[var(--z-modal)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2',
           'rounded-xl border border-[var(--rule)] bg-[var(--surface-1)] shadow-[var(--shadow-lg)]',
@@ -66,11 +86,13 @@ export function ModalContent({
               {description}
             </DialogPrimitive.Description>
           </div>
-          <DialogPrimitive.Close asChild>
-            <IconButton label="Close" size="sm" className="-mr-1 -mt-0.5">
-              <X className="size-4" />
-            </IconButton>
-          </DialogPrimitive.Close>
+          {dismissible && (
+            <DialogPrimitive.Close asChild>
+              <IconButton label="Close" size="sm" className="-mr-1 -mt-0.5">
+                <X className="size-4" />
+              </IconButton>
+            </DialogPrimitive.Close>
+          )}
         </div>
 
         {children && (
