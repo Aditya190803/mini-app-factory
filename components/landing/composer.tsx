@@ -9,7 +9,7 @@ import { Button, IconButton, Kbd, Callout, PlateFrame } from '@/components/kit'
 import { ModelPicker } from '@/components/shell/model-picker'
 import { getStoredSelectedModel, setStoredSelectedModel, withAIAdminHeaders } from '@/lib/ai-admin-client'
 import { isHttpUrl } from '@/lib/url-reference'
-import { EXAMPLE_PROMPTS } from '@/lib/constants'
+import { COMPOSER_STARTERS, EDGE_TEMPLATES } from '@/lib/constants'
 
 const DRAFT_KEY = 'maf:composer-draft'
 
@@ -75,7 +75,9 @@ export function Composer({ className }: { className?: string }) {
     setStoredSelectedModel(model)
   }, [model, modelReady])
 
-  const starters = EXAMPLE_PROMPTS.slice(0, 4)
+  const starters = COMPOSER_STARTERS
+  /** Set by a starter or template; typing a prompt of your own lets the generator decide. */
+  const [target, setTarget] = React.useState<'static' | 'edge' | undefined>(undefined)
 
   const start = async () => {
     setError('')
@@ -114,6 +116,7 @@ export function Composer({ className }: { className?: string }) {
             name: slugify(prompt),
             prompt: prompt.trim(),
             referenceUrl: reference || undefined,
+            target,
             selectedModel: model.id || undefined,
             providerId: model.providerId || undefined,
           }),
@@ -165,7 +168,10 @@ export function Composer({ className }: { className?: string }) {
           ref={textareaRef}
           id={promptId}
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => {
+            setPrompt(event.target.value)
+            setTarget(undefined)
+          }}
           onKeyDown={onKeyDown}
           placeholder="A tool that tracks freelance invoices, flags the overdue ones, and charts monthly income"
           disabled={busy}
@@ -244,14 +250,42 @@ export function Composer({ className }: { className?: string }) {
       </div>
       </PlateFrame>
 
+      {/* Onboarding: the two targets, stated before the first build rather than discovered after. */}
+      <p className="mt-3 text-xs leading-relaxed text-[var(--muted-foreground)]">
+        <span className="font-medium text-[var(--foreground)]">Static</span> apps are pages and browser code, and run
+        anywhere. <span className="font-medium text-[var(--foreground)]">Edge</span> apps add a Cloudflare Worker and
+        storage (D1, KV, R2) in your own Cloudflare account. Ask for saved data and you get an edge app.
+      </p>
+
+      <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
+        {EDGE_TEMPLATES.map((template) => (
+          <button
+            key={template.label}
+            type="button"
+            aria-pressed={prompt === template.prompt}
+            onClick={() => {
+              setPrompt(template.prompt)
+              setTarget('edge')
+              textareaRef.current?.focus()
+            }}
+            className="rounded-md border border-[var(--rule)] bg-[var(--surface-1)] px-2.5 py-2 text-left transition-colors duration-[var(--dur-1)] hover:border-[var(--rule-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] aria-pressed:border-[var(--ring)]"
+          >
+            <span className="block text-xs font-medium">{template.label}</span>
+            <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">{template.detail}</span>
+          </button>
+        ))}
+      </div>
+
       {starters && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {starters.map((starter) => (
+          {starters.map(({ prompt: starter, target: starterTarget }) => (
             <button
               key={starter}
               type="button"
+              title={starterTarget === 'edge' ? 'Edge app: stores data on Cloudflare' : 'Static app'}
               onClick={() => {
                 setPrompt(starter)
+                setTarget(starterTarget)
                 textareaRef.current?.focus()
               }}
               className="max-w-full truncate rounded-md border border-[var(--rule)] bg-[var(--surface-1)] px-2.5 py-1 text-left text-xs text-[var(--muted-foreground)] transition-colors duration-[var(--dur-1)] hover:border-[var(--rule-strong)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"

@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Database, FileCode2, RotateCcw, Server, TriangleAlert } from 'lucide-react';
 import { Badge, Button, Callout, Spinner, StatusDot } from '@/components/kit';
+import { PROVIDER_LABELS } from '@/lib/ai-admin-config';
+
+/** Failures that another provider may well not have. */
+const PROVIDER_ERROR_CODES = new Set(['AI_PROVIDER_ERROR', 'AI_TIMEOUT', 'AI_NETWORK_ERROR', 'AI_AUTH_ERROR', 'AI_ERROR', 'RUN_TIMEOUT']);
 import EditorWorkspace from '@/components/editor-workspace';
 import type { ProjectMetadata } from '@/lib/projects';
 import type { ProjectFile } from '@/lib/page-builder';
@@ -60,6 +64,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     streamController.current?.abort();
   }, []);
   const projectRecord = useQuery(api.projects.getProject, { projectName });
+  const otherProvider: 'gateway' | 'opencode' = projectRecord?.providerId === 'opencode' ? 'gateway' : 'opencode';
   const activeRun = useQuery(api.conversations.getActiveRun, projectRecord?._id ? { projectId: projectRecord._id } : 'skip');
   const persistedEvents = useQuery(
     api.conversations.listRunEvents,
@@ -117,7 +122,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
     }
   }, [projectName]);
 
-  const startGeneration = useCallback(async () => {
+  const startGeneration = useCallback(async (providerId?: 'gateway' | 'opencode') => {
     hasStarted.current = true;
     completed.current = false;
     setError(null);
@@ -129,7 +134,7 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: withAIAdminHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ projectName, prompt: project.prompt }),
+        body: JSON.stringify({ projectName, prompt: project.prompt, ...(providerId ? { providerId } : {}) }),
         signal: controller.signal,
       });
       await readStream(response, () => {}, (data) => {
@@ -324,10 +329,24 @@ export default function ProjectView({ projectName, initialProject }: ProjectView
               className="mt-5"
               title="The build stopped"
               action={
-                <Button size="sm" onClick={() => void startGeneration()}>
-                  <RotateCcw className="size-3.5" />
-                  Retry
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {error.code === 'QUOTA_EXCEEDED' ? (
+                    <Button size="sm" intent="primary" asChild>
+                      <a href="/settings#api-keys">Add your own key</a>
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={() => void startGeneration()}>
+                      <RotateCcw className="size-3.5" />
+                      Retry
+                    </Button>
+                  )}
+                  {/* Provider trouble is usually specific to one provider; offer the other. */}
+                  {error.code && PROVIDER_ERROR_CODES.has(error.code) && (
+                    <Button size="sm" onClick={() => void startGeneration(otherProvider)}>
+                      Retry with {PROVIDER_LABELS[otherProvider]}
+                    </Button>
+                  )}
+                </div>
               }
             >
               <p>{error.message}</p>

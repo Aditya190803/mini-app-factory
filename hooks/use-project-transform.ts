@@ -134,7 +134,12 @@ export function useProjectTransform(args: UseProjectTransformArgs) {
             ? String((err as { requestId: string }).requestId)
             : undefined;
         const suggestion = getTransformRecoverySuggestion(code);
-        toast.error(message, { description: requestId ? `${suggestion} (request: ${requestId})` : suggestion });
+        toast.error(message, {
+          description: requestId ? `${suggestion} (request: ${requestId})` : suggestion,
+          ...(code === 'QUOTA_EXCEEDED'
+            ? { action: { label: 'Add a key', onClick: () => window.location.assign('/settings#api-keys') } }
+            : {}),
+        });
         throw err;
       } finally {
         if (runGenerationRef.current === generation) {

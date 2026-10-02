@@ -7,7 +7,7 @@ import type { AIUsage } from '@/lib/ai-usage';
 import { parseMultiFileOutput } from '@/lib/file-parser';
 import type { ProjectFile } from '@/lib/page-builder';
 import type { AIRuntimeConfig } from '@/lib/ai-admin-server';
-import { resolveSelectedAIModel } from '@/lib/ai-admin-config';
+import { DEFAULT_PROVIDER_MODELS, resolveSelectedAIModel, type AIProviderId } from '@/lib/ai-admin-config';
 import { resolveOpenCodeModel } from '@/lib/opencode-models';
 import { resolveGatewayModel } from '@/lib/gateway-models';
 import { validateGeneratedProject } from '@/lib/generated-project-validation';
@@ -112,6 +112,13 @@ Mandatory requirements:
 
 Return ONLY code blocks. No explanations.`;
 
+/** The build target the user picked (a template or starter), stated to the model. */
+function targetInstruction(target: 'static' | 'edge' | undefined) {
+  if (target === 'edge') return '\n\nBuild target: edge. Include the Cloudflare Worker (_worker.js), wrangler.jsonc, and the storage bindings this app needs.';
+  if (target === 'static') return '\n\nBuild target: static. Do not add a Worker, wrangler.jsonc, or migrations; keep any state in localStorage.';
+  return '';
+}
+
 export type GenerationResult =
   | { html: string; files: ProjectFile[]; usage: AIUsage }
   | { error: string; cancelled?: boolean; usage: AIUsage };
@@ -132,6 +139,8 @@ export async function runGeneration(params: {
   runtimeConfig?: AIRuntimeConfig;
   onProgress?: (event: ProgressEvent) => void;
   budgetMs?: number;
+  /** Retry on a specific provider (its admin default model), e.g. after the other one failed. */
+  providerOverride?: AIProviderId;
 }): Promise<GenerationResult> {
   const { projectName, prompt: finalPrompt, signal, onEvent, requestId, runtimeConfig, onProgress } = params;
   const deadline = Date.now() + (params.budgetMs ?? RUN_BUDGET_MS);
@@ -144,7 +153,10 @@ export async function runGeneration(params: {
   try {
     // Honor the model the user picked in the selector; only fall back to the default when nothing
     // valid was stored on the project.
-    const requested = resolveSelectedAIModel(project.selectedModel, project.providerId);
+    const override = params.providerOverride;
+    const requested = override
+      ? { providerId: override, model: runtimeConfig?.adminConfig.providers[override]?.defaultModel ?? DEFAULT_PROVIDER_MODELS[override] }
+      : resolveSelectedAIModel(project.selectedModel, project.providerId);
     const liveModel = requested?.providerId === 'gateway'
       ? await resolveGatewayModel(requested.model)
       : requested?.providerId === 'opencode'
@@ -198,7 +210,7 @@ export async function runGeneration(params: {
     try {
       const htmlResp = await waitWithProgress(
         htmlSession.sendAndWait({
-          prompt: `${buildMainPrompt(finalPrompt)}\n\nDesign Spec:\n${designSpec}`,
+          prompt: `${buildMainPrompt(finalPrompt)}${targetInstruction(project.target)}\n\nDesign Spec:\n${designSpec}`,
           maxOutputTokens: 8000,
         }, 120000),
         onProgress,

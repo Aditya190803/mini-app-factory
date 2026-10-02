@@ -514,13 +514,21 @@ export default function EditorWorkspace({ initialHTML, initialPrompt, projectNam
       : []),
     ...(projectMessages || []).map((message) => {
       const linkedVersion = (projectVersions || []).find((version) => version.messageId === message._id);
-      let messageFiles: string[] = [];
+      let details: { files?: string[]; prompt?: string } = {};
       try {
-        messageFiles = (JSON.parse(message.detailsJson || '{}') as { files?: string[] }).files || [];
+        details = JSON.parse(message.detailsJson || '{}') as typeof details;
       } catch {
-        messageFiles = [];
+        details = {};
       }
-      return { id: message._id, role: message.role, content: message.content, status: message.status, versionId: linkedVersion?._id, files: messageFiles };
+      return {
+        id: message._id,
+        role: message.role,
+        content: message.content,
+        status: message.status,
+        versionId: linkedVersion?._id,
+        files: details.files || [],
+        retryPrompt: message.role === 'system' && message.status === 'failed' ? details.prompt : undefined,
+      };
     }),
   ], [initialPrompt, projectMessages, projectVersions]);
 

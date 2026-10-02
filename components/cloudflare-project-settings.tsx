@@ -20,6 +20,8 @@ import {
 } from '@/components/kit';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/hooks/use-confirm';
+import { apiFetch } from '@/lib/api-fetch';
+import { billingNote } from '@/lib/cloudflare-billing';
 
 type Deployment = {
   _id: string;
@@ -248,11 +250,37 @@ export default function CloudflareProjectSettings({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectName, deploymentId }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({})) as { error?: string; notRolledBack?: string[] };
       if (!response.ok) throw new Error(data.error || 'Rollback failed');
-      setMessage('Production rolled back successfully.');
+      setMessage(
+        data.notRolledBack?.length
+          ? `The site was rolled back. These stay on the latest version: ${data.notRolledBack.join(', ')}.`
+          : 'Production rolled back successfully.'
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Rollback failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const [teardownName, setTeardownName] = useState('');
+  const teardown = async () => {
+    if (!(await confirm({
+      title: 'Delete the Cloudflare deployment?',
+      description: 'The live site goes offline and every resource below is deleted from your Cloudflare account, with its data. This cannot be undone. Your project files are not affected.',
+      details: resources.map((resource) => `${resource.kind}  ${resource.name}`).join('\n') || cloudflareProjectName,
+      confirmLabel: 'Delete everything',
+      destructive: true,
+    }))) return;
+    setBusy('teardown');
+    setMessage('');
+    try {
+      await apiFetch('/api/cloudflare/resources', { method: 'DELETE', json: { projectName, confirmName: teardownName } });
+      setMessage('The Cloudflare deployment and its resources were deleted.');
+      setTeardownName('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Teardown failed');
     } finally {
       setBusy(null);
     }
@@ -305,11 +333,17 @@ export default function CloudflareProjectSettings({
                   value:
                     resources.length > 0 ? (
                       <span className="flex flex-wrap gap-1.5">
-                        {resources.map((resource) => (
-                          <Badge key={`${resource.kind}:${resource.binding}`} tone="neutral" mono>
-                            {resource.binding} · {resource.kind} · {resource.name}
-                          </Badge>
-                        ))}
+                        {resources.map((resource) => {
+                          const note = billingNote(resource.kind);
+                          return (
+                            <span key={`${resource.kind}:${resource.binding}`} className="inline-flex items-center gap-1" title={note.detail}>
+                              <Badge tone="neutral" mono>
+                                {resource.binding} · {resource.kind} · {resource.name}
+                              </Badge>
+                              <Badge tone={note.tone === 'free' ? 'live' : note.tone === 'paid' ? 'failed' : 'warning'}>{note.label}</Badge>
+                            </span>
+                          );
+                        })}
                       </span>
                     ) : (
                       'None bound'
@@ -599,6 +633,21 @@ export default function CloudflareProjectSettings({
               )}
             </Section>
           )}
+
+          <Section
+            title="Take it down"
+            description="Delete the Pages project and every resource this project created in your Cloudflare account, so nothing keeps running or billing. Your project files stay here and can be deployed again."
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label={`Type ${projectName} to confirm`} className="min-w-56 flex-1">
+                <Input value={teardownName} onChange={(event) => setTeardownName(event.target.value)} className="font-mono" autoComplete="off" />
+              </Field>
+              <Button intent="danger" disabled={busy !== null || teardownName !== projectName} onClick={() => void teardown()}>
+                <Trash2 className="size-3.5" />
+                Delete deployment
+              </Button>
+            </div>
+          </Section>
 
           {cloudflareDeployments.length > 1 && (
             <Section

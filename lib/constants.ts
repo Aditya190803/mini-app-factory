@@ -61,7 +61,38 @@ const EDGE_STARTERS = [
   'An internal on-call roster: who is on this week, swap requests, and a weekly email',
 ] as const
 
-export const EXAMPLE_PROMPTS = [...STATIC_STARTERS, ...EDGE_STARTERS] as const
+/** Starters shown in the composer: some of each target, so edge apps are discoverable. */
+export const COMPOSER_STARTERS: ReadonlyArray<{ prompt: string; target: 'static' | 'edge' }> = [
+  { prompt: STATIC_STARTERS[0], target: 'static' },
+  { prompt: STATIC_STARTERS[1], target: 'static' },
+  { prompt: EDGE_STARTERS[0], target: 'edge' },
+  { prompt: EDGE_STARTERS[2], target: 'edge' },
+]
+
+/**
+ * Edge templates: one per storage primitive, written precisely enough that the generated app
+ * exercises the binding end to end. Picking one sets the build target to edge.
+ */
+export const EDGE_TEMPLATES: ReadonlyArray<{ label: string; detail: string; prompt: string }> = [
+  {
+    label: 'Database app (D1)',
+    detail: 'Create, list, edit and delete records stored in D1.',
+    prompt:
+      'A small inventory tracker backed by a D1 database: a table of items with name, quantity and location; add, edit and delete items; search by name; and a migration that creates the table. Expose the data through /api/items routes in the Worker.',
+  },
+  {
+    label: 'Form with storage (KV)',
+    detail: 'A form whose submissions are kept in KV and listed back.',
+    prompt:
+      'An event RSVP page: a form for name, email and number of guests that stores each response in a KV namespace, plus a password-protected /admin page that lists the responses and the guest total. Keep the password in a Worker secret.',
+  },
+  {
+    label: 'File uploads (R2)',
+    detail: 'Upload files to an R2 bucket and browse them.',
+    prompt:
+      'A shared file drop: upload images and PDFs up to 10 MB to an R2 bucket through the Worker, list uploaded files with their size and date, and download or delete them. Reject other file types.',
+  },
+]
 
 /**
  * What the landing page claims the product does, stated as verifiable

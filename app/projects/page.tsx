@@ -132,7 +132,7 @@ export default function DashboardPage() {
         sourceProjectName: remixSource.projectName,
         projectName: remixName,
       })
-      toast.success('Remix created', {
+      toast.success('Copy created', {
         description: `${result.fileCount} files copied. No deployment credentials were carried over.`,
       })
       router.push(`/edit/${result.projectName}`)
@@ -471,10 +471,10 @@ function ProjectRow({
                 </a>
               </MenuItem>
             )}
-            {project.isPublished && (
+            {(project.isPublished || project.accessRole !== 'viewer') && (
               <MenuItem onSelect={onRemix}>
                 <Copy />
-                Remix a copy
+                {project.accessRole === 'viewer' ? 'Remix a copy' : 'Duplicate'}
               </MenuItem>
             )}
             {project.accessRole === 'owner' && (

@@ -20,6 +20,8 @@ type Message = {
   status: string
   files?: string[]
   versionId?: string
+  /** For a failed build: the request that failed, so it can be retried. */
+  retryPrompt?: string
 }
 
 interface EditorSidebarProps {
@@ -220,6 +222,26 @@ export default function EditorSidebar({
                     className="anim-rise rounded-md border border-[color-mix(in_oklab,var(--destructive)_30%,transparent)] bg-[color-mix(in_oklab,var(--destructive)_8%,transparent)] p-3 text-sm text-[var(--destructive-text)]"
                   >
                     <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    {/* A failed build used to be a dead end: the request was gone from the
+                        composer and the only option was to retype it. */}
+                    {message.retryPrompt && !isTransforming && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button size="sm" onClick={() => void runTransform(message.retryPrompt)}>
+                          <RotateCcw className="size-3.5" />
+                          Retry
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            void runTransform(
+                              `The previous attempt at this request failed with:\n${message.content}\n\nFind and fix the cause, then complete the request:\n${message.retryPrompt}`
+                            )
+                          }
+                        >
+                          Fix and retry
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )
               }

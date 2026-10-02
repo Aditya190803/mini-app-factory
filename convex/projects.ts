@@ -284,7 +284,10 @@ export const updateCloudflareConfig = mutation({
   },
 });
 
-/** Clone a public project without exposing its owner or internal deployment credentials. */
+/**
+ * Copy a project: a public one (remix) or one you can edit (duplicate). Files and content come
+ * across; ownership, members, deployments and Cloudflare state do not.
+ */
 export const remixPublishedProject = mutation({
   args: { sourceProjectName: v.string(), projectName: v.string() },
   handler: async (ctx, args) => {
@@ -295,7 +298,11 @@ export const remixPublishedProject = mutation({
       ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", args.sourceProjectName)).first(),
       ctx.db.query("projects").withIndex("by_projectName", (q) => q.eq("projectName", projectName)).first(),
     ]);
-    if (!source?.isPublished) throw new Error("Published project not found");
+    // Published projects can be remixed by anyone signed in; an unpublished one can be duplicated
+    // by its owner and editors. Viewers cannot copy what they were only allowed to read.
+    if (!source || (!source.isPublished && !roleAtLeast(await getProjectRole(ctx, source, userId), "editor"))) {
+      throw new Error("Project not found");
+    }
     if (target) throw new Error("That project name is already taken");
     const files = await ctx.db.query("projectFiles").withIndex("by_project", (q) => q.eq("projectId", source._id)).take(201);
     if (files.length > 200) throw new Error("This project is too large to remix");
@@ -304,7 +311,8 @@ export const remixPublishedProject = mutation({
     const now = Date.now();
     const projectId = await ctx.db.insert("projects", {
       projectName,
-      prompt: `Remix of ${source.projectName}`,
+      prompt: source.isPublished && source.userId !== userId ? `Remix of ${source.projectName}` : source.prompt,
+      target: source.target,
       html: source.html,
       status: "completed",
       userId,

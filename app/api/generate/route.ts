@@ -24,6 +24,8 @@ const generateSchema = z.object({
   projectName: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/, 'Invalid project name'),
   prompt: z.string().trim().min(1).max(8_000).optional(),
   referenceUrl: z.string().trim().max(2048).optional(),
+  /** Retry on this provider instead of the project's stored choice. */
+  providerId: z.enum(['gateway', 'opencode']).optional(),
 }).strict();
 
 export const maxDuration = 300;
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invalid payload', code: 'INVALID_PAYLOAD', requestId }, { status: 400 });
     }
 
-    const { prompt, projectName, referenceUrl } = parsed.data;
+    const { prompt, projectName, referenceUrl, providerId } = parsed.data;
 
     const user = await stackServerApp.getUser();
     if (!user) {
@@ -138,6 +140,7 @@ export async function POST(request: Request) {
             },
             requestId,
             runtimeConfig,
+            providerOverride: providerId,
             onProgress: (event) => {
               events.write(event.status, event.message, event.path);
               sse.write({ ...event, runId });
