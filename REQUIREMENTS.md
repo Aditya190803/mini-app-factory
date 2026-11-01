@@ -182,7 +182,7 @@ Redirect URIs follow the same shape:
   picomatch and brace-expansion through ESLint's own dependencies, and
   `elliptic` (low, no fixed release) through Stack Auth. CI audits production
   dependencies at high severity.
-- **Planned upgrades.** `ai` 7, `zod` 4.
+- **Planned upgrades.** `ai` 7. Zod was upgraded to 4.6.7 during the production review.
 
 ---
 
