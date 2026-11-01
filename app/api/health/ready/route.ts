@@ -3,8 +3,8 @@ import { getPublicConvexClient } from '@/lib/convex-server'
 
 /**
  * Readiness: can this instance actually serve users? /api/health only proves the process is up.
- * This checks that Convex answers and that at least one AI provider and the secret-box key are
- * configured. It reports configuration only, never values, and makes no calls on the AI keys.
+ * This checks that Convex answers and the secret-box key is configured. Shared AI keys are
+ * optional because deployments may use only account BYOK settings.
  */
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,6 @@ async function convexReachable() {
 export async function GET() {
   const checks = {
     convex: await convexReachable(),
-    aiProvider: Boolean(process.env.AI_GATEWAY_API_KEY || process.env.OPENCODE_API_KEY),
     secretKey: (process.env.INTEGRATION_TOKEN_SECRET?.length ?? 0) >= 32,
   }
   const ok = Object.values(checks).every(Boolean)

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('@/lib/rate-limit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/rate-limit')>()),
@@ -22,6 +22,11 @@ vi.mock('@/lib/cloudflare-deploy', () => ({
   deployProjectToCloudflare: vi.fn(),
 }));
 
+vi.mock('@/lib/repo-content', () => ({
+  generateReadmeContent: vi.fn(),
+  generateRepoDescription: vi.fn(),
+}));
+
 beforeAll(() => {
   process.env.OPENCODE_API_KEY = 'test-key';
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
@@ -35,7 +40,39 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe('POST /api/deploy', () => {
+  test('refuses metadata generation when the shared AI allowance is exhausted', async () => {
+    const { POST } = await import('@/app/api/deploy/route');
+    const { stackServerApp } = await import('@/stack/server');
+    const { getProject, getFiles } = await import('@/lib/projects');
+    const { getIntegrationTokens } = await import('@/lib/integrations');
+    const { consumeRateLimit } = await import('@/lib/rate-limit');
+    const github = await import('@/lib/github');
+    const { generateRepoDescription, generateReadmeContent } = await import('@/lib/repo-content');
+    vi.mocked(stackServerApp.getUser).mockResolvedValueOnce({ id: 'user_123' } as never);
+    vi.mocked(getProject).mockResolvedValueOnce({ accessRole: 'owner', userId: 'user_123' } as never);
+    vi.mocked(getFiles).mockResolvedValueOnce([{ path: 'index.html', content: '<h1>Hello</h1>' }] as never);
+    vi.mocked(getIntegrationTokens).mockResolvedValueOnce({ githubAccessToken: 'token' } as never);
+    vi.spyOn(github, 'githubRequest').mockResolvedValueOnce({ login: 'alice' });
+    vi.spyOn(github, 'findGitHubRepo').mockResolvedValue(null);
+    const createGitHubRepo = vi.spyOn(github, 'createGitHubRepo');
+    vi.mocked(consumeRateLimit)
+      .mockResolvedValueOnce({ allowed: true, remaining: 1, resetAt: Date.now() + 60_000 })
+      .mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60_000, bucket: 'ai-daily' });
+
+    const response = await POST(new Request('http://localhost/api/deploy', {
+      method: 'POST',
+      body: JSON.stringify({ projectName: 'demo', deployMode: 'github-only', prompt: 'A demo app' }),
+    }));
+    expect(await response.text()).toContain('daily AI allowance');
+    expect(consumeRateLimit).toHaveBeenCalledWith('readme', 'user_123', ['ai-daily', 'ai-monthly']);
+    expect(generateRepoDescription).not.toHaveBeenCalled();
+    expect(generateReadmeContent).not.toHaveBeenCalled();
+    expect(createGitHubRepo).not.toHaveBeenCalled();
+  });
+
   test('returns 401 when unauthenticated', async () => {
     const { POST } = await import('@/app/api/deploy/route');
     const { stackServerApp } = await import('@/stack/server');

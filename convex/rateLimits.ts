@@ -77,7 +77,7 @@ export const consume = mutation({
   handler: async (ctx, args): Promise<Result> => {
     const userId = await requireUserId(ctx);
     const now = Date.now();
-    const buckets = [args.bucket, ...(args.also ?? [])];
+    const buckets = [...new Set([args.bucket, ...(args.also ?? [])])];
     const states = await Promise.all(buckets.map((bucket) => peek(ctx, userId, bucket, now)));
     for (const [index, bucket] of buckets.entries()) {
       const state = states[index]!;

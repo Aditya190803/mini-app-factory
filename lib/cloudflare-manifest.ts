@@ -92,19 +92,19 @@ export type CloudflareResourceKind = 'd1' | 'kv' | 'r2' | 'queue' | 'vectorize' 
 const idResource = z.object({ id: z.string().min(1), name: z.string().min(1) }).strict();
 const cloudflareResourceStateSchema = z.object({
   version: z.literal(1),
-  migrationHashes: z.record(z.string().min(8)).optional(),
-  d1: z.record(idResource).optional(),
-  kv: z.record(idResource).optional(),
-  r2: z.record(z.object({ name: z.string().min(1), jurisdiction: z.string().optional() }).strict()).optional(),
-  queue: z.record(idResource).optional(),
-  vectorize: z.record(z.object({ name: z.string().min(1) }).strict()).optional(),
-  worker: z.record(z.object({
+  migrationHashes: z.record(z.string(), z.string().min(8)).optional(),
+  d1: z.record(z.string(), idResource).optional(),
+  kv: z.record(z.string(), idResource).optional(),
+  r2: z.record(z.string(), z.object({ name: z.string().min(1), jurisdiction: z.string().optional() }).strict()).optional(),
+  queue: z.record(z.string(), idResource).optional(),
+  vectorize: z.record(z.string(), z.object({ name: z.string().min(1) }).strict()).optional(),
+  worker: z.record(z.string(), z.object({
     name: z.string().min(1),
     source: z.string().min(1),
     migrationTag: z.string().optional(),
     classes: z.array(z.string()).optional(),
   }).strict()).optional(),
-  durableObject: z.record(z.object({
+  durableObject: z.record(z.string(), z.object({
     id: z.string().min(1),
     name: z.string().min(1),
     worker: z.string().min(1),

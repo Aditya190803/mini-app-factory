@@ -17,7 +17,7 @@ export class GitHubApiError extends Error {
 const API = 'https://api.github.com';
 
 /** Pass `schema` when the response decides what gets written; it is validated, not cast. */
-export async function githubRequest<T>(path: string, token: string, init?: RequestInit, schema?: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
+export async function githubRequest<T>(path: string, token: string, init?: RequestInit, schema?: z.ZodType<T>): Promise<T> {
   const response = await fetch(path.startsWith('http') ? path : `${API}${path}`, {
     ...init,
     headers: {

@@ -3,7 +3,7 @@ import { stripCodeFence } from '@/lib/utils';
 
 const toolCallSchema = z.object({
   tool: z.string().min(1),
-  args: z.record(z.unknown()).default({}),
+  args: z.record(z.string(), z.unknown()).default({}),
 });
 
 const toolCallsSchema = z.array(toolCallSchema).min(1).max(100);
