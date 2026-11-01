@@ -9,7 +9,7 @@ import { getProject, getFiles } from "@/lib/projects";
 import { getServerEnv } from "@/lib/env";
 import { assertProjectRole } from "@/lib/project-access";
 import { createSSEWriter } from "@/lib/sse-writer";
-import { consumeRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
+import { aiQuotaBuckets, consumeRateLimit, rateLimitedResponse } from "@/lib/rate-limit";
 import { reportError } from "@/lib/error-reporting";
 import { z } from "zod";
 import { deployProjectToCloudflare } from "@/lib/cloudflare-deploy";
@@ -117,6 +117,13 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const writer = createSSEWriter(controller);
+      const chargeMetadataGeneration = async () => {
+        const limit = await consumeRateLimit('readme', user.id, aiQuotaBuckets(false));
+        if (!limit.allowed) {
+          const payload = await rateLimitedResponse(limit).json() as { error: string };
+          throw new Error(payload.error);
+        }
+      };
 
       try {
         if (deployMode === "cloudflare") {
@@ -156,6 +163,7 @@ export async function POST(req: Request) {
 
         if (!repo) {
           writer.write({ status: "progress", message: "GitHub: Creating repository" });
+          if (body.prompt?.trim()) await chargeMetadataGeneration();
           const description = await generateRepoDescription({
             projectName: body.projectName,
             prompt: body.prompt,
@@ -173,6 +181,7 @@ export async function POST(req: Request) {
         const readmeExists = uploadFiles.some((f) => f.path.toLowerCase() === "readme.md");
         if (!readmeExists) {
           writer.write({ status: "progress", message: "GitHub: Generating README" });
+          await chargeMetadataGeneration();
           const readme = await generateReadmeContent({
             projectName: body.projectName,
             prompt: promptForContent,
