@@ -45,7 +45,7 @@ export class CloudflareApiError extends Error {
  * Call the Cloudflare API and unwrap its envelope. Pass `schema` when the result is stored or
  * acted on: the result is validated instead of trusted, and a mismatch is a 502.
  */
-export async function cloudflareRequest<T>(path: string, token: string, init?: RequestInit, schema?: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
+export async function cloudflareRequest<T>(path: string, token: string, init?: RequestInit, schema?: z.ZodType<T>): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
